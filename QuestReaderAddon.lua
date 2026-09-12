@@ -109,7 +109,7 @@ local defaultSettings = {
     -- first. Was hardcoded to 2; a slider is better because the right value
     -- depends on how fast the player clicks through dialogue. Only applies
     -- while those lines are audible -- see muteGossip.
-    autoPlayDelay = 2,
+    autoPlayDelay = 0.5,
 }
 
 -- Autoplay for one kind of text. The master switch gates all three, so
@@ -155,6 +155,19 @@ local function InitializeAddonDB()
     for option, default in pairs(defaultSettings) do
         if QuestReaderAddonDB[option] == nil then
             QuestReaderAddonDB[option] = default
+        end
+    end
+
+    -- One-time migration: the autoplay delay's default used to be 2s, which
+    -- in practice was long enough that it read as "autoplay doesn't work"
+    -- rather than "autoplay is waiting." Anyone still sitting on that old
+    -- default (never having moved the slider off it) gets carried to the new
+    -- 0.5s default. Guarded so it only ever fires once, and never touches a
+    -- value the player deliberately set to 2.
+    if not QuestReaderAddonDB.migratedAutoPlayDelayV2 then
+        QuestReaderAddonDB.migratedAutoPlayDelayV2 = true
+        if QuestReaderAddonDB.autoPlayDelay == 2 then
+            QuestReaderAddonDB.autoPlayDelay = 0.5
         end
     end
 
@@ -714,7 +727,7 @@ function PlayQuestAudio(textType, skipDelay)
 
         -- Delay shortly to account for greeting audio when using autoplay
         if QuestReaderAddonDB.autoPlayEnabled and not skipDelay and not QuestReaderAddonDB.muteGossip then
-            local delay = tonumber(QuestReaderAddonDB.autoPlayDelay) or 2
+            local delay = tonumber(QuestReaderAddonDB.autoPlayDelay) or 0.5
             -- NewTimer, not After: After returns nothing, so the handle
             -- stored here was always nil and StopCurrentSound's Cancel never
             -- ran. A queued clip then fired after the player had walked away.
@@ -795,7 +808,17 @@ local function PlayGossipAudio()
         duration = duration,
     }
     addon.activeSound = soundData
-    DoPlaySound(soundData)
+
+    -- Same autoplay delay as the quest path above -- this was missing here,
+    -- so gossip always narrated instantly regardless of the slider.
+    if QuestReaderAddonDB.autoPlayEnabled and not QuestReaderAddonDB.muteGossip then
+        local delay = tonumber(QuestReaderAddonDB.autoPlayDelay) or 0.5
+        soundData.nextSoundTimer = C_Timer.NewTimer(delay, function()
+            DoPlaySound(soundData)
+        end)
+    else
+        DoPlaySound(soundData)
+    end
 end
 
 local currentItemName = nil
@@ -855,7 +878,18 @@ local function PlayItemAudioDirect(itemLink, page)
     }
     addon.activeSound = soundData
     DebugPrint("SpeakStone: playing " .. (itemID and ("item " .. itemID) or ("'" .. itemLink .. "'")) .. " (page " .. page .. ")")
-    DoPlaySound(soundData)
+
+    -- Same autoplay delay as the quest path above -- this was missing here,
+    -- so item/book narration always started instantly regardless of the
+    -- slider.
+    if QuestReaderAddonDB.autoPlayEnabled and not QuestReaderAddonDB.muteGossip then
+        local delay = tonumber(QuestReaderAddonDB.autoPlayDelay) or 0.5
+        soundData.nextSoundTimer = C_Timer.NewTimer(delay, function()
+            DoPlaySound(soundData)
+        end)
+    else
+        DoPlaySound(soundData)
+    end
 end
 
 -- Defined below, but hooked from here. A forward declaration rather than a
@@ -1218,6 +1252,17 @@ function addon.ShowHarvestExport()
 
     local frame = EnsureExportFrame()
     frame.batches = batches
+    -- Same fix as the Audio Library window: a bare SetPoint("CENTER") landed
+    -- this exactly on top of Settings (its main entry point) or the Library
+    -- (the minimap right-click route can open this while that is up too).
+    frame:ClearAllPoints()
+    if SpeakStoneSettingsFrame and SpeakStoneSettingsFrame:IsShown() then
+        frame:SetPoint("RIGHT", SpeakStoneSettingsFrame, "LEFT", -12, 0)
+    elseif QuestReaderAudioLibraryUI and QuestReaderAudioLibraryUI:IsShown() then
+        frame:SetPoint("RIGHT", QuestReaderAudioLibraryUI, "LEFT", -12, 0)
+    else
+        frame:SetPoint("CENTER")
+    end
     frame:Show()
     frame:Raise()
     frame:ShowBatch(1)

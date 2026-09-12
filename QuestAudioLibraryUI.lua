@@ -62,6 +62,20 @@ local function GetQuestTitle(questID)
         end
     end
 
+    -- The client only knows a title for a quest it has actually seen --
+    -- your faction's, your expansion's, ones you've picked up. That is a
+    -- small slice of a full pack set, which is why most rows showed
+    -- "Unknown quest". QuestTitles.lua ships a static Wowhead-sourced
+    -- lookup built by tools/build_quest_titles.py that covers the rest;
+    -- it is a fallback, not a delete step, since the client's own name is
+    -- from the player's own locale where it exists.
+    if not resolved and QuestReaderAddon_QuestTitles then
+        local title = QuestReaderAddon_QuestTitles[questID]
+        if title and title ~= "" then
+            resolved = title
+        end
+    end
+
     if resolved then
         titleCache[questID] = resolved
     else
@@ -644,6 +658,16 @@ local function BuildUI()
     end)
 
     frame:SetScript("OnShow", function(self)
+        -- Every SpeakStone window defaulted to plain SetPoint("CENTER"), so
+        -- opening this from the Settings window (its main entry point) landed
+        -- it in the exact same screen position, stacked on top. Anchor beside
+        -- Settings when it is open; otherwise fall back to centered.
+        self:ClearAllPoints()
+        if SpeakStoneSettingsFrame and SpeakStoneSettingsFrame:IsShown() then
+            self:SetPoint("LEFT", SpeakStoneSettingsFrame, "RIGHT", 12, 0)
+        else
+            self:SetPoint("CENTER")
+        end
         self:Raise()
         titleLoader:RegisterEvent("QUEST_DATA_LOAD_RESULT")
         -- A title the client did not know last time it may know now -- so the

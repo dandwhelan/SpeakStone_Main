@@ -175,7 +175,7 @@ end
 -- --------------------------------------------------------------------------
 
 local FRAME_WIDTH = 700
-local FRAME_HEIGHT = 540
+local FRAME_HEIGHT = 740
 local CARD_WIDTH = 226
 local CARD_HEIGHT = 92
 local CARD_GAP = 8
@@ -190,6 +190,11 @@ local TOP_Y = -34
 local function CreateCard(parent, spec)
     local card = CreateFrame("Button", nil, parent)
     card:SetSize(CARD_WIDTH, CARD_HEIGHT)
+    -- A long pack list or caption used to grow past the card's own edges --
+    -- anchored at BOTTOMLEFT with no top bound, extra lines pushed upward
+    -- right out of the card and, for the top card, clean over the window's
+    -- own title bar. Clipping keeps overflow inside the tile instead.
+    card:SetClipsChildren(true)
 
     local bg = card:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
@@ -216,9 +221,13 @@ local function CreateCard(parent, spec)
     card.value = value
 
     local caption = card:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-    caption:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 10, 8)
+    -- Anchored below the value line now, not off the card's bottom edge --
+    -- extra lines grow down and get clipped by the card itself instead of
+    -- growing up over whatever this card overlaps (see SetClipsChildren above).
+    caption:SetPoint("TOPLEFT", value, "BOTTOMLEFT", 0, -6)
     caption:SetWidth(CARD_WIDTH - 20)
     caption:SetJustifyH("LEFT")
+    caption:SetJustifyV("TOP")
     caption:SetSpacing(2)
     card.caption = caption
 
@@ -317,6 +326,40 @@ function SpeakStone:CreateWindow()
     end)
     linkBox:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
     linkBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+
+    -- Same copyable-box pattern as CONTRIBUTE above -- an addon cannot open a
+    -- browser, so a selectable link is the closest thing to a clickable one.
+    local function CreateLinkCard(index, label, caption, path)
+        local card = PlaceCard({ label = label }, index)
+        card.value:Hide()
+        card.caption:ClearAllPoints()
+        card.caption:SetPoint("TOPLEFT", card.label, "BOTTOMLEFT", 0, -4)
+        card.caption:SetText(caption)
+        card.accent:SetColorTexture(ACCENT_NEUTRAL[1], ACCENT_NEUTRAL[2], ACCENT_NEUTRAL[3], 1)
+
+        local box = CreateFrame("EditBox", nil, card, "InputBoxTemplate")
+        box:SetSize(CARD_WIDTH - 30, 20)
+        box:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 16, 8)
+        box:SetAutoFocus(false)
+        local url = "https://" .. WEBSITE .. path
+        box:SetText(url)
+        box:SetCursorPosition(0)
+        box:SetScript("OnTextChanged", function(self, userInput)
+            if userInput then
+                self:SetText(url)
+                self:HighlightText()
+            end
+        end)
+        box:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
+        box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+        return card
+    end
+
+    cards.reportIssue = CreateLinkCard(5, "REPORT ISSUE", "Wrong voice, broken audio, or anything else -- report it at:", "/report")
+    AttachTooltip(cards.reportIssue, "Report an issue", "Opens a copyable link to SpeakStone's issue-report page. Wrong-sex voices, mispronunciations, missing audio, and anything else worth flagging goes here.")
+
+    cards.addVoice = CreateLinkCard(6, "ADD YOUR VOICE", "Want your own voice cloned onto an NPC? Sign up at:", "/voice")
+    AttachTooltip(cards.addVoice, "Add your voice", "Opens a copyable link to SpeakStone's voice-donation page, where you can contribute your own voice as a reference for future NPCs.")
 
     -- ----------------------------------------------------------------------
     -- Right column: the options themselves, unchanged in content
@@ -423,7 +466,7 @@ function SpeakStone:CreateWindow()
                 Describe(value)
             end)
             slider:SetScript("OnShow", function(self)
-                local value = tonumber(QuestReaderAddonDB.autoPlayDelay) or 2
+                local value = tonumber(QuestReaderAddonDB.autoPlayDelay) or 0.5
                 self:SetValue(value)
                 Describe(value)
             end)
@@ -479,10 +522,27 @@ function SpeakStone:CreateWindow()
                 SetCardState(cards.packs, ACCENT_BAD, "None installed",
                     "The addon has nothing to play until you add one. Get a pack at " .. WEBSITE .. ".")
             else
+                -- Full names ("QuestReaderAddon_Pack_BattleforAzeroth") ran
+                -- the caption off the bottom of the card even before the clip
+                -- fix above; showing a handful and folding the rest into a
+                -- count keeps the card readable regardless of how many packs
+                -- are installed.
+                local MAX_NAMES_SHOWN = 3
                 local names = {}
-                for _, pack in ipairs(packs) do table.insert(names, pack.name) end
+                for _, pack in ipairs(packs) do
+                    local shortName = pack.name:gsub("^QuestReaderAddon_Pack_", "")
+                    table.insert(names, shortName)
+                end
+                local nameList
+                if #names > MAX_NAMES_SHOWN then
+                    local shown = {}
+                    for i = 1, MAX_NAMES_SHOWN do shown[i] = names[i] end
+                    nameList = table.concat(shown, ", ") .. string.format(" +%d more", #names - MAX_NAMES_SHOWN)
+                else
+                    nameList = table.concat(names, ", ")
+                end
                 SetCardState(cards.packs, ACCENT_GOOD, clips,
-                    string.format("clip(s) across %d quest(s)\n%s", quests, table.concat(names, ", ")))
+                    string.format("clip(s) across %d quest(s)\n%s", quests, nameList))
             end
         end
 
