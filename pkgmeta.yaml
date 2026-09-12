@@ -1,0 +1,53 @@
+package-as: SpeakStone_Main
+enable-nolib-creation: no
+
+# `package-as` is the FOLDER NAME inside the zip a player downloads, and
+# WoW requires the .toc basename to match its folder exactly -- it looks
+# for AddOns/<Folder>/<Folder>.toc. So this must track the addon rename or
+# the packaged addon does not appear in the addon list at all: no error,
+# no partial load. It was missed by the 2026-09-12 rename because nothing
+# in the pipeline reads this file -- it is not in base_payload(), so
+# publish_packs.py never pushes it, and only CurseForge's packager
+# consumes it. Every check we ran was blind to it by construction,
+# including the in-game test, which used a local install rather than a
+# CurseForge zip.
+#
+# The base addon ships code only. Audio lives in the per-expansion pack
+# addons (SpeakStone_Pack_*), each published as its own project -- a
+# single CurseForge file is capped at 2 GB (corrected 2026-09-12 by the
+# owner; this comment previously said 500 MB) and the full library is far
+# past that. Everything below is either build-side tooling, the pack
+# builder's raw input, or repo furniture, and none of it belongs in the zip
+# a player downloads.
+ignore:
+  - README.md
+  - CLAUDE.md
+  - GEMINI.md
+  - CODEX.md
+  - .github
+  - .git
+  - .gitignore
+  - Sounds
+  - packs
+  - packs_build
+  - packs_build_new
+  - tools
+  - docs
+  - scratch
+  - generated
+  - passages.json
+  - voicebank.json
+  - missing.txt
+  - npcs.txt
+  - "*.backup-*"
+  - "*.tsv"
+  - luac.out
+
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown
+
+license-output: LICENSE
+
+tools-used:
+  - curseforge-packager
