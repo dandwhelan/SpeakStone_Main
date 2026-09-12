@@ -1,7 +1,7 @@
 -- Quest/gossip/book text capture, built into the base addon.
 --
 -- This began life as a separate companion addon
--- (tools/QuestReaderHarvester/) and is now folded in here, because asking a
+-- (tools/SpeakStoneHarvester/) and is now folded in here, because asking a
 -- player to find and install a second addon to contribute the one thing the
 -- project most needs was a poor trade. It is on by default and can be turned
 -- off in the settings panel.
@@ -28,18 +28,18 @@ end
 -- The standalone companion addon, if the player still has it, owns capture.
 local function StandaloneActive()
     return C_AddOns and C_AddOns.IsAddOnLoaded
-        and C_AddOns.IsAddOnLoaded("QuestReaderHarvester")
+        and C_AddOns.IsAddOnLoaded("SpeakStoneHarvester")
 end
 
 local function Enabled()
-    return QuestReaderAddonDB and QuestReaderAddonDB.harvestEnabled
+    return SpeakStone_MainDB and SpeakStone_MainDB.harvestEnabled
         and not StandaloneActive()
 end
 addon.HarvestEnabled = Enabled
 
 local function Store()
-    QuestReaderAddonDB.harvest = QuestReaderAddonDB.harvest or {}
-    local h = QuestReaderAddonDB.harvest
+    SpeakStone_MainDB.harvest = SpeakStone_MainDB.harvest or {}
+    local h = SpeakStone_MainDB.harvest
     h.quests = h.quests or {}
     h.gossip = h.gossip or {}
     h.itemText = h.itemText or {}
@@ -589,7 +589,7 @@ function addon.HarvestExportBatches(maxBytes)
     end
     local function Begin()
         out, size, openKind, inBatch = {}, 0, nil, 0
-        Emit("QuestReaderAddonExport = {\n")
+        Emit("SpeakStone_MainExport = {\n")
         Emit(header)
     end
     local function CloseKind()
@@ -739,7 +739,7 @@ function addon.HarvestMigrate()
         h.schema = HARVEST_SCHEMA
     end
 
-    local old = QuestReaderAddonDB.missingCaptures
+    local old = SpeakStone_MainDB.missingCaptures
     if old and old.quests then
         for questID, entry in pairs(old.quests) do
             if not h.quests[questID] then
@@ -748,20 +748,20 @@ function addon.HarvestMigrate()
             end
             h.missingIDs[questID] = true
         end
-        QuestReaderAddonDB.missingCaptures = nil
+        SpeakStone_MainDB.missingCaptures = nil
     end
 
-    if type(QuestReaderHarvesterDB) == "table" then
-        for questID, entry in pairs(QuestReaderHarvesterDB.quests or {}) do
+    if type(SpeakStoneHarvesterDB) == "table" then
+        for questID, entry in pairs(SpeakStoneHarvesterDB.quests or {}) do
             if not h.quests[questID] then
                 h.quests[questID] = entry
                 moved = moved + 1
             end
         end
-        for npcID, entry in pairs(QuestReaderHarvesterDB.gossip or {}) do
+        for npcID, entry in pairs(SpeakStoneHarvesterDB.gossip or {}) do
             if not h.gossip[npcID] then h.gossip[npcID] = entry end
         end
-        for key, entry in pairs(QuestReaderHarvesterDB.itemText or {}) do
+        for key, entry in pairs(SpeakStoneHarvesterDB.itemText or {}) do
             if not h.itemText[key] then h.itemText[key] = entry end
         end
     end

@@ -2,7 +2,7 @@ local addonName, addon = ...
 local SpeakStone = {}
 
 EventUtil.ContinueOnAddOnLoaded(addonName, function()
-    QuestReaderAddonDB = QuestReaderAddonDB or {}
+    SpeakStone_MainDB = SpeakStone_MainDB or {}
     -- The two ADDON_LOADED handlers -- this one and the main file's -- have no
     -- guaranteed order between them, and every checkbox below reads its
     -- default out of the saved variables. Arriving first meant reading nil and
@@ -26,12 +26,12 @@ end
 -- the export commands. Every route into export has to ask, not assume.
 local function StandaloneHarvesterActive()
     return C_AddOns and C_AddOns.IsAddOnLoaded
-        and C_AddOns.IsAddOnLoaded("QuestReaderHarvester")
+        and C_AddOns.IsAddOnLoaded("SpeakStoneHarvester")
 end
 
 local function ExportHarvest()
-    if StandaloneHarvesterActive() and SlashCmdList["QUESTREADERHARVEST"] then
-        SlashCmdList["QUESTREADERHARVEST"]("export")
+    if StandaloneHarvesterActive() and SlashCmdList["SPEAKSTONEHARVEST"] then
+        SlashCmdList["SPEAKSTONEHARVEST"]("export")
     else
         addon.ShowHarvestExport()
     end
@@ -45,15 +45,15 @@ StaticPopupDialogs["QUESTREADER_CONFIRM_CLEAR_HARVEST"] = {
         -- Only when the *standalone* addon owns that command. This addon now
         -- registers /qrharvest itself, so an unqualified check ran the
         -- built-in wipe here and again below, printing "cleared" twice.
-        if StandaloneHarvesterActive() and SlashCmdList["QUESTREADERHARVEST"] then
-            SlashCmdList["QUESTREADERHARVEST"]("wipe")
-        elseif QuestReaderHarvesterDB then
+        if StandaloneHarvesterActive() and SlashCmdList["SPEAKSTONEHARVEST"] then
+            SlashCmdList["SPEAKSTONEHARVEST"]("wipe")
+        elseif SpeakStoneHarvesterDB then
             -- Left over from the standalone addon, cleared silently: the one
             -- line printed below covers both stores, and two "cleared"
             -- messages for one click read as if something went twice.
-            QuestReaderHarvesterDB.quests = {}
-            QuestReaderHarvesterDB.gossip = {}
-            QuestReaderHarvesterDB.itemText = {}
+            SpeakStoneHarvesterDB.quests = {}
+            SpeakStoneHarvesterDB.gossip = {}
+            SpeakStoneHarvesterDB.itemText = {}
         end
         -- Clear this addon's own store too. It is separate from the
         -- standalone Harvester's, so wiping only one would leave the player
@@ -373,7 +373,7 @@ function SpeakStone:CreateWindow()
     -- worse answer than a dimmed one.
     local dependentButtons = {}
     local function RefreshOptionStates()
-        local master = QuestReaderAddonDB.autoPlayEnabled
+        local master = SpeakStone_MainDB.autoPlayEnabled
         for _, button in ipairs(dependentButtons) do
             if master then button:Enable() else button:Disable() end
             if button.text then
@@ -416,15 +416,15 @@ function SpeakStone:CreateWindow()
         -- The label is part of the click target, not just decoration next to it.
         checkButton:SetHitRectInsets(0, -checkButton.text:GetWidth(), 0, 0)
         checkButton.HoverBackground = nil
-        checkButton:SetChecked(QuestReaderAddonDB[info.option])
+        checkButton:SetChecked(SpeakStone_MainDB[info.option])
 
         checkButton:SetScript("OnClick", function(self)
-            QuestReaderAddonDB[info.option] = self:GetChecked()
+            SpeakStone_MainDB[info.option] = self:GetChecked()
             if info.onChange then info.onChange(self:GetChecked()) end
             RefreshOptionStates()
         end)
         checkButton:SetScript("OnShow", function(self)
-            self:SetChecked(QuestReaderAddonDB[info.option])
+            self:SetChecked(SpeakStone_MainDB[info.option])
         end)
 
         if info.indent then
@@ -462,11 +462,11 @@ function SpeakStone:CreateWindow()
 
             slider:SetScript("OnValueChanged", function(self, value)
                 value = math.floor(value * 2 + 0.5) / 2
-                QuestReaderAddonDB.autoPlayDelay = value
+                SpeakStone_MainDB.autoPlayDelay = value
                 Describe(value)
             end)
             slider:SetScript("OnShow", function(self)
-                local value = tonumber(QuestReaderAddonDB.autoPlayDelay) or 0.5
+                local value = tonumber(SpeakStone_MainDB.autoPlayDelay) or 0.5
                 self:SetValue(value)
                 Describe(value)
             end)
@@ -522,7 +522,7 @@ function SpeakStone:CreateWindow()
                 SetCardState(cards.packs, ACCENT_BAD, "None installed",
                     "The addon has nothing to play until you add one. Get a pack at " .. WEBSITE .. ".")
             else
-                -- Full names ("QuestReaderAddon_Pack_BattleforAzeroth") ran
+                -- Full names ("SpeakStone_Pack_BattleforAzeroth") ran
                 -- the caption off the bottom of the card even before the clip
                 -- fix above; showing a handful and folding the rest into a
                 -- count keeps the card readable regardless of how many packs
@@ -530,7 +530,7 @@ function SpeakStone:CreateWindow()
                 local MAX_NAMES_SHOWN = 3
                 local names = {}
                 for _, pack in ipairs(packs) do
-                    local shortName = pack.name:gsub("^QuestReaderAddon_Pack_", "")
+                    local shortName = pack.name:gsub("^SpeakStone_Pack_", "")
                     table.insert(names, shortName)
                 end
                 local nameList
@@ -552,7 +552,7 @@ function SpeakStone:CreateWindow()
         if StandaloneHarvesterActive() then
             SetCardState(cards.capture, ACCENT_NEUTRAL, "Harvester",
                 "The standalone Harvester addon is installed and is doing the capturing; SpeakStone's own capture is standing down.")
-        elseif QuestReaderAddonDB.harvestEnabled then
+        elseif SpeakStone_MainDB.harvestEnabled then
             SetCardState(cards.capture, ACCENT_GOOD, "Recording",
                 "Quest text, greetings and books are being recorded as you meet them.")
         else

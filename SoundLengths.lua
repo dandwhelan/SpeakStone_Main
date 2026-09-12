@@ -1,2 +1,2 @@
-QuestReaderSoundLengths = {
+SpeakStoneSoundLengths = {
 }

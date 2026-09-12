@@ -4,9 +4,9 @@
 ## Notes: Plays AI-generated voiceovers for quests, books, and gossip, in each NPC's own voice.
 ## Author: clhammer weirdautomation@gmail.com, Paratus
 ## Version: 1.3
-## SavedVariables: QuestReaderAddonDB
+## SavedVariables: SpeakStone_MainDB
 
-## OptionalDeps: QuestReaderAddon_TWW_EN, QuestReaderAddon_TWW_FR
+## OptionalDeps: SpeakStone_TWW_EN, SpeakStone_TWW_FR
 
 # Libraries
 Libs\LibStub\LibStub.lua
@@ -17,7 +17,7 @@ Libs\LibDBIcon-1.0\LibDBIcon-1.0.lua
 # Addon files
 SoundLengths.lua
 QuestTitles.lua
-QuestReaderAddon.lua
+SpeakStone_Main.lua
 Harvester.lua
-QuestReaderAddon_Settings.lua
+SpeakStone_Main_Settings.lua
 QuestAudioLibraryUI.lua

@@ -17,7 +17,7 @@ local SOUND_EXTENSIONS = { ".ogg", ".wav" }
 -- entry, and the "no audio for this quest" path already used for gaps in the
 -- base library covers it too. No error, no crash, just silence.
 addon.soundSources = {}
-addon.soundSources["QuestReaderAddon"] = QuestReaderSoundLengths
+addon.soundSources["SpeakStone_Main"] = SpeakStoneSoundLengths
 
 -- Anything derived from soundSources is cached, because deriving it means
 -- walking every clip in every installed pack -- tens of thousands of table
@@ -40,10 +40,10 @@ addon.InvalidateAudioCaches = InvalidateAudioCaches
 -- visible as soon as both sides have run, whichever order that happens in.
 --
 -- Packs call this as:
---   QuestReaderAddon_RegisterSoundPack(addonName, ThisPackSoundLengths)
+--   SpeakStone_RegisterSoundPack(addonName, ThisPackSoundLengths)
 -- falling back to the pending-queue global if it is not yet defined. See
 -- the example pack under packs/ for the exact two-line pattern.
-function QuestReaderAddon_RegisterSoundPack(packName, soundLengths)
+function SpeakStone_RegisterSoundPack(packName, soundLengths)
     if type(packName) ~= "string" or type(soundLengths) ~= "table" then
         return
     end
@@ -58,11 +58,11 @@ function QuestReaderAddon_RegisterSoundPack(packName, soundLengths)
 end
 
 -- Drain anything a pack queued before this file ran (see above).
-if type(_G.QuestReaderPendingSoundPacks) == "table" then
-    for _, entry in ipairs(_G.QuestReaderPendingSoundPacks) do
-        QuestReaderAddon_RegisterSoundPack(entry.name, entry.index)
+if type(_G.SpeakStonePendingSoundPacks) == "table" then
+    for _, entry in ipairs(_G.SpeakStonePendingSoundPacks) do
+        SpeakStone_RegisterSoundPack(entry.name, entry.index)
     end
-    _G.QuestReaderPendingSoundPacks = nil
+    _G.SpeakStonePendingSoundPacks = nil
 end
 
 -- Legacy mechanism, kept for the existing TWW language packs: explicitly
@@ -71,8 +71,8 @@ end
 -- self-registration above; it does not require this addon to know their
 -- names in advance.
 local optionalSoundPacks = {
-    "QuestReaderAddon_TWW_EN",
-    "QuestReaderAddon_TWW_FR"
+    "SpeakStone_TWW_EN",
+    "SpeakStone_TWW_FR"
 }
 
 -- Default values for saved settings. SavedVariables are not populated until
@@ -94,7 +94,12 @@ local defaultSettings = {
     -- not. Turning this on silences the game's Dialog channel instead and
     -- narrates immediately.
     muteGossip = false,
-    stopDialogueOnClose = true,
+    -- Off by default 2026-09-12, owner's call: a quest window is often
+    -- closed the moment its objective is read, but the narration itself
+    -- isn't finished -- keep speaking through a closed window rather than
+    -- cutting a sentence off, matching how Blizzard's own voiced dialogue
+    -- behaves (it doesn't stop just because you closed the quest frame).
+    stopDialogueOnClose = false,
     showDebugMessages = false,
     -- Capture quest/gossip/book text as it is encountered, so gaps in the
     -- voiced library can be filled. On by default: this is the one thing the
@@ -117,10 +122,10 @@ local defaultSettings = {
 -- Nil-safe on the sub-keys so a saved-variables file written before they
 -- existed reads as "on" rather than silently disabling narration.
 local function AutoPlayAllowed(kind)
-    if not QuestReaderAddonDB or not QuestReaderAddonDB.autoPlayEnabled then
+    if not SpeakStone_MainDB or not SpeakStone_MainDB.autoPlayEnabled then
         return false
     end
-    return QuestReaderAddonDB[kind] ~= false
+    return SpeakStone_MainDB[kind] ~= false
 end
 addon.AutoPlayAllowed = AutoPlayAllowed
 
@@ -131,7 +136,7 @@ addon.AutoPlayAllowed = AutoPlayAllowed
 local MuteDialogChannel, UnmuteDialogChannel
 
 local function DebugPrint(...)
-    if QuestReaderAddonDB and QuestReaderAddonDB.showDebugMessages then
+    if SpeakStone_MainDB and SpeakStone_MainDB.showDebugMessages then
         print(...)
     end
 end
@@ -148,13 +153,13 @@ local dbInitialized = false
 local function InitializeAddonDB()
     if dbInitialized then return end
     dbInitialized = true
-    QuestReaderAddonDB = QuestReaderAddonDB or {}
-    QuestReaderAddonDB.minimapButton = QuestReaderAddonDB.minimapButton or { hide = false }
-    QuestReaderAddonDB.minimapIconPosition = QuestReaderAddonDB.minimapIconPosition or {}
+    SpeakStone_MainDB = SpeakStone_MainDB or {}
+    SpeakStone_MainDB.minimapButton = SpeakStone_MainDB.minimapButton or { hide = false }
+    SpeakStone_MainDB.minimapIconPosition = SpeakStone_MainDB.minimapIconPosition or {}
 
     for option, default in pairs(defaultSettings) do
-        if QuestReaderAddonDB[option] == nil then
-            QuestReaderAddonDB[option] = default
+        if SpeakStone_MainDB[option] == nil then
+            SpeakStone_MainDB[option] = default
         end
     end
 
@@ -164,15 +169,15 @@ local function InitializeAddonDB()
     -- default (never having moved the slider off it) gets carried to the new
     -- 0.5s default. Guarded so it only ever fires once, and never touches a
     -- value the player deliberately set to 2.
-    if not QuestReaderAddonDB.migratedAutoPlayDelayV2 then
-        QuestReaderAddonDB.migratedAutoPlayDelayV2 = true
-        if QuestReaderAddonDB.autoPlayDelay == 2 then
-            QuestReaderAddonDB.autoPlayDelay = 0.5
+    if not SpeakStone_MainDB.migratedAutoPlayDelayV2 then
+        SpeakStone_MainDB.migratedAutoPlayDelayV2 = true
+        if SpeakStone_MainDB.autoPlayDelay == 2 then
+            SpeakStone_MainDB.autoPlayDelay = 0.5
         end
     end
 
-    QuestReaderAddonDB.IsPaused = false
-    QuestReaderAddonDB.IsSoundPaused = false
+    SpeakStone_MainDB.IsPaused = false
+    SpeakStone_MainDB.IsSoundPaused = false
 
     -- Fold in anything from the older stores (the standalone Harvester addon,
     -- and the missingCaptures table this addon used before capture was built
@@ -193,9 +198,9 @@ local function RestoreStrandedDialogVolume()
     -- the read below used to be guarded and the write beside it was not,
     -- which is the wrong way round for a function whose whole job is to run
     -- before anything else has touched the volume.
-    if not QuestReaderAddonDB then return end
-    local saved = QuestReaderAddonDB.savedDialogVolume
-    QuestReaderAddonDB.savedDialogVolume = nil
+    if not SpeakStone_MainDB then return end
+    local saved = SpeakStone_MainDB.savedDialogVolume
+    SpeakStone_MainDB.savedDialogVolume = nil
     local level = tonumber(saved)
     if level and level > 0 then
         -- The number that was validated, not the raw saved value: a store
@@ -208,7 +213,7 @@ end
 addon.EnsureDB = InitializeAddonDB
 
 -- Create the LDB launcher
-local questReaderLauncher = LDB:NewDataObject("QuestReaderAddon", {
+local questReaderLauncher = LDB:NewDataObject("SpeakStone_Main", {
     type = "launcher",
     -- Named with the extension on purpose. An extensionless texture path
     -- resolves to .blp first, and the old cs_icon.blp has been removed in
@@ -228,14 +233,14 @@ local questReaderLauncher = LDB:NewDataObject("QuestReaderAddon", {
                 addon.ShowHarvestExport()
             end
         elseif button == "MiddleButton" then
-            QuestReaderAddonDB.showDebugMessages = not QuestReaderAddonDB.showDebugMessages
-            print("SpeakStone Debug Messages: " .. (QuestReaderAddonDB.showDebugMessages and "Enabled" or "Disabled"))
+            SpeakStone_MainDB.showDebugMessages = not SpeakStone_MainDB.showDebugMessages
+            print("SpeakStone Debug Messages: " .. (SpeakStone_MainDB.showDebugMessages and "Enabled" or "Disabled"))
         end
     end,
     OnTooltipShow = function(tooltip)
         tooltip:AddLine("SpeakStone")
         tooltip:AddLine("|cffffffffLeft-Click:|r Open Settings", 1, 1, 1)
-        tooltip:AddLine("|cffffffffMiddle-Click:|r Toggle Debug Messages (" .. ((QuestReaderAddonDB and QuestReaderAddonDB.showDebugMessages) and "|cff00ff00On|r" or "|cffff0000Off|r") .. ")", 1, 1, 1)
+        tooltip:AddLine("|cffffffffMiddle-Click:|r Toggle Debug Messages (" .. ((SpeakStone_MainDB and SpeakStone_MainDB.showDebugMessages) and "|cff00ff00On|r" or "|cffff0000Off|r") .. ")", 1, 1, 1)
         tooltip:AddLine("|cff00ff00Right-Click:|r Export Captured Text", 0.2, 1, 0.2)
     end,
 })
@@ -244,25 +249,25 @@ local function UpdateMinimapButtonVisibility()
     -- LibDBIcon reads its own hide flag out of this table on register and on
     -- profile refresh. Setting only showMinimapButton left the two disagreeing,
     -- so the button came back on the next login after being hidden.
-    QuestReaderAddonDB.minimapButton = QuestReaderAddonDB.minimapButton or {}
-    QuestReaderAddonDB.minimapButton.hide = not QuestReaderAddonDB.showMinimapButton
-    if QuestReaderAddonDB.showMinimapButton then
-        icon:Show("QuestReaderAddon")
+    SpeakStone_MainDB.minimapButton = SpeakStone_MainDB.minimapButton or {}
+    SpeakStone_MainDB.minimapButton.hide = not SpeakStone_MainDB.showMinimapButton
+    if SpeakStone_MainDB.showMinimapButton then
+        icon:Show("SpeakStone_Main")
         C_Timer.After(0.1, function()
-            local minimapButton = icon:GetMinimapButton("QuestReaderAddon")
-            if minimapButton and QuestReaderAddonDB.minimapIconPosition.point then
+            local minimapButton = icon:GetMinimapButton("SpeakStone_Main")
+            if minimapButton and SpeakStone_MainDB.minimapIconPosition.point then
                 minimapButton:ClearAllPoints()
                 minimapButton:SetPoint(
-                    QuestReaderAddonDB.minimapIconPosition.point,
+                    SpeakStone_MainDB.minimapIconPosition.point,
                     Minimap,
-                    QuestReaderAddonDB.minimapIconPosition.relPoint,
-                    QuestReaderAddonDB.minimapIconPosition.x,
-                    QuestReaderAddonDB.minimapIconPosition.y
+                    SpeakStone_MainDB.minimapIconPosition.relPoint,
+                    SpeakStone_MainDB.minimapIconPosition.x,
+                    SpeakStone_MainDB.minimapIconPosition.y
                 )
             end
         end)
     else
-        icon:Hide("QuestReaderAddon")
+        icon:Hide("SpeakStone_Main")
     end
 end
 addon.UpdateMinimapButtonVisibility = UpdateMinimapButtonVisibility
@@ -281,17 +286,17 @@ loadingFrame:SetScript("OnEvent", function(self, event, loadedAddonName)
         InitializeAddonDB()
         RestoreStrandedDialogVolume()
         if questReaderLauncher then
-            icon:Register("QuestReaderAddon", questReaderLauncher, {
-                hide = not QuestReaderAddonDB.showMinimapButton,
-                position = QuestReaderAddonDB.minimapIconPosition
+            icon:Register("SpeakStone_Main", questReaderLauncher, {
+                hide = not SpeakStone_MainDB.showMinimapButton,
+                position = SpeakStone_MainDB.minimapIconPosition
             })
             C_Timer.After(0.5, function()
                 UpdateMinimapButtonVisibility()
-                local minimapButton = icon:GetMinimapButton("QuestReaderAddon")
+                local minimapButton = icon:GetMinimapButton("SpeakStone_Main")
                 if minimapButton then
                     minimapButton:HookScript("OnDragStop", function()
                         local point, _, relPoint, x, y = minimapButton:GetPoint()
-                        QuestReaderAddonDB.minimapIconPosition = {
+                        SpeakStone_MainDB.minimapIconPosition = {
                             point = point,
                             relPoint = relPoint,
                             x = x,
@@ -327,7 +332,7 @@ questButtonFrame:RegisterEvent("ADDON_LOADED")
 addon.questButtons = {}
 
 local function UpdateQuestButtonVisibility()
-    local show = QuestReaderAddonDB.showQuestButton
+    local show = SpeakStone_MainDB.showQuestButton
     for _, button in ipairs(addon.questButtons) do
         if show then button:Show() else button:Hide() end
     end
@@ -336,7 +341,7 @@ addon.UpdateQuestButtonVisibility = UpdateQuestButtonVisibility
 
 local function InitializeQuestFrameButtons()
     -- Create the button for the QuestFrame
-    local questFrameButton = CreateFrame("Button", "QuestReaderButtonFrame", QuestFrame, "UIPanelButtonTemplate")
+    local questFrameButton = CreateFrame("Button", "SpeakStoneButtonFrame", QuestFrame, "UIPanelButtonTemplate")
     questFrameButton:SetSize(90, 21)
     questFrameButton:SetText("Read Quest")
     questFrameButton:SetPoint("BOTTOMRIGHT", QuestFrame, "BOTTOMRIGHT", -120, 4)
@@ -373,9 +378,9 @@ end)
 -- Slash command to toggle minimap button
 SLASH_QRTOGGLE1, SLASH_QRTOGGLE2 = '/qrtoggle', '/sstoggle'
 SlashCmdList["QRTOGGLE"] = function()
-    QuestReaderAddonDB.showMinimapButton = not QuestReaderAddonDB.showMinimapButton
+    SpeakStone_MainDB.showMinimapButton = not SpeakStone_MainDB.showMinimapButton
     UpdateMinimapButtonVisibility()
-    print("SpeakStone minimap button: " .. (QuestReaderAddonDB.showMinimapButton and "|cff00ff00shown|r" or "|cffff0000hidden|r"))
+    print("SpeakStone minimap button: " .. (SpeakStone_MainDB.showMinimapButton and "|cff00ff00shown|r" or "|cffff0000hidden|r"))
 end
 
 -- Load one of the legacy named packs and hand back its duration table, along
@@ -557,7 +562,7 @@ local function DoPlaySound(soundData)
     end
 
     local audioChannel = "Dialog"
-    if QuestReaderAddonDB.muteGossip then
+    if SpeakStone_MainDB.muteGossip then
         MuteDialogChannel()
         audioChannel = "Master"
     end
@@ -726,8 +731,8 @@ function PlayQuestAudio(textType, skipDelay)
         addon.activeSound = soundData
 
         -- Delay shortly to account for greeting audio when using autoplay
-        if QuestReaderAddonDB.autoPlayEnabled and not skipDelay and not QuestReaderAddonDB.muteGossip then
-            local delay = tonumber(QuestReaderAddonDB.autoPlayDelay) or 0.5
+        if SpeakStone_MainDB.autoPlayEnabled and not skipDelay and not SpeakStone_MainDB.muteGossip then
+            local delay = tonumber(SpeakStone_MainDB.autoPlayDelay) or 0.5
             -- NewTimer, not After: After returns nothing, so the handle
             -- stored here was always nil and StopCurrentSound's Cancel never
             -- ran. A queued clip then fired after the player had walked away.
@@ -811,8 +816,8 @@ local function PlayGossipAudio()
 
     -- Same autoplay delay as the quest path above -- this was missing here,
     -- so gossip always narrated instantly regardless of the slider.
-    if QuestReaderAddonDB.autoPlayEnabled and not QuestReaderAddonDB.muteGossip then
-        local delay = tonumber(QuestReaderAddonDB.autoPlayDelay) or 0.5
+    if SpeakStone_MainDB.autoPlayEnabled and not SpeakStone_MainDB.muteGossip then
+        local delay = tonumber(SpeakStone_MainDB.autoPlayDelay) or 0.5
         soundData.nextSoundTimer = C_Timer.NewTimer(delay, function()
             DoPlaySound(soundData)
         end)
@@ -882,8 +887,8 @@ local function PlayItemAudioDirect(itemLink, page)
     -- Same autoplay delay as the quest path above -- this was missing here,
     -- so item/book narration always started instantly regardless of the
     -- slider.
-    if QuestReaderAddonDB.autoPlayEnabled and not QuestReaderAddonDB.muteGossip then
-        local delay = tonumber(QuestReaderAddonDB.autoPlayDelay) or 0.5
+    if SpeakStone_MainDB.autoPlayEnabled and not SpeakStone_MainDB.muteGossip then
+        local delay = tonumber(SpeakStone_MainDB.autoPlayDelay) or 0.5
         soundData.nextSoundTimer = C_Timer.NewTimer(delay, function()
             DoPlaySound(soundData)
         end)
@@ -1027,7 +1032,7 @@ questEventFrame:SetScript("OnEvent", function(self, event, ...)
         end
         return
     elseif event == "GOSSIP_CLOSED" then
-        if QuestReaderAddonDB.stopDialogueOnClose then
+        if SpeakStone_MainDB.stopDialogueOnClose then
             StopCurrentSound()
         end
         return
@@ -1043,7 +1048,7 @@ questEventFrame:SetScript("OnEvent", function(self, event, ...)
             itemAudioTimer:Cancel()
             itemAudioTimer = nil
         end
-        if QuestReaderAddonDB.stopDialogueOnClose then
+        if SpeakStone_MainDB.stopDialogueOnClose then
             StopCurrentSound()
         end
         return
@@ -1061,13 +1066,13 @@ questEventFrame:SetScript("OnEvent", function(self, event, ...)
 
     if textType ~= "" and AutoPlayAllowed("autoPlayQuests") then
         if QuestMapFrame and QuestMapFrame:IsVisible() and not (QuestFrame and QuestFrame:IsVisible()) then
-            if not QuestReaderAddonDB.autoPlayInQuestMap then
+            if not SpeakStone_MainDB.autoPlayInQuestMap then
                 lastTextType = textType
                 return
             end
         end
         PlayQuestAudio(textType)  -- Call PlayQuestAudio with textType from event
-    elseif event == "QUEST_FINISHED" and QuestReaderAddonDB.stopDialogueOnClose then
+    elseif event == "QUEST_FINISHED" and SpeakStone_MainDB.stopDialogueOnClose then
         StopCurrentSound() -- Stop sound when the quest dialog finishes
     end
 
@@ -1082,26 +1087,26 @@ logoutFrame:SetScript("OnEvent", OnPlayerLogout)
 SLASH_QUESTREADERAUTO1, SLASH_QUESTREADERAUTO2, SLASH_QUESTREADERAUTO3 = '/qrauto', '/ssauto', '/speakstoneauto'
 SlashCmdList["QUESTREADERAUTO"] = function(msg)
     if msg == "on" then
-        QuestReaderAddonDB.autoPlayEnabled = true
+        SpeakStone_MainDB.autoPlayEnabled = true
     elseif msg == "off" then
-        QuestReaderAddonDB.autoPlayEnabled = false
+        SpeakStone_MainDB.autoPlayEnabled = false
     else
-        QuestReaderAddonDB.autoPlayEnabled = not QuestReaderAddonDB.autoPlayEnabled
+        SpeakStone_MainDB.autoPlayEnabled = not SpeakStone_MainDB.autoPlayEnabled
     end
-    print("SpeakStone Auto-Play: " .. (QuestReaderAddonDB.autoPlayEnabled and "Enabled" or "Disabled"))
+    print("SpeakStone Auto-Play: " .. (SpeakStone_MainDB.autoPlayEnabled and "Enabled" or "Disabled"))
 end
 
 -- Slash command to toggle debug messages
 SLASH_QUESTREADERDEBUG1, SLASH_QUESTREADERDEBUG2, SLASH_QUESTREADERDEBUG3 = '/qrdebug', '/ssdebug', '/speakstonedebug'
 SlashCmdList["QUESTREADERDEBUG"] = function(msg)
     if msg == "on" then
-        QuestReaderAddonDB.showDebugMessages = true
+        SpeakStone_MainDB.showDebugMessages = true
     elseif msg == "off" then
-        QuestReaderAddonDB.showDebugMessages = false
+        SpeakStone_MainDB.showDebugMessages = false
     else
-        QuestReaderAddonDB.showDebugMessages = not QuestReaderAddonDB.showDebugMessages
+        SpeakStone_MainDB.showDebugMessages = not SpeakStone_MainDB.showDebugMessages
     end
-    print("SpeakStone Debug Messages: " .. (QuestReaderAddonDB.showDebugMessages and "Enabled" or "Disabled"))
+    print("SpeakStone Debug Messages: " .. (SpeakStone_MainDB.showDebugMessages and "Enabled" or "Disabled"))
 end
 
 -- The export window, built the first time it is asked for. It used to be
@@ -1115,7 +1120,7 @@ local function EnsureExportFrame()
         return exportFrame, exportEditBox
     end
 
-    local frame = CreateFrame("Frame", "QuestReaderMissingCopyFrame", UIParent, "BasicFrameTemplateWithInset")
+    local frame = CreateFrame("Frame", "SpeakStoneMissingCopyFrame", UIParent, "BasicFrameTemplateWithInset")
     frame:SetSize(560, 440)
     frame:SetPoint("CENTER")
     frame:SetMovable(true)
@@ -1129,7 +1134,7 @@ local function EnsureExportFrame()
     -- Escape closes it like every other addon window. Previously only the edit
     -- box handled Escape, so clicking anywhere else in the frame first left the
     -- player with no way out but the X.
-    tinsert(UISpecialFrames, "QuestReaderMissingCopyFrame")
+    tinsert(UISpecialFrames, "SpeakStoneMissingCopyFrame")
 
     frame.TitleText:SetText("Captured Text -- Export to Submit")
 
@@ -1258,8 +1263,8 @@ function addon.ShowHarvestExport()
     frame:ClearAllPoints()
     if SpeakStoneSettingsFrame and SpeakStoneSettingsFrame:IsShown() then
         frame:SetPoint("RIGHT", SpeakStoneSettingsFrame, "LEFT", -12, 0)
-    elseif QuestReaderAudioLibraryUI and QuestReaderAudioLibraryUI:IsShown() then
-        frame:SetPoint("RIGHT", QuestReaderAudioLibraryUI, "LEFT", -12, 0)
+    elseif SpeakStoneAudioLibraryUI and SpeakStoneAudioLibraryUI:IsShown() then
+        frame:SetPoint("RIGHT", SpeakStoneAudioLibraryUI, "LEFT", -12, 0)
     else
         frame:SetPoint("CENTER")
     end
@@ -1290,7 +1295,7 @@ end
 -- Everything captured: quests, gossip and book text, voiced or not. Not
 -- registered if the standalone Harvester addon is loaded -- it claims these
 -- same command names, and whichever loaded second would silently win.
-if not (C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("QuestReaderHarvester")) then
+if not (C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("SpeakStoneHarvester")) then
     SLASH_QUESTREADERHARVEST1, SLASH_QUESTREADERHARVEST2, SLASH_QUESTREADERHARVEST3 = '/qrharvest', '/ssharvest', '/speakstoneharvest'
     SlashCmdList["QUESTREADERHARVEST"] = function(msg)
         if msg == "export" or msg == "copy" then
@@ -1301,13 +1306,13 @@ if not (C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("QuestRea
             print("SpeakStone: captured text cleared.")
             return
         elseif msg == "on" or msg == "off" then
-            QuestReaderAddonDB.harvestEnabled = (msg == "on")
+            SpeakStone_MainDB.harvestEnabled = (msg == "on")
             print("SpeakStone: text capture " .. (msg == "on" and "enabled" or "disabled") .. ".")
             return
         end
 
         local quests, passages, unvoiced, npcs, lines, items, pages = addon.HarvestCounts()
-        print("SpeakStone capture: " .. (QuestReaderAddonDB.harvestEnabled and "|cff00ff00on|r" or "|cffff0000off|r"))
+        print("SpeakStone capture: " .. (SpeakStone_MainDB.harvestEnabled and "|cff00ff00on|r" or "|cffff0000off|r"))
         -- Greetings and book text first: neither exists in the client's own
         -- files nor anywhere scrapeable, so capture is the only way they can
         -- ever be obtained. Quest text can at least be sourced elsewhere.
@@ -1339,8 +1344,8 @@ function MuteDialogChannel()
         -- client's config, so the in-memory copy alone was lost to a crash
         -- or a disconnect, stranding the player's dialogue at zero with
         -- nothing to explain it. See RestoreStrandedDialogVolume.
-        if QuestReaderAddonDB then
-            QuestReaderAddonDB.savedDialogVolume = originalDialogVolume
+        if SpeakStone_MainDB then
+            SpeakStone_MainDB.savedDialogVolume = originalDialogVolume
         end
     end
 
@@ -1359,7 +1364,7 @@ function UnmuteDialogChannel()
     end
     -- Cleared even when nothing was held in memory: the saved copy is only
     -- ever a rescue for a session that did not get here.
-    if QuestReaderAddonDB then
-        QuestReaderAddonDB.savedDialogVolume = nil
+    if SpeakStone_MainDB then
+        SpeakStone_MainDB.savedDialogVolume = nil
     end
 end

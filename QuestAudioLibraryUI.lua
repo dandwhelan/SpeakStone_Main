@@ -69,8 +69,8 @@ local function GetQuestTitle(questID)
     -- lookup built by tools/build_quest_titles.py that covers the rest;
     -- it is a fallback, not a delete step, since the client's own name is
     -- from the player's own locale where it exists.
-    if not resolved and QuestReaderAddon_QuestTitles then
-        local title = QuestReaderAddon_QuestTitles[questID]
+    if not resolved and SpeakStone_QuestTitles then
+        local title = SpeakStone_QuestTitles[questID]
         if title and title ~= "" then
             resolved = title
         end
@@ -127,7 +127,7 @@ end)
 -- Building the window
 -- --------------------------------------------------------------------------
 local function BuildUI()
-    local frame = CreateFrame("Frame", "QuestReaderAudioLibraryUI", UIParent, "BasicFrameTemplateWithInset")
+    local frame = CreateFrame("Frame", "SpeakStoneAudioLibraryUI", UIParent, "BasicFrameTemplateWithInset")
     frame:SetSize(400, 612)
     frame:SetPoint("CENTER")
     frame:SetMovable(true)
@@ -140,7 +140,7 @@ local function BuildUI()
     frame:Hide()
 
     -- Allow closing with Escape key
-    tinsert(UISpecialFrames, "QuestReaderAudioLibraryUI")
+    tinsert(UISpecialFrames, "SpeakStoneAudioLibraryUI")
 
     -- Title
     if frame.TitleText then
@@ -153,7 +153,7 @@ local function BuildUI()
     end
 
     -- Search Box
-    local searchBox = CreateFrame("EditBox", "QuestReaderAudioLibrarySearchBox", frame, "SearchBoxTemplate")
+    local searchBox = CreateFrame("EditBox", "SpeakStoneAudioLibrarySearchBox", frame, "SearchBoxTemplate")
     searchBox:SetSize(360, 22)
     searchBox:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -32)
     searchBox:SetAutoFocus(false)
@@ -164,7 +164,7 @@ local function BuildUI()
     frame.searchBox = searchBox
 
     -- ScrollFrame (FauxScrollFrame for high performance virtualized rows)
-    local scrollFrame = CreateFrame("ScrollFrame", "QuestReaderAudioLibraryScrollFrame", frame, "FauxScrollFrameTemplate")
+    local scrollFrame = CreateFrame("ScrollFrame", "SpeakStoneAudioLibraryScrollFrame", frame, "FauxScrollFrameTemplate")
     scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 12, -62)
     scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -36, 44)
     frame.scrollFrame = scrollFrame
@@ -186,7 +186,7 @@ local function BuildUI()
 
     -- Mouse wheel scrolling handler
     local function OnListMouseWheel(delta)
-        local scrollBar = _G["QuestReaderAudioLibraryScrollFrameScrollBar"]
+        local scrollBar = _G["SpeakStoneAudioLibraryScrollFrameScrollBar"]
         if scrollBar and scrollBar:IsShown() then
             local current = scrollBar:GetValue()
             local minVal, maxVal = scrollBar:GetMinMaxValues()
@@ -358,7 +358,7 @@ local function BuildUI()
     end
 
     -- The per-quest index is built once for the whole addon, in
-    -- QuestReaderAddon.lua, because the settings dashboard needs a walk over
+    -- SpeakStone_Main.lua, because the settings dashboard needs a walk over
     -- the same packs to count clips. This used to repeat that walk with its
     -- own string match per clip -- tens of thousands of them -- for an answer
     -- the other pass had already worked out.
@@ -399,7 +399,7 @@ local function BuildUI()
         end
         CancelFilter()
 
-        local scrollBar = _G["QuestReaderAudioLibraryScrollFrameScrollBar"]
+        local scrollBar = _G["SpeakStoneAudioLibraryScrollFrameScrollBar"]
         if scrollBar then
             scrollBar:SetValue(0)
         end
