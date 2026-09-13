@@ -3,7 +3,7 @@
 ## X-Wago-ID: 4N2kQZ6L
 ## Title: SpeakStone Narration
 ## Notes: Plays AI-generated voiceovers for quests, books, and gossip, in each NPC's own voice.
-## Author: clhammer weirdautomation@gmail.com, Paratus
+## Author: Nerf, SpeakStone@beanw.co.uk
 ## Version: 1.4
 ## SavedVariables: SpeakStone_MainDB
 
