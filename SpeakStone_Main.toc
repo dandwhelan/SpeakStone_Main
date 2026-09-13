@@ -3,6 +3,7 @@
 ## Title: SpeakStone Narration
 ## Notes: Plays AI-generated voiceovers for quests, books, and gossip, in each NPC's own voice.
 ## Author: Nerf, SpeakStone@beanw.co.uk
+## X-Wago-ID: 4N2kQZ6L
 ## Version: 1.4.2
 ## SavedVariables: SpeakStone_MainDB
 
@@ -19,6 +20,7 @@ SoundLengths.lua
 QuestTitles.lua
 NPCNames.lua
 DynamicGossipNPCs.lua
+GossipTexts.lua
 SpeakStone_Main.lua
 Harvester.lua
 SpeakStone_Main_Settings.lua

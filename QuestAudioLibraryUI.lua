@@ -309,11 +309,16 @@ local function BuildUI()
                 if duration then
                     GameTooltip:AddLine(string.format("%.1fs", duration), 0.3, 1, 0.3)
                 end
-                if SpeakStone_DynamicGossipNPCs and SpeakStone_DynamicGossipNPCs[g.npcID] then
+                local state = addon.GossipClipAutoplayState and addon.GossipClipAutoplayState(g.npcID)
+                if state == "suppressed" then
                     GameTooltip:AddLine(" ")
                     GameTooltip:AddLine("Not autoplayed in-game: this NPC's gossip", 1, 0.5, 0.2)
-                    GameTooltip:AddLine("changes with quest/story state, so the addon", 1, 0.5, 0.2)
-                    GameTooltip:AddLine("cannot tell which variant the server is showing.", 1, 0.5, 0.2)
+                    GameTooltip:AddLine("changes with quest/story state, and no captured", 1, 0.5, 0.2)
+                    GameTooltip:AddLine("text is on file to match the live line against.", 1, 0.5, 0.2)
+                elseif state == "matched" then
+                    GameTooltip:AddLine(" ")
+                    GameTooltip:AddLine("Autoplays only when the NPC is showing the exact", 0.6, 0.9, 0.6)
+                    GameTooltip:AddLine("line this clip was voiced from.", 0.6, 0.9, 0.6)
                 end
                 GameTooltip:Show()
                 return
@@ -600,10 +605,12 @@ local function BuildUI()
                         row.text:SetText("|cff9d9d9dUnknown NPC|r")
                     end
 
-                    local suppressed = SpeakStone_DynamicGossipNPCs and SpeakStone_DynamicGossipNPCs[data.npcID]
+                    local state = addon.GossipClipAutoplayState and addon.GossipClipAutoplayState(data.npcID)
                     local label = "NPC " .. data.npcID .. "  \194\183  Gossip " .. data.variant
-                    if suppressed then
+                    if state == "suppressed" then
                         label = label .. "  \194\183  |cffff8000not autoplayed|r"
+                    elseif state == "matched" then
+                        label = label .. "  \194\183  |cff80c080text-matched|r"
                     end
                     row.idText:SetText(label)
 

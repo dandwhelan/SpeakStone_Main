@@ -541,8 +541,22 @@ function SpeakStone:CreateWindow()
                 else
                     nameList = table.concat(names, ", ")
                 end
-                SetCardState(cards.packs, ACCENT_GOOD, clips,
-                    string.format("clip(s) across %d quest(s)\n%s", quests, nameList))
+                local caption = string.format("clip(s) across %d quest(s)\n%s", quests, nameList)
+                -- Silenced-not-missing: these clips exist and are correctly
+                -- voiced, but never autoplay because the NPC's gossip is
+                -- known or suspected to change with quest state (see
+                -- DynamicGossipNPCs.lua). That cost is otherwise invisible --
+                -- an NPC that never speaks looks the same as one nobody has
+                -- captured yet -- so it is called out here rather than left
+                -- to be noticed as silence in-game.
+                if addon.GetSuppressedGossipCount then
+                    local suppressed = addon.GetSuppressedGossipCount()
+                    if suppressed > 0 then
+                        caption = caption .. string.format(
+                            "\n%d gossip clip(s) captured but not autoplayed (browse via /qrlibrary)", suppressed)
+                    end
+                end
+                SetCardState(cards.packs, ACCENT_GOOD, clips, caption)
             end
         end
 

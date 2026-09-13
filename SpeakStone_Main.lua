@@ -435,6 +435,12 @@ local function BuildAudioIndex()
     -- generalize to that.
     local gossip, gossipNPCCount = {}, 0
     local gossipNPCSeen = {}
+    -- Suppressed clips are correctly voiced and browsable in the Audio
+    -- Library, but never autoplay -- see PlayGossipAudio. That cost is
+    -- invisible by design (an NPC that never speaks looks no different from
+    -- one nobody captured yet), so the settings dashboard surfaces the count
+    -- rather than leaving it to be noticed as silence in-game.
+    local gossipSuppressedClips = 0
     for packName, soundLengths in pairs(addon.soundSources or {}) do
         if type(soundLengths) == "table" then
             local packClips = 0
@@ -470,6 +476,11 @@ local function BuildAudioIndex()
                                 gossipNPCSeen[npcID] = true
                                 gossipNPCCount = gossipNPCCount + 1
                             end
+                            -- Text-matched NPCs are not suppressed: their
+                            -- clips play whenever the live line matches.
+                            if addon.GossipClipAutoplayState(npcID) == "suppressed" then
+                                gossipSuppressedClips = gossipSuppressedClips + 1
+                            end
                         end
                     end
                 end
@@ -490,6 +501,7 @@ local function BuildAudioIndex()
         packs = packs, clips = clips,
         quests = quests, questCount = questCount,
         gossip = gossip, gossipNPCCount = gossipNPCCount,
+        gossipSuppressedClips = gossipSuppressedClips,
     }
     addon.audioIndex = index
     return index
@@ -502,6 +514,13 @@ addon.GetAudioIndex = BuildAudioIndex
 function addon.GetInstalledAudioSummary()
     local index = BuildAudioIndex()
     return index.packs, index.clips, index.questCount
+end
+
+-- See the comment on gossipSuppressedClips above: this number only grows,
+-- silently, as more gossip gets captured for NPCs already on the dynamic
+-- list. The settings dashboard surfaces it so growth is visible.
+function addon.GetSuppressedGossipCount()
+    return BuildAudioIndex().gossipSuppressedClips
 end
 
 -- Function to detect available sound packs
@@ -784,6 +803,53 @@ local function IsSecret(val)
     return false
 end
 
+-- Gossip text matching. GossipTexts.lua (tools/build_gossip_texts.py) maps
+-- each NPC's captured gossip text to the variant number voiced from it. To
+-- look the live text up, it has to be shaped exactly the way the harvester
+-- shaped it when it was stored: the player's name replaced with "$n" (same
+-- as Harvester.lua's Detokenize -- keep the two in step) and ASCII
+-- whitespace runs collapsed to one space, trimmed. No case folding: Lua's
+-- lower() is ASCII-only and would disagree with the Python side on
+-- accented names.
+local gossipPlayerNamePattern = nil
+
+local function DetokenizePlayerName(text)
+    if not text or text == "" then return text end
+    if not gossipPlayerNamePattern then
+        local name = UnitName("player")
+        if not name or name == "" then return text end
+        local ok, escaped = pcall(function() return (name:gsub("(%W)", "%%%1")) end)
+        if not (ok and escaped) then return text end
+        gossipPlayerNamePattern = escaped
+    end
+    local ok, res = pcall(function() return (text:gsub(gossipPlayerNamePattern, "$n")) end)
+    return (ok and res) or text
+end
+
+local function NormalizeGossipText(text)
+    if type(text) ~= "string" then return nil end
+    text = DetokenizePlayerName(text)
+    text = text:gsub("%s+", " "):gsub("^ ", ""):gsub(" $", "")
+    return text
+end
+addon.NormalizeGossipText = NormalizeGossipText
+
+-- What the automatic GOSSIP_SHOW path will do with a given NPC's clips:
+--   "matched"    captured text is on file, so a clip plays only when the
+--                live gossip is exactly the text it was voiced from
+--   "suppressed" no text on file and the NPC is on the dynamic list, so
+--                nothing autoplays
+--   "legacy"     no text on file, not on the list: gossip1 plays blind
+function addon.GossipClipAutoplayState(npcID)
+    if SpeakStone_GossipTexts and SpeakStone_GossipTexts[npcID] then
+        return "matched"
+    end
+    if SpeakStone_DynamicGossipNPCs and SpeakStone_DynamicGossipNPCs[npcID] then
+        return "suppressed"
+    end
+    return "legacy"
+end
+
 -- "Creature-0-<server>-<instance>-<zone>-<creatureID>-<spawn>"
 -- Mirrors the harvester's own copy: the two never load together, so sharing
 -- code between them is not an option without a third file just for this.
@@ -813,30 +879,49 @@ local function PlayGossipAudio()
     -- path above.
     StopCurrentSound()
 
-    -- Some NPCs' gossip is known (or, from campaign-quest membership,
-    -- suspected) to change with quest/story state -- see
-    -- tools/build_dynamic_gossip_npcs.py for how this list is built. There is
-    -- no manual "play gossip" path anywhere in this addon, so suppressing
-    -- autoplay for these NPCs means suppressing the clip entirely; that is
-    -- deliberate; silence beats a confidently wrong line.
-    if SpeakStone_DynamicGossipNPCs and SpeakStone_DynamicGossipNPCs[npcID] then
+    -- Which variant? Three tiers, strongest evidence first.
+    --
+    -- 1. Text match. If GossipTexts.lua knows this NPC, read the text the
+    --    server is showing right now and look it up. A hit is proof the clip
+    --    was voiced from exactly this line, so it plays whatever the dynamic
+    --    list says. A miss means the NPC is saying something never captured
+    --    (a story beat, a holiday line, a reputation tier) -- stay silent
+    --    rather than play a line that is provably not on screen.
+    -- 2. Dynamic list (tools/build_dynamic_gossip_npcs.py). Only reached for
+    --    NPCs with no text on file. Known or suspected to vary: silent.
+    -- 3. Blind gossip1, the pre-2026-09-13 behaviour, for everything else.
+    --
+    -- All three only govern AUTOPLAY. Every clip stays reachable by hand
+    -- from the Audio Library's Gossip tab, which bypasses this.
+    local variant
+    local knownTexts = SpeakStone_GossipTexts and SpeakStone_GossipTexts[npcID]
+    if knownTexts then
+        local ok, liveText = pcall(C_GossipInfo.GetText)
+        if ok and liveText and not IsSecret(liveText) then
+            variant = knownTexts[NormalizeGossipText(liveText)]
+        end
+        if not variant then
+            local key = "gossip-nomatch-" .. npcID
+            if not addon.reportedMissing[key] then
+                addon.reportedMissing[key] = true
+                DebugPrint("SpeakStone: NPC " .. npcID .. " is showing gossip text that was never captured -- not autoplaying")
+            end
+            addon.activeSound = nil
+            return
+        end
+    elseif SpeakStone_DynamicGossipNPCs and SpeakStone_DynamicGossipNPCs[npcID] then
         if not addon.reportedMissing["gossip-suppressed-" .. npcID] then
             addon.reportedMissing["gossip-suppressed-" .. npcID] = true
             DebugPrint("SpeakStone: gossip autoplay suppressed for NPC " .. npcID
-                .. " (" .. SpeakStone_DynamicGossipNPCs[npcID] .. ") -- variant cannot be determined")
+                .. " (" .. SpeakStone_DynamicGossipNPCs[npcID] .. ") -- no captured text to match against")
         end
         addon.activeSound = nil
         return
+    else
+        variant = 1
     end
 
-    -- An NPC can have several greeting variants, captured as gossip1,
-    -- gossip2, and so on, but nothing here can tell which one the server
-    -- just chose to show -- SoundLengths carries only a duration per file,
-    -- not the text it was generated from. The first captured variant plays
-    -- regardless. NPCs with a single greeting, the common case, are
-    -- unaffected; NPCs with several will sometimes say the wrong line until
-    -- variant matching is built.
-    local baseName = "npc" .. npcID .. "_gossip1"
+    local baseName = "npc" .. npcID .. "_gossip" .. variant
     local soundFile, soundPath, duration = FindSound({ baseName })
 
     if not soundPath then
