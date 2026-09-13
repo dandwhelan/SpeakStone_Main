@@ -1,5 +1,6 @@
 ## Interface: 110207, 120000, 120001, 120100
 ## X-Interface: 110207, 120000, 120001, 120100
+## X-Wago-ID: 4N2kQZ6L
 ## Title: SpeakStone Narration
 ## Notes: Plays AI-generated voiceovers for quests, books, and gossip, in each NPC's own voice.
 ## Author: clhammer weirdautomation@gmail.com, Paratus
