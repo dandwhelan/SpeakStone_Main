@@ -1,10 +1,9 @@
 ## Interface: 110207, 120000, 120001, 120100
 ## X-Interface: 110207, 120000, 120001, 120100
-## X-Wago-ID: 4N2kQZ6L
 ## Title: SpeakStone Narration
 ## Notes: Plays AI-generated voiceovers for quests, books, and gossip, in each NPC's own voice.
 ## Author: Nerf, SpeakStone@beanw.co.uk
-## Version: 1.4.1
+## Version: 1.4.2
 ## SavedVariables: SpeakStone_MainDB
 
 ## OptionalDeps: SpeakStone_TWW_EN, SpeakStone_TWW_FR
@@ -18,6 +17,8 @@ Libs\LibDBIcon-1.0\LibDBIcon-1.0.lua
 # Addon files
 SoundLengths.lua
 QuestTitles.lua
+NPCNames.lua
+DynamicGossipNPCs.lua
 SpeakStone_Main.lua
 Harvester.lua
 SpeakStone_Main_Settings.lua

@@ -428,14 +428,20 @@ local function BuildAudioIndex()
 
     local packs, clips = {}, 0
     local quests, questCount = {}, 0
+    -- One row per gossip clip rather than grouped by NPC like quests are --
+    -- the Audio Library shows these as a flat browsable list, not a
+    -- per-NPC set of buttons, since a gossip NPC can have anywhere from one
+    -- to several variants and a fixed three-button row layout does not
+    -- generalize to that.
+    local gossip, gossipNPCCount = {}, 0
+    local gossipNPCSeen = {}
     for packName, soundLengths in pairs(addon.soundSources or {}) do
         if type(soundLengths) == "table" then
             local packClips = 0
             for soundFile in pairs(soundLengths) do
                 packClips = packClips + 1
-                -- "<questID>_<passage>.<ext>". Gossip and book clips are named
-                -- "npc<id>_..." and "item<id>_...", so they do not match here
-                -- and stay out of the quest library, which is what we want.
+                -- "<questID>_<passage>.<ext>". Gossip clips are named
+                -- "npc<id>_gossip<n>...", so they never match this pattern.
                 local questID, passage = soundFile:match("^(%d+)_(%a+)%.")
                 if questID then
                     local id = tonumber(questID)
@@ -450,6 +456,21 @@ local function BuildAudioIndex()
                             questCount = questCount + 1
                         end
                         entry.types[passage] = true
+                    else
+                        local npcIDStr, variantStr = soundFile:match("^npc(%d+)_gossip(%d+)%.")
+                        if npcIDStr then
+                            local npcID = tonumber(npcIDStr)
+                            table.insert(gossip, {
+                                npcID = npcID,
+                                npcIDStr = npcIDStr,
+                                variant = tonumber(variantStr),
+                                soundFile = soundFile,
+                            })
+                            if not gossipNPCSeen[npcID] then
+                                gossipNPCSeen[npcID] = true
+                                gossipNPCCount = gossipNPCCount + 1
+                            end
+                        end
                     end
                 end
             end
@@ -460,8 +481,16 @@ local function BuildAudioIndex()
         end
     end
     table.sort(packs, function(a, b) return a.name < b.name end)
+    table.sort(gossip, function(a, b)
+        if a.npcID == b.npcID then return a.variant < b.variant end
+        return a.npcID < b.npcID
+    end)
 
-    index = { packs = packs, clips = clips, quests = quests, questCount = questCount }
+    index = {
+        packs = packs, clips = clips,
+        quests = quests, questCount = questCount,
+        gossip = gossip, gossipNPCCount = gossipNPCCount,
+    }
     addon.audioIndex = index
     return index
 end
@@ -783,6 +812,22 @@ local function PlayGossipAudio()
     -- Also clears a clip still waiting out the autoplay delay; see the quest
     -- path above.
     StopCurrentSound()
+
+    -- Some NPCs' gossip is known (or, from campaign-quest membership,
+    -- suspected) to change with quest/story state -- see
+    -- tools/build_dynamic_gossip_npcs.py for how this list is built. There is
+    -- no manual "play gossip" path anywhere in this addon, so suppressing
+    -- autoplay for these NPCs means suppressing the clip entirely; that is
+    -- deliberate; silence beats a confidently wrong line.
+    if SpeakStone_DynamicGossipNPCs and SpeakStone_DynamicGossipNPCs[npcID] then
+        if not addon.reportedMissing["gossip-suppressed-" .. npcID] then
+            addon.reportedMissing["gossip-suppressed-" .. npcID] = true
+            DebugPrint("SpeakStone: gossip autoplay suppressed for NPC " .. npcID
+                .. " (" .. SpeakStone_DynamicGossipNPCs[npcID] .. ") -- variant cannot be determined")
+        end
+        addon.activeSound = nil
+        return
+    end
 
     -- An NPC can have several greeting variants, captured as gossip1,
     -- gossip2, and so on, but nothing here can tell which one the server

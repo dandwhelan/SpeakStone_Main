@@ -154,7 +154,7 @@ local function BuildUI()
 
     -- Search Box
     local searchBox = CreateFrame("EditBox", "SpeakStoneAudioLibrarySearchBox", frame, "SearchBoxTemplate")
-    searchBox:SetSize(360, 22)
+    searchBox:SetSize(288, 22)
     searchBox:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -32)
     searchBox:SetAutoFocus(false)
     searchBox:SetMaxLetters(60)
@@ -162,6 +162,16 @@ local function BuildUI()
         searchBox.Instructions:SetText("Search quest ID or name...")
     end
     frame.searchBox = searchBox
+
+    -- Mode toggle: Quests <-> Gossip. Two separate lists, since a quest row
+    -- and a gossip row show different data and gossip has no "types" to key
+    -- three fixed buttons off -- one NPC can have anywhere from one variant
+    -- to several.
+    local modeButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    modeButton:SetSize(66, 22)
+    modeButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -18, -32)
+    modeButton:SetText("Gossip")
+    frame.modeButton = modeButton
 
     -- ScrollFrame (FauxScrollFrame for high performance virtualized rows)
     local scrollFrame = CreateFrame("ScrollFrame", "SpeakStoneAudioLibraryScrollFrame", frame, "FauxScrollFrameTemplate")
@@ -267,9 +277,12 @@ local function BuildUI()
         descBtn:SetText("Desc")
         row.descBtn = descBtn
 
-        -- Click handlers
+        -- Click handlers. Quest rows use all three buttons; a gossip row uses
+        -- only descBtn, relabeled "Play" -- see UpdateList.
         descBtn:SetScript("OnClick", function()
-            if row.questData then
+            if row.gossipData then
+                frame:PlayGossipClip(row.gossipData.npcID, row.gossipData.variant)
+            elseif row.questData then
                 frame:PlaySpecificAudio(row.questData.id, "description")
             end
         end)
@@ -286,6 +299,26 @@ local function BuildUI()
 
         -- Tooltips
         local function ShowRowTooltip(owner)
+            if row.gossipData then
+                local g = row.gossipData
+                GameTooltip:SetOwner(owner or row, "ANCHOR_RIGHT")
+                local name = SpeakStone_NPCNames and SpeakStone_NPCNames[g.npcID]
+                GameTooltip:AddLine(name or ("NPC " .. g.npcID), 1, 0.82, 0)
+                GameTooltip:AddLine("NPC ID: " .. g.npcID .. "  |  Gossip variant " .. g.variant, 0.7, 0.7, 0.7)
+                local duration = frame:GetGossipDuration(g.npcID, g.variant)
+                if duration then
+                    GameTooltip:AddLine(string.format("%.1fs", duration), 0.3, 1, 0.3)
+                end
+                if SpeakStone_DynamicGossipNPCs and SpeakStone_DynamicGossipNPCs[g.npcID] then
+                    GameTooltip:AddLine(" ")
+                    GameTooltip:AddLine("Not autoplayed in-game: this NPC's gossip", 1, 0.5, 0.2)
+                    GameTooltip:AddLine("changes with quest/story state, so the addon", 1, 0.5, 0.2)
+                    GameTooltip:AddLine("cannot tell which variant the server is showing.", 1, 0.5, 0.2)
+                end
+                GameTooltip:Show()
+                return
+            end
+
             if not row.questData then return end
             GameTooltip:SetOwner(owner or row, "ANCHOR_RIGHT")
             local title = GetQuestTitle(row.questData.id)
@@ -335,6 +368,8 @@ local function BuildUI()
     local activeDebugSound = nil
     local activePlayingQuestID = nil
     local activePlayingType = nil
+    local activePlayingNPCID = nil
+    local activePlayingVariant = nil
 
     -- Duration lookup helper. The walk over every installed pack, in
     -- extension order, is the addon's own FindSound -- this file used to
@@ -343,6 +378,12 @@ local function BuildUI()
     function frame:GetAudioDuration(questID, audioType)
         if not addon.FindSound then return nil end
         local _, _, duration = addon.FindSound({ questID .. "_" .. audioType })
+        return duration
+    end
+
+    function frame:GetGossipDuration(npcID, variant)
+        if not addon.FindSound then return nil end
+        local _, _, duration = addon.FindSound({ "npc" .. npcID .. "_gossip" .. variant })
         return duration
     end
 
@@ -369,21 +410,39 @@ local function BuildUI()
 
         CancelFilter()
 
-        local list = {}
+        local quests = {}
+        local gossip = {}
         if addon.GetAudioIndex then
-            for _, entry in pairs(addon.GetAudioIndex().quests) do
-                table.insert(list, entry)
+            local audioIndex = addon.GetAudioIndex()
+            for _, entry in pairs(audioIndex.quests) do
+                table.insert(quests, entry)
+            end
+            -- Already sorted by BuildAudioIndex; copied rather than sorted
+            -- again so a resort here can't disagree with the source order.
+            for _, entry in ipairs(audioIndex.gossip) do
+                table.insert(gossip, entry)
             end
         end
-        table.sort(list, function(a, b) return a.id < b.id end)
+        table.sort(quests, function(a, b) return a.id < b.id end)
 
-        self.allQuests = list
+        self.allQuests = quests
+        self.allGossip = gossip
         self.isIndexed = true
         self.filteredList = nil
         -- A rebuilt index invalidates the narrowing below, which assumes the
         -- previous result was drawn from the same library.
         self.lastQuery = nil
         self.lastResult = nil
+    end
+
+    -- The list BuildIndex/FilterList/UpdateList operate on for the current
+    -- mode. A method rather than a field lookup at each call site, so
+    -- switching modes can't leave one of them reading the other's list.
+    function frame:ActiveList()
+        if self.mode == "gossip" then
+            return self.allGossip
+        end
+        return self.allQuests
     end
 
     -- Real-time filter, run across frames.
@@ -404,11 +463,12 @@ local function BuildUI()
             scrollBar:SetValue(0)
         end
 
+        local activeList = self:ActiveList() or {}
         local cleanQuery = query and query:lower():match("^%s*(.-)%s*$") or ""
         if cleanQuery == "" then
-            self.filteredList = self.allQuests
+            self.filteredList = activeList
             self.lastQuery = ""
-            self.lastResult = self.allQuests
+            self.lastResult = activeList
             self:UpdateList()
             return
         end
@@ -423,7 +483,7 @@ local function BuildUI()
         -- -- has found only some of its matches, and narrowing from that would
         -- drop the rest for good rather than merely deferring them. That is
         -- why the completed result is kept apart from the one on screen.
-        local startingList = self.allQuests
+        local startingList = activeList
         if self.lastQuery and self.lastQuery ~= "" and self.lastResult
             and cleanQuery:sub(1, #self.lastQuery) == self.lastQuery then
             startingList = self.lastResult
@@ -445,15 +505,25 @@ local function BuildUI()
             local startedAt = debugprofilestop and debugprofilestop() or nil
             local processed = 0
 
+            local isGossip = frame.mode == "gossip"
             while i <= total do
                 local entry = source[i]
-                local idStr = entry.idStr or tostring(entry.id)
-                if idStr:find(needle, 1, true) then
-                    results[#results + 1] = entry
-                else
-                    local title = GetQuestTitle(entry.id)
-                    if title and title:lower():find(needle, 1, true) then
+                if isGossip then
+                    local idStr = entry.npcIDStr or tostring(entry.npcID)
+                    local name = SpeakStone_NPCNames and SpeakStone_NPCNames[entry.npcID]
+                    if idStr:find(needle, 1, true)
+                        or (name and name:lower():find(needle, 1, true)) then
                         results[#results + 1] = entry
+                    end
+                else
+                    local idStr = entry.idStr or tostring(entry.id)
+                    if idStr:find(needle, 1, true) then
+                        results[#results + 1] = entry
+                    else
+                        local title = GetQuestTitle(entry.id)
+                        if title and title:lower():find(needle, 1, true) then
+                            results[#results + 1] = entry
+                        end
                     end
                 end
                 i = i + 1
@@ -501,12 +571,14 @@ local function BuildUI()
 
     -- Update visible rows
     function frame:UpdateList()
-        local list = self.filteredList or self.allQuests or {}
+        local isGossip = self.mode == "gossip"
+        local list = self.filteredList or self:ActiveList() or {}
         local numItems = #list
         -- Taken once. UpdateList runs on every frame of a search pass, and
         -- each of the branches below used to build a throwaway table to take
         -- a length from.
-        local totalItems = self.allQuests and #self.allQuests or 0
+        local activeList = self:ActiveList()
+        local totalItems = activeList and #activeList or 0
         FauxScrollFrame_Update(self.scrollFrame, numItems, NUM_VISIBLE_ROWS, ROW_HEIGHT)
         local offset = FauxScrollFrame_GetOffset(self.scrollFrame)
 
@@ -515,61 +587,93 @@ local function BuildUI()
             local row = self.rows[i]
             if index <= numItems then
                 local data = list[index]
-                row.questData = data
                 row:Show()
 
-                local title = GetQuestTitle(data.id)
-                if not title then
-                    RequestQuestTitle(data.id)
-                end
-                if title and title ~= "" then
-                    row.text:SetText("|cffffd100" .. title .. "|r")
-                else
-                    row.text:SetText("|cff9d9d9dUnknown quest|r")
-                end
-                row.idText:SetText("Quest " .. data.id)
+                if isGossip then
+                    row.questData = nil
+                    row.gossipData = data
 
-                -- Description
-                if data.types["description"] then
-                    row.descBtn:Show()
-                    if activePlayingQuestID == data.id and activePlayingType == "description" then
-                        row.descBtn:SetText("|cff00ff00Desc|r")
+                    local name = SpeakStone_NPCNames and SpeakStone_NPCNames[data.npcID]
+                    if name then
+                        row.text:SetText("|cffffd100" .. name .. "|r")
                     else
-                        row.descBtn:SetText("Desc")
+                        row.text:SetText("|cff9d9d9dUnknown NPC|r")
                     end
-                else
-                    row.descBtn:Hide()
-                end
 
-                -- Progress
-                if data.types["progress"] then
-                    row.progBtn:Show()
-                    if activePlayingQuestID == data.id and activePlayingType == "progress" then
-                        row.progBtn:SetText("|cff00ff00Prog|r")
-                    else
-                        row.progBtn:SetText("Prog")
+                    local suppressed = SpeakStone_DynamicGossipNPCs and SpeakStone_DynamicGossipNPCs[data.npcID]
+                    local label = "NPC " .. data.npcID .. "  \194\183  Gossip " .. data.variant
+                    if suppressed then
+                        label = label .. "  \194\183  |cffff8000not autoplayed|r"
                     end
-                else
+                    row.idText:SetText(label)
+
                     row.progBtn:Hide()
-                end
-
-                -- Completion
-                if data.types["completion"] then
-                    row.compBtn:Show()
-                    if activePlayingQuestID == data.id and activePlayingType == "completion" then
-                        row.compBtn:SetText("|cff00ff00Comp|r")
+                    row.compBtn:Hide()
+                    row.descBtn:Show()
+                    if activePlayingNPCID == data.npcID and activePlayingVariant == data.variant then
+                        row.descBtn:SetText("|cff00ff00Play|r")
                     else
-                        row.compBtn:SetText("Comp")
+                        row.descBtn:SetText("Play")
                     end
                 else
-                    row.compBtn:Hide()
+                    row.gossipData = nil
+                    row.questData = data
+
+                    local title = GetQuestTitle(data.id)
+                    if not title then
+                        RequestQuestTitle(data.id)
+                    end
+                    if title and title ~= "" then
+                        row.text:SetText("|cffffd100" .. title .. "|r")
+                    else
+                        row.text:SetText("|cff9d9d9dUnknown quest|r")
+                    end
+                    row.idText:SetText("Quest " .. data.id)
+
+                    -- Description
+                    if data.types["description"] then
+                        row.descBtn:Show()
+                        if activePlayingQuestID == data.id and activePlayingType == "description" then
+                            row.descBtn:SetText("|cff00ff00Desc|r")
+                        else
+                            row.descBtn:SetText("Desc")
+                        end
+                    else
+                        row.descBtn:Hide()
+                    end
+
+                    -- Progress
+                    if data.types["progress"] then
+                        row.progBtn:Show()
+                        if activePlayingQuestID == data.id and activePlayingType == "progress" then
+                            row.progBtn:SetText("|cff00ff00Prog|r")
+                        else
+                            row.progBtn:SetText("Prog")
+                        end
+                    else
+                        row.progBtn:Hide()
+                    end
+
+                    -- Completion
+                    if data.types["completion"] then
+                        row.compBtn:Show()
+                        if activePlayingQuestID == data.id and activePlayingType == "completion" then
+                            row.compBtn:SetText("|cff00ff00Comp|r")
+                        else
+                            row.compBtn:SetText("Comp")
+                        end
+                    else
+                        row.compBtn:Hide()
+                    end
                 end
             else
                 row.questData = nil
+                row.gossipData = nil
                 row:Hide()
             end
         end
 
+        local noun = isGossip and "gossip clips" or "quests"
         if self.filtering then
             -- A pass still running has not found everything yet, and "no
             -- matching quests" while it is still looking is simply wrong --
@@ -577,11 +681,11 @@ local function BuildUI()
             -- every name search.
             self.countText:SetText(string.format("Searching... %d so far", numItems))
         elseif numItems == 0 then
-            self.countText:SetText("No matching quests found.")
+            self.countText:SetText("No matching " .. noun .. " found.")
         elseif self.filteredList and numItems ~= totalItems then
-            self.countText:SetText(string.format("Showing %d / %d quests", numItems, totalItems))
+            self.countText:SetText(string.format("Showing %d / %d %s", numItems, totalItems, noun))
         else
-            self.countText:SetText(string.format("Total: %d voiced quests", numItems))
+            self.countText:SetText(string.format("Total: %d %s", numItems, noun))
         end
     end
 
@@ -593,6 +697,8 @@ local function BuildUI()
         end
         activePlayingQuestID = nil
         activePlayingType = nil
+        activePlayingNPCID = nil
+        activePlayingVariant = nil
         self:UpdateList()
     end
 
@@ -627,11 +733,64 @@ local function BuildUI()
         end
     end
 
+    -- Gossip playback. Deliberately bypasses PlayGossipAudio's suppression
+    -- check in SpeakStone_Main.lua: that check exists to stop the addon from
+    -- *guessing* which variant to autoplay live at a real NPC, not to hide
+    -- correctly-voiced audio from a player who is explicitly picking one by
+    -- hand here.
+    function frame:PlayGossipClip(npcID, variant)
+        self:StopAudio()
+        if addon.StopCurrentSound then
+            addon.StopCurrentSound()
+        end
+
+        local soundPath
+        if addon.FindSound then
+            local _, path = addon.FindSound({ "npc" .. npcID .. "_gossip" .. variant })
+            soundPath = path
+        end
+
+        if not soundPath then
+            print("SpeakStone Audio Library: clip not found for NPC " .. tostring(npcID) .. " gossip " .. tostring(variant))
+            return
+        end
+
+        local willPlay, handle = PlaySoundFile(soundPath, "Dialog")
+        if willPlay and handle then
+            activeDebugSound = handle
+            activePlayingNPCID = npcID
+            activePlayingVariant = variant
+            self:UpdateList()
+        end
+    end
+
     -- Main populate / toggle
     function frame:PopulateList()
         self:BuildIndex()
         self:FilterList(self.searchBox:GetText())
     end
+
+    function frame:SetMode(mode)
+        if self.mode == mode then return end
+        self:StopAudio()
+        self.mode = mode
+        if mode == "gossip" then
+            modeButton:SetText("Quests")
+            searchBox.Instructions:SetText("Search NPC ID or name...")
+        else
+            modeButton:SetText("Gossip")
+            searchBox.Instructions:SetText("Search quest ID or name...")
+        end
+        -- A rebuilt index invalidates the narrowing FilterList relies on --
+        -- the previous result was drawn from the other mode's list.
+        self.lastQuery = nil
+        self.lastResult = nil
+        self:FilterList(self.searchBox:GetText())
+    end
+
+    modeButton:SetScript("OnClick", function()
+        frame:SetMode(frame.mode == "gossip" and "quests" or "gossip")
+    end)
 
     function frame:ToggleVisibility()
         if self:IsVisible() then
