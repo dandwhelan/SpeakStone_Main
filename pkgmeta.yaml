@@ -49,6 +49,3 @@ manual-changelog:
   markup-type: markdown
 
 license-output: LICENSE
-
-tools-used:
-  - curseforge-packager
