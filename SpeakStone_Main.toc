@@ -4,7 +4,7 @@
 ## Notes: Plays AI-generated voiceovers for quests, books, and gossip, in each NPC's own voice.
 ## Author: Nerf, SpeakStone@beanw.co.uk
 ## X-Wago-ID: 4N2kQZ6L
-## Version: 1.4.2
+## Version: 1.4.3
 ## SavedVariables: SpeakStone_MainDB
 
 ## OptionalDeps: SpeakStone_TWW_EN, SpeakStone_TWW_FR

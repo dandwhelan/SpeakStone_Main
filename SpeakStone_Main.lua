@@ -449,38 +449,41 @@ local function BuildAudioIndex()
                 -- "<questID>_<passage>.<ext>". Gossip clips are named
                 -- "npc<id>_gossip<n>...", so they never match this pattern.
                 local questID, passage = soundFile:match("^(%d+)_(%a+)%.")
-                if questID then
-                    local id = tonumber(questID)
-                    if id then
-                        local entry = quests[id]
-                        if not entry then
-                            -- idStr is kept rather than rebuilt with tostring
-                            -- in the library's search filter, which compared
-                            -- against it once per quest on every pass.
-                            entry = { id = id, idStr = questID, types = {} }
-                            quests[id] = entry
-                            questCount = questCount + 1
+                local id = questID and tonumber(questID)
+                if id then
+                    local entry = quests[id]
+                    if not entry then
+                        -- idStr is kept rather than rebuilt with tostring
+                        -- in the library's search filter, which compared
+                        -- against it once per quest on every pass.
+                        entry = { id = id, idStr = questID, types = {} }
+                        quests[id] = entry
+                        questCount = questCount + 1
+                    end
+                    entry.types[passage] = true
+                else
+                    -- Gossip filenames start with "npc", so the quest
+                    -- pattern above never matches them and we land here.
+                    -- (Until 2026-09-13 this branch sat inside the
+                    -- "if questID" block, so it could never run and the
+                    -- Gossip tab was always empty.)
+                    local npcIDStr, variantStr = soundFile:match("^npc(%d+)_gossip(%d+)%.")
+                    if npcIDStr then
+                        local npcID = tonumber(npcIDStr)
+                        table.insert(gossip, {
+                            npcID = npcID,
+                            npcIDStr = npcIDStr,
+                            variant = tonumber(variantStr),
+                            soundFile = soundFile,
+                        })
+                        if not gossipNPCSeen[npcID] then
+                            gossipNPCSeen[npcID] = true
+                            gossipNPCCount = gossipNPCCount + 1
                         end
-                        entry.types[passage] = true
-                    else
-                        local npcIDStr, variantStr = soundFile:match("^npc(%d+)_gossip(%d+)%.")
-                        if npcIDStr then
-                            local npcID = tonumber(npcIDStr)
-                            table.insert(gossip, {
-                                npcID = npcID,
-                                npcIDStr = npcIDStr,
-                                variant = tonumber(variantStr),
-                                soundFile = soundFile,
-                            })
-                            if not gossipNPCSeen[npcID] then
-                                gossipNPCSeen[npcID] = true
-                                gossipNPCCount = gossipNPCCount + 1
-                            end
-                            -- Text-matched NPCs are not suppressed: their
-                            -- clips play whenever the live line matches.
-                            if addon.GossipClipAutoplayState(npcID) == "suppressed" then
-                                gossipSuppressedClips = gossipSuppressedClips + 1
-                            end
+                        -- Text-matched NPCs are not suppressed: their
+                        -- clips play whenever the live line matches.
+                        if addon.GossipClipAutoplayState(npcID) == "suppressed" then
+                            gossipSuppressedClips = gossipSuppressedClips + 1
                         end
                     end
                 end
@@ -806,11 +809,15 @@ end
 -- Gossip text matching. GossipTexts.lua (tools/build_gossip_texts.py) maps
 -- each NPC's captured gossip text to the variant number voiced from it. To
 -- look the live text up, it has to be shaped exactly the way the harvester
--- shaped it when it was stored: the player's name replaced with "$n" (same
--- as Harvester.lua's Detokenize -- keep the two in step) and ASCII
--- whitespace runs collapsed to one space, trimmed. No case folding: Lua's
--- lower() is ASCII-only and would disagree with the Python side on
--- accented names.
+-- shaped it when it was stored. Harvester.lua's Detokenize swaps the
+-- player's name for "$n", then tools/harvest_export.py expands "$n" to the
+-- spoken word "adventurer" before generation, so that is the form the
+-- corpus (and GossipTexts.lua) carries: not one stored gossip text contains
+-- "$n". The live text carries the real character name, so it is swapped
+-- for "adventurer" here. ASCII whitespace runs collapse to one space,
+-- trimmed. No case folding: Lua's lower() is ASCII-only and would disagree
+-- with the Python side on accented names.
+local PLAYER_NAME_SPOKEN = "adventurer"
 local gossipPlayerNamePattern = nil
 
 local function DetokenizePlayerName(text)
@@ -822,7 +829,7 @@ local function DetokenizePlayerName(text)
         if not (ok and escaped) then return text end
         gossipPlayerNamePattern = escaped
     end
-    local ok, res = pcall(function() return (text:gsub(gossipPlayerNamePattern, "$n")) end)
+    local ok, res = pcall(function() return (text:gsub(gossipPlayerNamePattern, PLAYER_NAME_SPOKEN)) end)
     return (ok and res) or text
 end
 

@@ -19,8 +19,23 @@ SpeakStone_GossipTexts = {
 [2198]={ -- Crier Goodman
   ["Greetings and salutations, hero! I have the latest news from both continents and points beyond for your consideration."]=1,
 },
+[3293]={ -- Rezlak
+  ["Try to ignore the firm, feathery behinds of the harpies... the creatures are really quite deadly!"]=1,
+},
+[3391]={ -- Gazlowe
+  ["Thrall paid me and my boys well for helping out with the construction of Orgrimmar, so I decided to set up a port here. We do most of our business through Booty Bay and Baron Revilgaz."]=1,
+},
+[3429]={ -- Thork
+  ["Welcome to the Crossroads, druid. My name is Thork--I lead the defenses here in the name of the Warchief. Please, feel free to make yourself at home. As long as you mind your business, no one should have any problem with you taking up some space. There are many threats to our safety here. If you've already become familiar with the lay of the land, speak to the others here--perhaps they have tasks for you to do."]=1,
+},
 [3448]={ -- Tonga Runetotem
   ["The times we live in are as fickle as the shifting winds, druid. The ground itself quakes and cries out in anguish. We must remain resolute or we ourselves will be engulfed by the turmoil."]=1,
+},
+[3494]={ -- Tinkerwiz
+  ["What? You want something?"]=1,
+},
+[3615]={ -- Devrak
+  ["My wind riders are trained to fly quickly through the hot Barrens air."]=1,
 },
 [3934]={ -- Innkeeper Boorand Plainswind
   ["As the wind on the plains, you are always welcome here."]=1,
@@ -42,6 +57,21 @@ SpeakStone_GossipTexts = {
 },
 [29725]={ -- Benik Boltshear
   ["How is a locksmith supposed to make a living in a world with no locked doors?"]=1,
+},
+[35096]={ -- Zul'jarra
+  ["It be good to see some fresh faces around here. My crew and I have been stranded for over seven years, and we were beginning to believe we'd have to rebuild society from scratch!"]=1,
+  ["Our supplies are limited in dis awful place, but I'll see what I can find..."]=2,
+  ["He'll listen to me. Just let me do the talkin'. Ya ready, adventurer?"]=3,
+  ["I don't understand. Why does he not listen to me? Listen to his sister? He's more than this. It's Malacrass and his whispers. It has to be..."]=4,
+},
+[37135]={ -- Nura Pathfinder
+  ["What brings you all the way out here?"]=1,
+},
+[37167]={ -- Stonetalon Prisoner
+  ["Do not look at me, tauren. I have disgraced the Horde. I am done."]=1,
+  ["We grunts were ordered to charge once more - into a wall of pikes - I could not do it, druid. My weapon slid from my hands and my legs did not move. I am dishonored."]=2,
+  ["My commander was butchered before my eyes - my brothers dead all around me - I could not fight on. I am so ashamed, druid. I did not avenge them."]=3,
+  ["No orc should ever flee from battle as I did. Leave me to my disgrace. Would that I would die in this tower, but I dread learning what my ancestors think of my cowardice."]=4,
 },
 [38895]={ -- Lilian Voss
   ["Get away from me, you abomination!"]=1,
@@ -77,8 +107,27 @@ SpeakStone_GossipTexts = {
 [50033]={ -- Ging
   ["I don't train your kind, druid. Find your own trainer before you anger me."]=1,
 },
+[52285]={ -- Riftblade Maella
+  ["<Naleidea Rivergleam stares at her notes, lost in thought.> Oh still here? My apologies. Feel free to browse our expedition inventory for anything you might need out there."]=1,
+  ["<This book contains all the information documented on delves and delve-related things.>"]=2,
+  ["Every month we get new outfits and weapons from all over. It's my job to make sure these outfits and weapons are properly displayed."]=3,
+  ["Greetings. Are you seeking instruction in alchemy?"]=4,
+  ["Greetings. Are you seeking instruction in enchanting?"]=5,
+  ["Greetings. Are you seeking instruction in tailoring?"]=6,
+  ["The forces of the Void and the Hal'hadar are relentless in their onslaught. We must remain vigilant and ready."]=7,
+},
+[59967]={ -- Firetender Zab'ni
+  ["Our supplies are limited in dis awful place, but I'll see what I can find..."]=1,
+  ["Even amidst all dis chaos, someone's gotta tend de hearth."]=2,
+},
 [63272]={ -- Ting, Strong of Stomach
   ["I will say, the Forsaken have... strange taste when it comes to brew. I get the feeling they're not exactly preparing it for friends, though."]=1,
+},
+[73395]={ -- Yrel
+  ["Arbor Glen is in trouble. We had better go see if we can help."]=1,
+},
+[74343]={ -- Vindicator Tenuum
+  ["The researchers here at Arkaat Outpost have been gathering pieces of our ancestors' original wreckage."]=1,
 },
 [78952]={ -- Coriander
   ["Please, sit and make yourself comfortable."]=1,
@@ -101,14 +150,38 @@ SpeakStone_GossipTexts = {
 [98148]={ -- Nassar
   ["You seem like the type that just wants a fight. If you're interested, the Horde needs more troops."]=1,
 },
+[126332]={ -- Aysa Cloudsinger
+  ["I'm more than happy to help the Alliance find new allies. My first steps into Stormwind were quite daunting, but now I consider it a home."]=1,
+},
+[126389]={ -- Artificer Shela'na
+  ["Greetings."]=1,
+},
 [129679]={ -- Shani Ward
   ["Welcome to my Inn, weary traveler. What can I do for you?"]=1,
+},
+[130560]={ -- Maras
+  ["It is good to rest once in a while. Especially after a profitable venture!"]=1,
+},
+[130986]={ -- Vigilant Quoram
+  ["I suppse you are wondering what I am doing here. Suffice it to say that I have been given a new prime directive. Apparently standing watch over the Conservatory was not an efficient use of my time. <Sigh> Tenure no longer means what it once did. Do you require something? As you can see, I am quite busy."]=1,
+},
+[130993]={ -- Captain Fareeya
+  ["Always carry with you what it means to be pledged to the Light."]=1,
 },
 [132215]={ -- Lightforged Vindicator
   ["Light be with you."]=1,
 },
+[132334]={ -- Grand Artificer Romuul
+  ["The Vindicaar awaits its next voyage. As do I."]=1,
+},
 [133332]={ -- Statiks Quikfuse
   ["These machines are fantastic! How could they operate with no anomalies or chance of failure? Oh, excuse me. Did you need something?"]=1,
+},
+[167032]={ -- Chromie
+  ["Hey there, adventurer! Wherever you want to go, I can help you get there! Time works in mysterious ways, but you don't look like a stranger to mystery."]=1,
+},
+[187669]={ -- Nozdormu
+  ["It is time we speak, adventurer."]=1,
 },
 [188054]={ -- Azure Guardian
   ["Are you lost, dracthyr?"]=1,
@@ -126,8 +199,19 @@ SpeakStone_GossipTexts = {
 [191263]={ -- Salukan
   ["Where would you like to fly?"]=1,
 },
+[192926]={ -- Trainer Frodrum
+  ["Have you come to prove your prowess to the Shikaar?"]=1,
+},
+[195524]={ -- Beastmaster Tirren
+  ["I tend to our beasts of burden."]=1,
+},
 [195540]={ -- Basran
   ["<You extend a hand to offer Basran pets, but he stays stoically next to his khan. Basran is currently working and you should not pet service dogs on duty.>"]=1,
+},
+[195545]={ -- Okir
+  ["Please direct your attention to my khan."]=1,
+  ["My khan is deaf, communicating mainly through a sign language that is shared amongst the centaur. I am but her voice, interpreting for her. While most members of our clan can speak with her without my aid, there are still many who cannot. My role is to enable communication between her and others. It is the highest honor. My words are hers. Except these ones. Please direct your attention back to her."]=2,
+  ["Ah, Basran. He is a very good bakar, trained specifically to be Sansok Khan's ears. He alerts her for many sounds in different ways, working as an extension of her senses. While on a hunt, Basran supports Sansok Khan by signaling the direction and intensity of different environmental cues to her. He also looks out for anything that needs her attention, from a clanmate's shout to the drumming of hooves to the whistle of an approaching storm. Sansok Khan trains her hearing dogs herself, and has done so since a very young age. In fact, Basran is her third bakar, the son of her first!"]=3,
 },
 [195606]={ -- Beastmaster Zira
   ["I've never met a beast I couldn't win over. I've worked with rockfangs, hornstriders, even thunder lizards! But no animal can beat a bakar in loyalty and honor."]=1,
@@ -138,11 +222,53 @@ SpeakStone_GossipTexts = {
 [196449]={ -- Elder Odgerel
   ["Clan Teerai are the proud protectors of tradition and good values. This meeting at Maruukai is also our tradition."]=1,
 },
+[196707]={ -- Quartermaster Huseng
+  ["Good trade follows trust."]=1,
+},
 [196725]={ -- Chef Sungshin Ironpaw
   ["Welcome, fellow traveler. I am Chef Sungshin Ironpaw, Guide to the Ways and administrant to the Halfhill Market. A curious letter made it's way to me in the Valley of the Four Winds, written by Chef Morsel. He informed me that these Isles had opened and that he and his partner would be hosting a garden party of sorts. They would use it as an opportunity to showcase the rare ingredients of the Dragon Isles, as well as the wide variety of cuisines Azeroth has to offer. I simply couldn't refuse a request to exhibit the wonders of our great Pandaria! Please feel free to try my own offerings. We Pandaren are always on the move, so we've found food that travels with you is always the most satisfying."]=1,
 },
 [197792]={ -- Banshi
   ["I go where da food be."]=1,
+},
+[207350]={ -- Wrathion
+  ["We are not alone, adventurer. There are other flights of dragons out there that have yet to make their way to the Isles. Vyranoth has shown in her... unique way that not only can we work with others, we should. Sabellian spoke of a brood in Outland known as the netherwing. I extended an invitation to Valdrakken and their representative has agreed to meet us there."]=1,
+  ["I confess, I have not met them myself. However, Sabellian has provided some helpful information. It seems the netherwing originated from black dragon eggs that had been hidden away on Draenor. When the place shattered into Outland, the eggs were infused with the energies of the Twisting Nether. It... changed them into what they are today. They are now entirely separate from Sabellian's brood... but when you think upon it, they are still our direct kin. I suppose we both have bizarre circumstances surrounding our origins."]=2,
+},
+[208143]={ -- Keeper Amrymn
+  ["Fyrakk's forces are all around us, and we are few in number. Thank you for your efforts in protecting the Dream."]=1,
+},
+[208156]={ -- Moon Priestess Lasara
+  ["Goddess be with you adventurer."]=1,
+},
+[208669]={ -- Lady Moonberry
+  ["This place is just like Ysera described. Beautiful, but strange. It's magnificent!"]=1,
+},
+[209318]={ -- Cenarius
+  ["Welcome to the Dream, champion."]=1,
+},
+[211209]={ -- Elianna
+  ["The magic of the dream is breathtaking!"]=1,
+  ["Dream Infusions are powerful coalescences of dream energy that we can use to bring a creature's essence into the Dream."]=2,
+  ["I must verify that you can take care of one of these precious creatures before entrusting you with one of their dream kin."]=3,
+},
+[219590]={ -- Magni Bronzebeard
+  ["I dunnae need help, adventurer. <Magni winces in pain. He is clearly winded and injured.> Maybe... just a wee leg up on tae a gryphon or whatever these birds be..."]=1,
+},
+[219591]={ -- Moira Thaurissan
+  ["O' course we get stranded here an' the first thing me da' goes an' does is get himself injured. Always got tae play the hero. I hope Dagran does nae get any ideas. But who am I kiddin'? Whisked away tae a far off place an' stranded? Meetin' a tall, dark dwarf when I get there? I can talk me way out o' this. Bring it on, Khaz Algar."]=1,
+},
+[219592]={ -- Dagran Thaurissan II
+  ["I've got all me books an' scrolls but... Look at all we've lost. All the knowledge stored in Dalaran. All o' the people... I hope these earthen find more survivors. An' I hope that granda' bein' a \"thraegar\" can help us be friends with them. Maybe they'll have a library too. Wouldn't that be grand?"]=1,
+},
+[219594]={ -- Anduin Wrynn
+  ["Death... and destruction. Everywhere. At every turn, I lose more friends. More family. Khadgar. Alleria... Will it end with Xal'atath? When will it end?"]=1,
+},
+[219595]={ -- Thrall
+  ["Xal'atath must be stopped. Let us hope that these earthen do not hinder us."]=1,
+},
+[219596]={ -- Lady Jaina Proudmoore
+  ["I am glad that the earthen found us when they did. But I fear that we may need more than their help if we wish to mount an offensive against the nerubians and Xal'atath."]=1,
 },
 [235787]={ -- Lor'themar Theron
   ["Silvermoon is grateful for your aid."]=1,
@@ -168,6 +294,12 @@ SpeakStone_GossipTexts = {
 },
 [246607]={ -- Greenspeaker Cyenna
   ["We are blessed to live in Harandar, and we treat that as a responsibility. The roots of World Trees wind through these lands, and we must tend to them to make sure that they continue to thrive. I am Cyenna, Charge Nurse of Nordrassil. It is a responsibility I take very seriously."]=1,
+},
+[248948]={ -- Tome of History
+  ["<A heavy tome floats before you. What do you wish to learn?>"]=1,
+},
+[249041]={ -- Sandee Seabraid
+  ["Welcome to the joint venture of the T&W and Zen'shiri Trading Post!"]=1,
 },
 [249046]={ -- Assistant Shadala
   ["New shipments of outfits, weapons and creatures come in every month. I make sure our displays always look their best."]=1,
@@ -200,6 +332,11 @@ SpeakStone_GossipTexts = {
   ["This is such an interesting find!"]=1,
   ["A small group of us have been studying some relics from the recent assault on the city. The items appear to have been infused with latent void magic, which I believe has greatly increased their potential. The items' physical properties have also been altered, giving them all a striking look! Interesting, isn't it? Once we are sure they pose no threat to our own, we can start outfitting our troops with them and use this power against our enemies!"]=2,
 },
+[255479]={ -- Examiner Andoren Dawnrise
+  ["Oh don't tell me you're also here to side with Lady Darkglen, Priest ?"]=1,
+  ["On her approach to... everything! Studying historical sites, investigating strange magic, and even preserving relics of power! 'Lady' Darkglen isn't so much keen to preserve our history as she is to understand the darkness that threatens it. Even if that means taking a more destructive approach."]=2,
+  ["Of course we should but at what cost? There must be a way to both preserve what is ours and defeat the enemies at our doorstep. We can do both, despite what Lady Darkglen thinks. Her obsession with dark powers has shattered her once-delicate approach to such things."]=3,
+},
 [255495]={ -- Rae'ana
   ["Greetings, human."]=1,
   ["The Ranger Captain acknowledges that my experience in relic study will be invaluable against the host of threats in the days ahead. Before this, I was cataloging relics for the Dragonscale Expedition. When our camp heard of the attack on the Sunwell, I joined those who raced to return home to Silvermoon. I have not forgotten when the people of Quel'Thalas rallied to defend Suramar years ago. I will help in any way I can."]=2,
@@ -210,6 +347,19 @@ SpeakStone_GossipTexts = {
 },
 [257298]={ -- Loa Speaker Yl'mul
   ["All that's left here is me and de captain. De curse I cast keeps us from movin' on."]=1,
+},
+[257411]={ -- Ranger Captain Lilatha
+  ["The threats that lay siege to Eversong and Zul'Aman's borders are relentless, adventurer, but we are no strangers to dealing with these attacks. Be it forces of the Void, marauding ethereals, or the Twilight's Blade, we will be ready."]=1,
+},
+[257415]={ -- Kul'amara the Fierce
+  ["I hope you're not wasting my time, human."]=1,
+  ["My guards, ha. They are more accurately your guards. It is nice though dat they think three of dem are enough to stop me if I did want to do harm. Mibaza could take them alone. <Mibaza lets out a low growl.>"]=2,
+  ["How many times must I repeat myself... De factions attacking your perfect elf allies are also attacking us in Zul'Aman. A few of you have proven worthy fighters and honorable enough we hope to work together to combat de new threats. Does dat satisfy your inquiry?"]=3,
+},
+[257416]={ -- Lady Darkglen
+  ["<Lady Darkglen tilts her head as she looks you over.> Now, what can an important priest like yourself do for me?"]=1,
+  ["<Lady Darkglen sighs.> Due to the current climate of Silvermoon, it was unwise to have my usual... entourage here in the city. While dear Blocciniux is away, I have an alternate. Do try to behave in front of him, hmm? He's quite dedicated to his job."]=2,
+  ["A part of the Reliquary? Me? I'm afraid not. I've always found their work to be rather fascinating--I've even contributed to Tae'thelan's lavish fundraisers that finance his expeditions. But sadly, the High Examiner has never granted me membership. I must have offended him at some point. <Lady Darkglen offers a coy smirk.> And yet, when the need arose for someone with an intrigue for both dark magic and history alike, none were as suited to the task as I was. He couldn't deny my credentials, so in turn he sent Andoren here to lecture me on... well, I've stopped listening to his prattle if I'm being honest."]=3,
 },
 [257803]={ -- Tak'lejo
   ["My people, kidnapped! Stolen! Killed! Many more are missin'! And de hash'ey's brother walks free!"]=1,
@@ -238,5 +388,8 @@ SpeakStone_GossipTexts = {
   ["As you can no doubt tell, I am somewhat preoccupied with my research. Unless your question pertains to my work, please direct all matters to my sister, Maren."]=1,
   ["<Mayven closes her eyes as she slowly exhales before looking at you.> Yes, she is. If you're that curious about my familial relations, please feel free to ask her all about it. While you do that, I've got work that requires my attention. These dark particles aren't going to study themselves."]=2,
   ["<Mayven narrows her eyes at you for a moment before she gestures to the void magic circling around her hand.> Since you're so curious... I'm studying the dark particles left behind by these new threats. Why you may ask? Most types of magic leave behind a faint residue that can be used to determine the type of magic or in some cases, the reagents and fuel source used to power the spell. In this case, we are trying to unravel these particles to learn more about these threats and maybe find a way to counter their next move."]=3,
+},
+[263479]={ -- Riftblade Maella
+  ["The forces of the Void and the Hal'hadar are relentless in their onslaught. We must remain vigilant and ready."]=1,
 },
 }

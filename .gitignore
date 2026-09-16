@@ -31,3 +31,74 @@ Thumbs.db
 
 # Watcher log from run_watch.cmd (phase 2 automation)
 tools/watch.log
+
+# Build output -- reproducible from Sounds/ + SoundLengths.lua + voicebank.json
+# via build_sound_packs.py. Never source, never commit; publishing goes via
+# publish_packs.py / R2 / CurseForge / Wago, not git. Found ~64GB of these
+# (packs/ plus 7 duplicate rebuild snapshots, curseforge_ready/ zips) sitting
+# uncommitted on 2026-09-14 -- this exists so it never happens again.
+packs/
+packs_build/
+packs_build*/
+packs_2*/
+curseforge_ready/
+
+# Index/voicebank snapshots -- the live files are real data and stay tracked;
+# every timestamped backup of them is a local safety copy, not source.
+SoundLengths.lua.backup*
+SoundLengths.lua.mistake-*
+voicebank.json.backup*
+voicebank.json.bak_*
+*.backup-2*
+*.backup_2*
+
+# Sound safety copies -- real moved-aside audio (see CLAUDE.md: never delete
+# shipped audio, move it). Kept on disk deliberately, never in git history.
+Sounds_removed_*/
+Sounds_pre_regen_*/
+Sounds_replaced_*/
+
+# QC review packages -- scratch, regenerable from the library at any time.
+review_*/
+review_*.zip
+
+# A separate nested git repo that ended up parked in this working directory.
+.speakstone-work/
+
+# Live fleet claim-pool coordination state -- actively created/renamed/
+# deleted by running claim_and_run.ps1 loops. Committing these both fights
+# a race with whatever loop is running (a file can vanish mid-`git add`)
+# and has no meaning outside tonight's specific batch run.
+tools/regen_qchunk_*.json
+tools/regen_qchunk_*.CLAIMED_*
+tools/regen_qchunk_*.WITHHELD_*
+tools/regen_qchunk_*.RELEASED_*
+tools/regen_qchunk_*.hold
+tools/*.CLAIMED_*
+
+# Old backup/scratch directories found INSIDE tools/ on 2026-09-14, missed by
+# the repo-root sweep earlier tonight (447,538 files, mostly one enormous
+# tools/speakstone_test_install_backups/ tree of full addon-install snapshots
+# from past test cycles). Same rebuildable/superseded-cache class as the
+# root-level packs*/backup* cleanup -- never source, never commit.
+tools/speakstone_test_install_backups/
+tools/remaining_regen/
+tools/remaining_regen_old_backup/
+tools/regen_v4_stale_voice_old/
+tools/regen_v4_felbug_*/
+tools/regen_v4_superseded_*/
+tools/combined_fixes/
+tools/combined_fixes_old_backup/
+tools/priority_regen/
+tools/priority_old_backup/
+tools/.backup_pruned_wav/
+tools/_stale_wrong_voice_*/
+tools/_caps_regen_out/
+tools/thin_widen/
+
+# Synthesis staging output -- rebuildable cache per CLAUDE.md's own rule
+# ("tools/.cache/, tools/generated_*, and tools/regen/ is a rebuildable
+# cache, safe to delete"). Left on disk (not deleted) since regen_v4 is
+# actively in use by tonight's fleet work -- excluded from git only.
+tools/generated_*/
+tools/regen_v4/
