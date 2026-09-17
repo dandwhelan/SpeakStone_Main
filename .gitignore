@@ -102,3 +102,8 @@ tools/thin_widen/
 # actively in use by tonight's fleet work -- excluded from git only.
 tools/generated_*/
 tools/regen_v4/
+
+# Extracted WoW reference audio -- ~500 MB of game assets, never commit.
+# Copied from \192.168.4.80\wow.export\sound so the laptop can generate
+# (libsndfile cannot open UNC paths). Reproducible, not source.
+tools/reference/
