@@ -469,6 +469,23 @@ local function EscapeString(text)
     return (text:gsub('[\\"\r\n]', ESCAPES))
 end
 
+-- Forever reports interface numbers in the 16xxx band, which no Blizzard
+-- client uses: retail is 110000+, and every Classic flavour lands between
+-- 11500 and 50500. Matching the band rather than one exact number means a
+-- Forever point release keeps being recognised.
+local FOREVER_INTERFACE_MIN = 16000
+local FOREVER_INTERFACE_MAX = 16999
+
+local function HarvestFlavour()
+    local interfaceVersion = select(4, GetBuildInfo())
+    if type(interfaceVersion) == "number"
+        and interfaceVersion >= FOREVER_INTERFACE_MIN
+        and interfaceVersion <= FOREVER_INTERFACE_MAX then
+        return "forever"
+    end
+    return "retail"
+end
+
 -- Append this table's lines to `out`, depth-first.
 --
 -- This used to return a string per level, which the level above embedded in a
@@ -561,6 +578,19 @@ function addon.HarvestExportBatches(maxBytes)
     local meta = {
         locale = GetLocale(),
         build = select(2, GetBuildInfo()),
+        -- The interface number, and the site's name for the game it belongs
+        -- to. Quest IDs -- and the flat sound filenames built from them -- are
+        -- only unique within one game's corpus, and Forever allocates IDs that
+        -- interleave the retail space, so a capture that does not say which
+        -- game it came from cannot be told apart from one that did. Retail is
+        -- the default because every capture before Forever was retail.
+        --
+        -- The raw interface number goes alongside deliberately: the flavour is
+        -- this addon's reading of it, and if a later Forever build moves out
+        -- of the band below, the site can still reclassify from the number
+        -- without waiting for players to update.
+        interface = select(4, GetBuildInfo()),
+        flavour = HarvestFlavour(),
         addonVersion = (C_AddOns and C_AddOns.GetAddOnMetadata
                         and C_AddOns.GetAddOnMetadata(addonName, "Version")) or "unknown",
     }
