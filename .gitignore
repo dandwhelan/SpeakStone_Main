@@ -105,3 +105,19 @@ tools/regen_v4/
 
 # Staged deletions / stale items folder
 Toberemoved/
+
+# 2026-09-21: build/regeneration output found untracked at ~17.6 GB when
+# asked to "commit everything". Reproducible, never source -- same class as
+# packs/ above. tools/reference/ is a local copy of the reference audio tree.
+generated/
+generation2/
+packs_export/
+packs_zips/
+tools/reference/
+SpeakStone_Forever_Main.zip
+generation_forever/
+
+# Wowhead page cache for the Forever harvest: 100 MB of HTML, re-fetchable; the extracted JSON is what matters (2026-09-21)
+wow forever/cache/
+wow forever/*.stale-backup
+wow forever/*.bak-*
