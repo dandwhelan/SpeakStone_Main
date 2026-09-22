@@ -112,6 +112,12 @@ local SETTINGS_SECTIONS = {
                 tooltip = "Off by default: where Blizzard has voiced a line, that recording plays and SpeakStone waits its turn. Turn this on to mute the game's Dialog channel instead, so narration starts immediately and nothing plays over it.",
             },
             {
+                option = "yieldToNPCVoice",
+                label = "Give way when an NPC speaks",
+                indent = true,
+                tooltip = "When the game plays its own voiced line -- a talking head, or the NPC you're talking to speaking aloud -- narration waits until it finishes, and a talking head stops narration that is already playing. Has no effect while Blizzard's voice lines are silenced above.",
+            },
+            {
                 option = "stopDialogueOnClose",
                 label = "Stop narration when the window closes",
                 tooltip = "Walking away mid-sentence stops the audio instead of leaving a disembodied voice following you.",

@@ -94,6 +94,13 @@ local defaultSettings = {
     -- not. Turning this on silences the game's Dialog channel instead and
     -- narrates immediately.
     muteGossip = false,
+    -- Blizzard's voiced story lines don't all arrive with the quest window:
+    -- a talking head, or the quest giver speaking aloud after you accept or
+    -- hand in, starts whenever the server scripts it. With this on, narration
+    -- that hasn't started yet waits for that line to finish, and narration
+    -- already playing stops for a talking head rather than talking over it.
+    -- Only matters while muteGossip is off; muted lines need no room.
+    yieldToNPCVoice = true,
     -- Off by default 2026-09-12, owner's call: a quest window is often
     -- closed the moment its objective is read, but the narration itself
     -- isn't finished -- keep speaking through a closed window rather than
@@ -682,6 +689,48 @@ local function StopCurrentSound()
 end
 addon.StopCurrentSound = StopCurrentSound
 
+-- When Blizzard's own voice line (a talking head, or an NPC speaking aloud)
+-- is expected to finish, as a GetTime() value. Set by the event handler at
+-- the bottom of the file; read here so every autoplay path waits for it.
+local npcVoiceEndsAt = 0
+-- Breathing room after the NPC's line, so narration doesn't start on the
+-- same beat the voice actor stops.
+local NPC_VOICE_GAP = 0.4
+
+local function YieldingToNPCVoice()
+    return SpeakStone_MainDB.yieldToNPCVoice ~= false and not SpeakStone_MainDB.muteGossip
+end
+
+-- Start an autoplayed clip after `delay` seconds, or after whatever NPC
+-- voice line is still running, whichever is later. Called again on a clip
+-- that is already waiting when a new voice line starts, to push it back.
+-- Manual plays (the keybind, the quest window button) skip this: pressing
+-- play means now.
+local function ScheduleSound(soundData, delay)
+    delay = delay or 0
+    if YieldingToNPCVoice() then
+        delay = math.max(delay, npcVoiceEndsAt - GetTime() + NPC_VOICE_GAP)
+    end
+    if soundData.nextSoundTimer then
+        soundData.nextSoundTimer:Cancel()
+        soundData.nextSoundTimer = nil
+    end
+    if delay > 0 then
+        -- NewTimer, not After: After returns nothing, so the handle
+        -- stored here was always nil and StopCurrentSound's Cancel never
+        -- ran. A queued clip then fired after the player had walked away.
+        -- The clip is passed in rather than read back out of activeSound,
+        -- so a timer that survives its own cancellation plays nothing
+        -- instead of playing its successor.
+        soundData.nextSoundTimer = C_Timer.NewTimer(delay, function()
+            soundData.nextSoundTimer = nil
+            DoPlaySound(soundData)
+        end)
+    else
+        DoPlaySound(soundData)
+    end
+end
+
 -- Capture for a passage that had no audio. The recording itself lives in
 -- Harvester.lua, which captures every quest encountered; this only marks
 -- the ones that were gaps, so /qrmissing can export just those without
@@ -778,21 +827,15 @@ function PlayQuestAudio(textType, skipDelay)
             soundFile = soundFile,
             soundPath = soundPath,
             duration = duration,
+            -- Who is speaking, so their own voiced lines can be waited for.
+            npcGUID = UnitGUID("npc"),
+            npcName = UnitName("npc"),
         }
         addon.activeSound = soundData
 
         -- Delay shortly to account for greeting audio when using autoplay
         if SpeakStone_MainDB.autoPlayEnabled and not skipDelay and not SpeakStone_MainDB.muteGossip then
-            local delay = tonumber(SpeakStone_MainDB.autoPlayDelay) or 0.5
-            -- NewTimer, not After: After returns nothing, so the handle
-            -- stored here was always nil and StopCurrentSound's Cancel never
-            -- ran. A queued clip then fired after the player had walked away.
-            -- The clip is passed in rather than read back out of activeSound,
-            -- so a timer that survives its own cancellation plays nothing
-            -- instead of playing its successor.
-            soundData.nextSoundTimer = C_Timer.NewTimer(delay, function()
-                DoPlaySound(soundData)
-            end)
+            ScheduleSound(soundData, tonumber(SpeakStone_MainDB.autoPlayDelay) or 0.5)
         else
             DoPlaySound(soundData)
         end
@@ -948,16 +991,15 @@ local function PlayGossipAudio()
         soundFile = soundFile,
         soundPath = soundPath,
         duration = duration,
+        npcGUID = guid,
+        npcName = UnitName("npc"),
     }
     addon.activeSound = soundData
 
     -- Same autoplay delay as the quest path above -- this was missing here,
     -- so gossip always narrated instantly regardless of the slider.
     if SpeakStone_MainDB.autoPlayEnabled and not SpeakStone_MainDB.muteGossip then
-        local delay = tonumber(SpeakStone_MainDB.autoPlayDelay) or 0.5
-        soundData.nextSoundTimer = C_Timer.NewTimer(delay, function()
-            DoPlaySound(soundData)
-        end)
+        ScheduleSound(soundData, tonumber(SpeakStone_MainDB.autoPlayDelay) or 0.5)
     else
         DoPlaySound(soundData)
     end
@@ -1025,10 +1067,7 @@ local function PlayItemAudioDirect(itemLink, page)
     -- so item/book narration always started instantly regardless of the
     -- slider.
     if SpeakStone_MainDB.autoPlayEnabled and not SpeakStone_MainDB.muteGossip then
-        local delay = tonumber(SpeakStone_MainDB.autoPlayDelay) or 0.5
-        soundData.nextSoundTimer = C_Timer.NewTimer(delay, function()
-            DoPlaySound(soundData)
-        end)
+        ScheduleSound(soundData, tonumber(SpeakStone_MainDB.autoPlayDelay) or 0.5)
     else
         DoPlaySound(soundData)
     end
@@ -1214,6 +1253,109 @@ questEventFrame:SetScript("OnEvent", function(self, event, ...)
     end
 
     lastTextType = textType
+end)
+
+-- Blizzard's own voiced lines. Nothing reports when the game plays one, but
+-- the two ways a quest's story beats get spoken both announce themselves:
+--
+-- * Talking heads (retail). Always voiced, and the line's length is known.
+--   Narration still waiting holds until it ends; narration already playing
+--   stops, since the talking head is the newer beat and it is Blizzard's
+--   own performance. It isn't replayed afterwards: by then the player has
+--   moved on from the window it belonged to.
+-- * An NPC speaking aloud in chat (/say, /yell, whisper, party). Most of
+--   these have no voice at all, and nothing says which do, so only the NPC
+--   being narrated for counts, the length is guessed from the text, and a
+--   clip already playing is left alone rather than cut off for a line that
+--   may well be silent.
+local NPC_CHARS_PER_SECOND = 15
+
+local function EstimateSpokenSeconds(text)
+    if type(text) ~= "string" or IsSecret(text) then
+        return 3
+    end
+    return math.min(20, math.max(2, #text / NPC_CHARS_PER_SECOND))
+end
+
+local function NoteNPCVoice(seconds, interruptPlaying)
+    if not SpeakStone_MainDB or not YieldingToNPCVoice() then
+        return
+    end
+    npcVoiceEndsAt = math.max(npcVoiceEndsAt, GetTime() + seconds)
+    local current = GetCurrentSound()
+    if not current then
+        return
+    end
+    if current.isPlaying then
+        if interruptPlaying then
+            DebugPrint("SpeakStone: an NPC started speaking -- stopping narration")
+            StopCurrentSound()
+        end
+    elseif current.nextSoundTimer then
+        ScheduleSound(current, 0)
+    end
+end
+
+-- Whether a chat line came from the NPC being talked to or narrated for.
+-- Compared inside pcall: in restricted content these can be secret values,
+-- which refuse comparison outright.
+local function IsNarratedNPC(sender, guid)
+    local current = GetCurrentSound()
+    local candidates = {
+        UnitGUID("npc"), UnitName("npc"),
+        current and current.npcGUID, current and current.npcName,
+    }
+    for _, value in pairs(candidates) do
+        if value and not IsSecret(value) then
+            local ok, match = pcall(function()
+                return value == guid or value == sender
+            end)
+            if ok and match then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local npcVoiceFrame = CreateFrame("Frame")
+-- pcall: talking heads are retail-only, and registering an event the client
+-- doesn't have is an error on Classic.
+for _, event in ipairs({
+    "TALKINGHEAD_REQUESTED", "TALKINGHEAD_CLOSE",
+    "CHAT_MSG_MONSTER_SAY", "CHAT_MSG_MONSTER_YELL",
+    "CHAT_MSG_MONSTER_WHISPER", "CHAT_MSG_MONSTER_PARTY",
+}) do
+    pcall(npcVoiceFrame.RegisterEvent, npcVoiceFrame, event)
+end
+npcVoiceFrame:SetScript("OnEvent", function(_, event, ...)
+    if event == "TALKINGHEAD_REQUESTED" then
+        if not (C_TalkingHead and C_TalkingHead.GetCurrentLineInfo) then
+            return
+        end
+        local ok, _, _, vo, duration, _, _, _, text = pcall(C_TalkingHead.GetCurrentLineInfo)
+        if not ok or not vo or IsSecret(vo) or vo <= 0 then
+            return
+        end
+        if IsSecret(duration) or not duration or duration <= 0 then
+            duration = EstimateSpokenSeconds(text)
+        end
+        NoteNPCVoice(duration, true)
+    elseif event == "TALKINGHEAD_CLOSE" then
+        -- Closing a talking head silences it, so there is nothing left to
+        -- wait for: let a held clip go now instead of on the old estimate.
+        npcVoiceEndsAt = math.min(npcVoiceEndsAt, GetTime())
+        local current = GetCurrentSound()
+        if current and not current.isPlaying and current.nextSoundTimer and SpeakStone_MainDB then
+            ScheduleSound(current, 0)
+        end
+    else
+        local text, sender = ...
+        local guid = select(12, ...)
+        if IsNarratedNPC(sender, guid) then
+            NoteNPCVoice(EstimateSpokenSeconds(text), false)
+        end
+    end
 end)
 
 local logoutFrame = CreateFrame("Frame")
