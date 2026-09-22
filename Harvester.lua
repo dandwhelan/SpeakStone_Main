@@ -47,6 +47,15 @@ local function Store()
     -- The client can't tell which of these are voiced; the site can, by
     -- matching them against sources that list NPC sounds. See RecordNPCChat.
     h.npcChat = h.npcChat or {}
+    -- Which characters did the capturing. The store is account-wide, so one
+    -- export carries lines from every character on the account, but the
+    -- export header only describes whoever is logged in when it's made.
+    -- The site resolves $c/$r by comparing captures from different classes,
+    -- and was being told every line came from that one character. Each
+    -- capture now points at an entry here. Class, race, sex and faction
+    -- only, never a name; deduplicated, so it is one row per kind of
+    -- character, not per login.
+    h.chars = h.chars or {}
     -- Which captured quests had no audio installed at the time. A set of IDs
     -- pointing into h.quests, so it costs nothing beyond the IDs. It used to
     -- drive a separate "missing quests only" export; that is gone, and this is
@@ -214,6 +223,27 @@ local function PlayerMetadata()
     }
 end
 
+-- The index into h.chars for the character playing now, adding a row the
+-- first time this kind of character captures anything. Cached for the
+-- session: none of these change without a relog.
+local charIndex
+
+local function CurrentCharIndex()
+    if charIndex then return charIndex end
+    local me = PlayerMetadata()
+    local chars = Store().chars
+    for i, c in ipairs(chars) do
+        if c.playerClass == me.playerClass and c.playerRace == me.playerRace
+            and c.playerSex == me.playerSex and c.faction == me.faction then
+            charIndex = i
+            return i
+        end
+    end
+    chars[#chars + 1] = me
+    charIndex = #chars
+    return charIndex
+end
+
 -- --------------------------------------------------------------------------
 -- Recording
 -- --------------------------------------------------------------------------
@@ -245,6 +275,7 @@ local function RecordPassage(questID, passage, text, wasMissing)
         npcRace = speaker.race,
         npcRaceToken = speaker.raceToken,
         npcCreatureType = speaker.creatureType,
+        char = CurrentCharIndex(),
     }
     if wasMissing then
         h.missingIDs[questID] = true
@@ -307,10 +338,30 @@ local function RecordGossip(speaker, text)
     entry.npcRace = speaker.race or entry.npcRace
     entry.npcRaceToken = speaker.raceToken or entry.npcRaceToken
     entry.npcCreatureType = speaker.creatureType or entry.npcCreatureType
-    for _, existing in ipairs(entry.texts) do
-        if existing == text then return end
+    -- Per variant, parallel to texts: which character first captured it,
+    -- and how often and when it has been seen since. A greeting that stops
+    -- appearing after a story beat keeps an old "last"; the one that
+    -- replaced it keeps climbing. That is what lets the site tell the
+    -- current line from a retired one, and voice the common ones first.
+    entry.chars = entry.chars or {}
+    entry.seen = entry.seen or {}
+    local now = time()
+    for i, existing in ipairs(entry.texts) do
+        if existing == text then
+            local seen = entry.seen[i]
+            if seen then
+                seen.count = (seen.count or 1) + 1
+                seen.last = now
+            else
+                entry.seen[i] = { count = 1, first = now, last = now }
+            end
+            return
+        end
     end
     table.insert(entry.texts, text)
+    local i = #entry.texts
+    entry.chars[i] = CurrentCharIndex()
+    entry.seen[i] = { count = 1, first = now, last = now }
 end
 
 -- NPC chat lines. Same bucket shape as gossip ({ npcName, npcID, texts }),
@@ -321,6 +372,9 @@ end
 -- of the volume and none of the story), nothing already known to be voiced,
 -- and at most NPC_CHAT_MAX distinct lines per NPC.
 local NPC_CHAT_MAX = 25
+-- And at most this many NPCs. Past it, new speakers are ignored until an
+-- export clears the store, so a week of city idling can't bloat the file.
+local NPC_CHAT_MAX_NPCS = 300
 
 local function RecordNPCChat(text, sender, guid)
     if type(text) ~= "string" or IsSecret(text) or text == "" then return end
@@ -336,6 +390,9 @@ local function RecordNPCChat(text, sender, guid)
 
     local entry = h.npcChat[npcID]
     if not entry then
+        local npcs = 0
+        for _ in pairs(h.npcChat) do npcs = npcs + 1 end
+        if npcs >= NPC_CHAT_MAX_NPCS then return end
         entry = { npcName = sender, npcID = npcID, texts = {} }
         h.npcChat[npcID] = entry
     end
@@ -721,6 +778,8 @@ function addon.HarvestExportBatches(maxBytes)
     for key, value in pairs(PlayerMetadata()) do
         meta[key] = value
     end
+    -- Every piece carries the full list, since any piece may point into it.
+    meta.chars = h.chars
     local header = {}
     SerializeInto(header, meta, "  ")
     header = table.concat(header)
@@ -881,16 +940,20 @@ function addon.HarvestMarkSent(snap)
         end
     end
     for key, entry in pairs(h.gossip) do
-        local kept = {}
-        for _, text in ipairs(entry.texts or {}) do
+        -- texts, chars and seen are parallel lists; they move together.
+        local kept, keptChars, keptSeen = {}, {}, {}
+        for i, text in ipairs(entry.texts or {}) do
             if not Take(SentKey("g", key, text)) then
-                kept[#kept + 1] = text
+                local n = #kept + 1
+                kept[n] = text
+                keptChars[n] = entry.chars and entry.chars[i]
+                keptSeen[n] = entry.seen and entry.seen[i]
             end
         end
         if #kept == 0 then
             h.gossip[key] = nil
         else
-            entry.texts = kept
+            entry.texts, entry.chars, entry.seen = kept, keptChars, keptSeen
         end
     end
     for key, entry in pairs(h.itemText) do

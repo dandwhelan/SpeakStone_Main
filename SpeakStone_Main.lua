@@ -917,13 +917,60 @@ end
 -- code between them is not an option without a third file just for this.
 -- Whether this NPC's live greeting is one already matched to a voiced clip.
 -- The harvester asks, so it doesn't keep recording text the corpus has.
+-- Greetings that name the player's class or race ("Welcome, druid") are
+-- stored with $c / $r in place of that word once the site has proven the
+-- substitution (two captures from different classes, one word apart), and
+-- voiced with a neutral noun. The live text carries the real word, so it is
+-- tried as-is first, then with this character's class and race swapped
+-- back to the tokens. Whole words only, and in either capitalisation, since
+-- a line can open with it. A lookup, not a rewrite: a false "$c" can only
+-- miss, never match a line that isn't there.
+local playerIdentityWords
+
+local function IdentityWords()
+    if playerIdentityWords then return playerIdentityWords end
+    local words = {}
+    local className = UnitClass("player")
+    local raceName = UnitRace("player")
+    for token, word in pairs({ ["$c"] = className, ["$r"] = raceName }) do
+        if type(word) == "string" and word ~= "" and not IsSecret(word) then
+            local escaped = word:gsub("(%W)", "%%%1")
+            local lower = escaped:lower()
+            local title = lower:sub(1, 1):upper() .. lower:sub(2)
+            words[token] = { "%f[%w]" .. lower .. "%f[%W]", "%f[%w]" .. title .. "%f[%W]" }
+        end
+    end
+    playerIdentityWords = words
+    return words
+end
+
+local function SwapIdentity(text, token)
+    local patterns = IdentityWords()[token]
+    if not patterns then return text end
+    for _, pattern in ipairs(patterns) do
+        text = text:gsub(pattern, token)
+    end
+    return text
+end
+
+local function LookupGossipVariant(knownTexts, liveText)
+    local ok, key = pcall(NormalizeGossipText, liveText)
+    if not ok or not key then return nil end
+    if knownTexts[key] then return knownTexts[key] end
+    local okSwap, withClass, withRace, withBoth = pcall(function()
+        local c = SwapIdentity(key, "$c")
+        return c, SwapIdentity(key, "$r"), SwapIdentity(c, "$r")
+    end)
+    if not okSwap then return nil end
+    return knownTexts[withClass] or knownTexts[withRace] or knownTexts[withBoth]
+end
+
 function addon.GossipTextKnown(npcID, text)
     local known = npcID and SpeakStone_GossipTexts and SpeakStone_GossipTexts[npcID]
     if not known or type(text) ~= "string" or IsSecret(text) then
         return false
     end
-    local ok, key = pcall(NormalizeGossipText, text)
-    return ok and known[key] ~= nil
+    return LookupGossipVariant(known, text) ~= nil
 end
 
 local function CreatureIDFromGUID(guid)
@@ -971,7 +1018,7 @@ local function PlayGossipAudio()
     if knownTexts then
         local ok, liveText = pcall(C_GossipInfo.GetText)
         if ok and liveText and not IsSecret(liveText) then
-            variant = knownTexts[NormalizeGossipText(liveText)]
+            variant = LookupGossipVariant(knownTexts, liveText)
         end
         if not variant then
             local key = "gossip-nomatch-" .. npcID
