@@ -912,6 +912,17 @@ end
 -- "Creature-0-<server>-<instance>-<zone>-<creatureID>-<spawn>"
 -- Mirrors the harvester's own copy: the two never load together, so sharing
 -- code between them is not an option without a third file just for this.
+-- Whether this NPC's live greeting is one already matched to a voiced clip.
+-- The harvester asks, so it doesn't keep recording text the corpus has.
+function addon.GossipTextKnown(npcID, text)
+    local known = npcID and SpeakStone_GossipTexts and SpeakStone_GossipTexts[npcID]
+    if not known or type(text) ~= "string" or IsSecret(text) then
+        return false
+    end
+    local ok, key = pcall(NormalizeGossipText, text)
+    return ok and known[key] ~= nil
+end
+
 local function CreatureIDFromGUID(guid)
     if not guid or IsSecret(guid) or type(guid) ~= "string" then
         return nil
@@ -1273,10 +1284,14 @@ end)
 --   own performance. It isn't replayed afterwards: by then the player has
 --   moved on from the window it belonged to.
 -- * An NPC speaking aloud in chat (/say, /yell, whisper, party). Most of
---   these have no voice at all, and nothing says which do, so only the NPC
---   being narrated for counts, the length is guessed from the text, and a
---   clip already playing is left alone rather than cut off for a line that
---   may well be silent.
+--   these have no voice at all, and the client never says which do, so
+--   VoicedLines.lua (tools/build_voiced_lines.py) lists the ones Blizzard's
+--   own data marks as voiced. A listed line, from any NPC, wins the same way
+--   a talking head does. An unlisted one only counts from the NPC being
+--   narrated for -- the list holds only what the client ships, mostly
+--   current content -- and then only holds back narration that hasn't
+--   started, rather than cutting it off for a line that may well be silent.
+--   Either way the length is guessed from the text.
 local NPC_CHARS_PER_SECOND = 15
 local TALKINGHEAD_LINE_GAP = 2
 
@@ -1285,6 +1300,45 @@ local function EstimateSpokenSeconds(text)
         return 3
     end
     return math.min(20, math.max(2, #text / NPC_CHARS_PER_SECOND))
+end
+
+-- Text hash shared with the build script and the harvester. Same arithmetic
+-- as line_hash in tools/build_voiced_lines.py: exact in a double, so it
+-- agrees across Lua 5.1 and Python byte for byte.
+local function HashText(text)
+    local h = 0
+    for i = 1, #text do
+        h = (h * 31 + string.byte(text, i)) % 4294967296
+    end
+    return h
+end
+addon.HashText = HashText
+
+local voicedNamePattern
+
+-- Shaped the way the build script shapes BroadcastText: the player's name
+-- back to "$n", whitespace runs to one space, trimmed.
+local function IsKnownVoicedLine(text)
+    if type(SpeakStone_VoicedLines) ~= "table"
+        or SpeakStone_VoicedLinesLocale ~= GetLocale()
+        or type(text) ~= "string" or IsSecret(text) or text == "" then
+        return false
+    end
+    if not voicedNamePattern then
+        local name = UnitName("player")
+        if name and not IsSecret(name) and name ~= "" then
+            voicedNamePattern = name:gsub("(%W)", "%%%1")
+        end
+    end
+    local ok, hash = pcall(function()
+        local t = text
+        if voicedNamePattern then
+            t = t:gsub(voicedNamePattern, "$n")
+        end
+        t = t:gsub("[ \t\r\n]+", " "):gsub("^ ", ""):gsub(" $", "")
+        return HashText(t)
+    end)
+    return ok and SpeakStone_VoicedLines[hash] ~= nil
 end
 
 local function NoteNPCVoice(seconds, interruptPlaying)
@@ -1371,7 +1425,9 @@ npcVoiceFrame:SetScript("OnEvent", function(_, event, ...)
     else
         local text, sender = ...
         local guid = select(12, ...)
-        if IsNarratedNPC(sender, guid) then
+        if IsKnownVoicedLine(text) then
+            NoteNPCVoice(EstimateSpokenSeconds(text), true)
+        elseif IsNarratedNPC(sender, guid) then
             NoteNPCVoice(EstimateSpokenSeconds(text), false)
         end
     end
@@ -1439,7 +1495,7 @@ local function EnsureExportFrame()
     local scrollFrame = CreateFrame("ScrollFrame", nil, frame, "UIPanelScrollFrameTemplate")
     scrollFrame:SetPoint("TOPLEFT", frame.InsetBg, "TOPLEFT", 5, -5)
     -- The scroll area has to end above the button row, or the two overlap.
-    scrollFrame:SetPoint("BOTTOMRIGHT", frame.InsetBg, "BOTTOMRIGHT", -27, 34)
+    scrollFrame:SetPoint("BOTTOMRIGHT", frame.InsetBg, "BOTTOMRIGHT", -27, 54)
 
     local editBox = CreateFrame("EditBox", nil, scrollFrame)
     editBox:SetSize(scrollFrame:GetSize())
@@ -1483,10 +1539,29 @@ local function EnsureExportFrame()
     prevButton:SetPoint("RIGHT", partText, "LEFT", -4, 0)
     prevButton:SetText("< Prev")
 
+    -- Its own line above the buttons now that the row holds four of them.
     local copyHintText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    copyHintText:SetPoint("LEFT", selectAllButton, "RIGHT", 10, 0)
-    copyHintText:SetPoint("RIGHT", prevButton, "LEFT", -8, 0)
+    copyHintText:SetPoint("BOTTOMLEFT", selectAllButton, "TOPLEFT", 2, 8)
+    copyHintText:SetPoint("RIGHT", frame, "RIGHT", -14, 0)
     copyHintText:SetJustifyH("LEFT")
+
+    -- Clears what was exported from the saved capture once it has been
+    -- pasted in -- see HarvestMarkSent. Only on the last part, so it can't
+    -- be clicked with pieces still unsent.
+    local sentButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    sentButton:SetSize(150, 22)
+    sentButton:SetPoint("LEFT", selectAllButton, "RIGHT", 8, 0)
+    sentButton:SetText("Submitted -- clear it")
+    sentButton:SetScript("OnClick", function()
+        StaticPopup_Show("SPEAKSTONE_HARVEST_MARK_SENT")
+    end)
+    sentButton:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Submitted -- clear it")
+        GameTooltip:AddLine("Once everything here is pasted in at the site, this removes it from your saved capture so it isn't sent twice, and stops the same lines being captured again. Keeps the file small.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    sentButton:SetScript("OnLeave", GameTooltip_Hide)
 
     -- Put one piece in the box, ready to copy.
     function frame:ShowBatch(index)
@@ -1507,11 +1582,13 @@ local function EnsureExportFrame()
             nextButton:Show()
             if index > 1 then prevButton:Enable() else prevButton:Disable() end
             if index < total then nextButton:Enable() else nextButton:Disable() end
+            if index == total then sentButton:Enable() else sentButton:Disable() end
             copyHintText:SetText("Ctrl+C, paste at |cff00ccffspeakstone.beanw.co.uk|r, then Next")
         else
             partText:Hide()
             prevButton:Hide()
             nextButton:Hide()
+            sentButton:Enable()
             copyHintText:SetText("Ctrl+C, then paste at |cff00ccffspeakstone.beanw.co.uk|r")
         end
     end
@@ -1522,6 +1599,23 @@ local function EnsureExportFrame()
     exportFrame, exportEditBox = frame, editBox
     return frame, editBox
 end
+
+StaticPopupDialogs["SPEAKSTONE_HARVEST_MARK_SENT"] = {
+    text = "Pasted everything in at speakstone.beanw.co.uk?\n\nThis clears it from your saved capture. Anything captured since the export opened is kept.",
+    button1 = "Yes, clear it",
+    button2 = "Not yet",
+    OnAccept = function()
+        if not (exportFrame and addon.HarvestMarkSent) then return end
+        local cleared = addon.HarvestMarkSent(exportFrame.snapshot)
+        exportFrame.snapshot = nil
+        exportFrame:Hide()
+        print("SpeakStone: thanks! Cleared " .. cleared .. " submitted line(s) from your capture.")
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    preferredIndex = 3,
+}
 
 -- Slash command to export the text captured for quests the installed sound
 -- packs have no audio for, ready to paste into the website's submit form --
@@ -1555,6 +1649,7 @@ function addon.ShowHarvestExport()
 
     local frame = EnsureExportFrame()
     frame.batches = batches
+    frame.snapshot = addon.HarvestSnapshot and addon.HarvestSnapshot()
     -- Same fix as the Audio Library window: a bare SetPoint("CENTER") landed
     -- this exactly on top of Settings (its main entry point) or the Library
     -- (the minimap right-click route can open this while that is up too).

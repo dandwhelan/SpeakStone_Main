@@ -22,6 +22,7 @@ QuestTitles.lua
 NPCNames.lua
 DynamicGossipNPCs.lua
 GossipTexts.lua
+VoicedLines.lua
 SpeakStone_Main.lua
 Harvester.lua
 SpeakStone_Main_Settings.lua
