@@ -43,15 +43,43 @@ local function Store()
     h.quests = h.quests or {}
     h.gossip = h.gossip or {}
     h.itemText = h.itemText or {}
+    -- What NPCs say aloud in chat (/say, /yell, whisper, party), per NPC.
+    -- The client can't tell which of these are voiced; the site can, by
+    -- matching them against sources that list NPC sounds. See RecordNPCChat.
+    h.npcChat = h.npcChat or {}
+    -- Which characters did the capturing. The store is account-wide, so one
+    -- export carries lines from every character on the account, but the
+    -- export header only describes whoever is logged in when it's made.
+    -- The site resolves $c/$r by comparing captures from different classes,
+    -- and was being told every line came from that one character. Each
+    -- capture now points at an entry here. Class, race, sex and faction
+    -- only, never a name; deduplicated, so it is one row per kind of
+    -- character, not per login.
+    h.chars = h.chars or {}
+    h.npcs = h.npcs or {}
     -- Which captured quests had no audio installed at the time. A set of IDs
     -- pointing into h.quests, so it costs nothing beyond the IDs. It used to
     -- drive a separate "missing quests only" export; that is gone, and this is
     -- now only a statistic -- and a soft one, since a quest with no audio is as
     -- likely to have been removed from the game as to be waiting for a voice.
     h.missingIDs = h.missingIDs or {}
+    -- Hashes of everything already submitted (see HarvestMarkSent). Without
+    -- it the store only ever grew: every export resent everything ever
+    -- captured, the reminder kept counting lines long since sent, and the
+    -- saved-variables file -- read at every login and /reload, written at
+    -- every logout -- kept getting bigger for nothing. One number per line
+    -- is a fraction of the text it stands for.
+    h.sent = h.sent or {}
     return h
 end
 addon.HarvestStore = Store
+
+-- One hash per captured line, keyed on where it lives as well as what it
+-- says, so the same greeting from two NPCs stays two lines. HashText is
+-- defined in SpeakStone_Main.lua, which loads first.
+local function SentKey(...)
+    return addon.HashText(table.concat({ ... }, "\31"))
+end
 
 -- --------------------------------------------------------------------------
 -- Secret-value guards. WoW 12.x returns tagged "secret" values where plain
@@ -196,6 +224,42 @@ local function PlayerMetadata()
     }
 end
 
+-- An NPC's name, sex, race and creature type, kept once per creature ID.
+-- Every quest passage used to carry its own copy -- six fields, about 150
+-- bytes of saved variables each -- although the same quest giver hands out
+-- every passage of a quest chain. Passages keep only the npcID now; the
+-- export carries this table and the site reads a passage's speaker from it.
+local NPC_TRAITS = { "npcName", "npcSex", "npcRace", "npcRaceToken", "npcCreatureType" }
+
+local function NoteNPC(h, npcID, traits)
+    local npc = h.npcs[npcID] or {}
+    for _, key in ipairs(NPC_TRAITS) do
+        if traits[key] ~= nil then npc[key] = traits[key] end
+    end
+    h.npcs[npcID] = npc
+end
+
+-- The index into h.chars for the character playing now, adding a row the
+-- first time this kind of character captures anything. Cached for the
+-- session: none of these change without a relog.
+local charIndex
+
+local function CurrentCharIndex()
+    if charIndex then return charIndex end
+    local me = PlayerMetadata()
+    local chars = Store().chars
+    for i, c in ipairs(chars) do
+        if c.playerClass == me.playerClass and c.playerRace == me.playerRace
+            and c.playerSex == me.playerSex and c.faction == me.faction then
+            charIndex = i
+            return i
+        end
+    end
+    chars[#chars + 1] = me
+    charIndex = #chars
+    return charIndex
+end
+
 -- --------------------------------------------------------------------------
 -- Recording
 -- --------------------------------------------------------------------------
@@ -207,6 +271,10 @@ local function RecordPassage(questID, passage, text, wasMissing)
     if not questID or questID == 0 or not text or text == "" then return end
 
     local h = Store()
+    text = Detokenize(text)
+    if h.sent[SentKey("q", questID, passage, text)] then
+        return
+    end
     local entry = h.quests[questID]
     if not entry then
         entry = {}
@@ -215,15 +283,22 @@ local function RecordPassage(questID, passage, text, wasMissing)
     entry.title = GetTitleText() or entry.title
 
     local speaker = CurrentSpeaker()
-    entry[passage] = {
-        text = Detokenize(text),
-        npcID = speaker.id,
+    local traits = {
         npcName = speaker.name,
         npcSex = speaker.sex,
         npcRace = speaker.race,
         npcRaceToken = speaker.raceToken,
         npcCreatureType = speaker.creatureType,
     }
+    local captured = { text = text, npcID = speaker.id, char = CurrentCharIndex() }
+    if speaker.id then
+        -- Who the NPC is lives once in h.npcs; see NoteNPC.
+        NoteNPC(h, speaker.id, traits)
+    else
+        -- No ID to point at, so the passage has to carry them itself.
+        for key, value in pairs(traits) do captured[key] = value end
+    end
+    entry[passage] = captured
     if wasMissing then
         h.missingIDs[questID] = true
     end
@@ -268,6 +343,10 @@ local function RecordGossip(speaker, text)
         npcID = nil
     end
 
+    if Store().sent[SentKey("g", key, text)] then
+        return
+    end
+
     local entry = gossip[key]
     if not entry then
         entry = { npcName = npcName, npcID = npcID, texts = {} }
@@ -281,6 +360,66 @@ local function RecordGossip(speaker, text)
     entry.npcRace = speaker.race or entry.npcRace
     entry.npcRaceToken = speaker.raceToken or entry.npcRaceToken
     entry.npcCreatureType = speaker.creatureType or entry.npcCreatureType
+    -- Per variant, parallel to texts: which character first captured it,
+    -- and how often and when it has been seen since. A greeting that stops
+    -- appearing after a story beat keeps an old "last"; the one that
+    -- replaced it keeps climbing. That is what lets the site tell the
+    -- current line from a retired one, and voice the common ones first.
+    entry.chars = entry.chars or {}
+    entry.seen = entry.seen or {}
+    local now = time()
+    for i, existing in ipairs(entry.texts) do
+        if existing == text then
+            local seen = entry.seen[i]
+            if seen then
+                seen.count = (seen.count or 1) + 1
+                seen.last = now
+            else
+                entry.seen[i] = { count = 1, first = now, last = now }
+            end
+            return
+        end
+    end
+    table.insert(entry.texts, text)
+    local i = #entry.texts
+    entry.chars[i] = CurrentCharIndex()
+    entry.seen[i] = { count = 1, first = now, last = now }
+end
+
+-- NPC chat lines. Same bucket shape as gossip ({ npcName, npcID, texts }),
+-- so the site can treat both alike.
+--
+-- Kept narrow on purpose, because chat is a firehose: only creatures (a
+-- GUID says so), never while the player is fighting (combat barks are most
+-- of the volume and none of the story), nothing already known to be voiced,
+-- and at most NPC_CHAT_MAX distinct lines per NPC.
+local NPC_CHAT_MAX = 25
+-- And at most this many NPCs. Past it, new speakers are ignored until an
+-- export clears the store, so a week of city idling can't bloat the file.
+local NPC_CHAT_MAX_NPCS = 300
+
+local function RecordNPCChat(text, sender, guid)
+    if type(text) ~= "string" or IsSecret(text) or text == "" then return end
+    if IsSecret(sender) then sender = nil end
+    local npcID = CreatureIDFromGUID(guid)
+    if not npcID then return end
+    if InCombatLockdown() or (UnitAffectingCombat and UnitAffectingCombat("player")) then return end
+    if addon.IsKnownVoicedLine and addon.IsKnownVoicedLine(text) then return end
+
+    text = Detokenize(text)
+    local h = Store()
+    if h.sent[SentKey("c", npcID, text)] then return end
+
+    local entry = h.npcChat[npcID]
+    if not entry then
+        local npcs = 0
+        for _ in pairs(h.npcChat) do npcs = npcs + 1 end
+        if npcs >= NPC_CHAT_MAX_NPCS then return end
+        entry = { npcName = sender, npcID = npcID, texts = {} }
+        h.npcChat[npcID] = entry
+    end
+    entry.npcName = sender or entry.npcName
+    if #entry.texts >= NPC_CHAT_MAX then return end
     for _, existing in ipairs(entry.texts) do
         if existing == text then return end
     end
@@ -290,12 +429,18 @@ end
 -- Books, letters, scrolls and dungeon plaques, read through ItemTextFrame.
 local function RecordItemText(itemID, itemName, page, text)
     if not text or text == "" then return end
-    local items = Store().itemText
+    local h = Store()
+    local items = h.itemText
     -- Plaques and world objects come through the same frame as books but
     -- carry no item link, so they can only be keyed by name. Both key shapes
     -- have to be accepted; the ID is recorded whenever known so the two can be
     -- reconciled later.
     local key = itemID or itemName or "unknown"
+    page = page or 1
+    text = Detokenize(text)
+    if h.sent[SentKey("i", key, page, text)] then
+        return
+    end
     local entry = items[key]
     if not entry then
         entry = { itemID = itemID, itemName = itemName, pages = {} }
@@ -303,7 +448,7 @@ local function RecordItemText(itemID, itemName, page, text)
     end
     entry.itemName = itemName or entry.itemName
     entry.itemID = itemID or entry.itemID
-    entry.pages[page or 1] = Detokenize(text)
+    entry.pages[page] = text
 end
 
 -- --------------------------------------------------------------------------
@@ -315,14 +460,28 @@ frame:RegisterEvent("QUEST_PROGRESS")
 frame:RegisterEvent("QUEST_COMPLETE")
 frame:RegisterEvent("GOSSIP_SHOW")
 frame:RegisterEvent("ITEM_TEXT_READY")
+frame:RegisterEvent("CHAT_MSG_MONSTER_SAY")
+frame:RegisterEvent("CHAT_MSG_MONSTER_YELL")
+frame:RegisterEvent("CHAT_MSG_MONSTER_WHISPER")
+frame:RegisterEvent("CHAT_MSG_MONSTER_PARTY")
 
-frame:SetScript("OnEvent", function(_, event)
+frame:SetScript("OnEvent", function(_, event, ...)
     if not Enabled() then return end
+
+    if event:sub(1, 17) == "CHAT_MSG_MONSTER_" then
+        local text, sender = ...
+        RecordNPCChat(text, sender, (select(12, ...)))
+        return
+    end
 
     if event == "GOSSIP_SHOW" then
         local speaker = CurrentSpeaker()
         local ok, text = pcall(C_GossipInfo.GetText)
-        if ok then RecordGossip(speaker, text) end
+        -- A greeting already matched to a voiced clip is already in the
+        -- corpus; recording it again only grows the store.
+        if ok and not (addon.GossipTextKnown and addon.GossipTextKnown(speaker.id, text)) then
+            RecordGossip(speaker, text)
+        end
         return
     end
 
@@ -344,6 +503,14 @@ frame:SetScript("OnEvent", function(_, event)
     end
 
     local questID = GetQuestID()
+    -- Same for quest text: audio for a passage means its text was already
+    -- in hand when the clip was generated.
+    local passage = (event == "QUEST_DETAIL" and "description")
+        or (event == "QUEST_PROGRESS" and "progress")
+        or (event == "QUEST_COMPLETE" and "completion")
+    if passage and questID and addon.FindSound and addon.FindSound({ questID .. "_" .. passage }) then
+        return
+    end
     if event == "QUEST_DETAIL" then
         RecordPassage(questID, "description", GetQuestText())
     elseif event == "QUEST_PROGRESS" then
@@ -381,6 +548,7 @@ function addon.HarvestEntryCount()
     for _ in pairs(h.quests) do count = count + 1 end
     for _ in pairs(h.gossip) do count = count + 1 end
     for _ in pairs(h.itemText) do count = count + 1 end
+    for _ in pairs(h.npcChat) do count = count + 1 end
     return count
 end
 
@@ -414,12 +582,40 @@ function addon.HarvestRemindIfLarge()
     if h.lastReminder and (now - h.lastReminder) < REMIND_INTERVAL then
         return
     end
+    -- Not over a fight: a dialog popping up mid-pull is how a reminder gets
+    -- dismissed unread. Try again once combat ends instead.
+    if InCombatLockdown() then
+        local waiter = CreateFrame("Frame")
+        waiter:RegisterEvent("PLAYER_REGEN_ENABLED")
+        waiter:SetScript("OnEvent", function(self)
+            self:UnregisterAllEvents()
+            addon.HarvestRemindIfLarge()
+        end)
+        return
+    end
     h.lastReminder = now
 
-    print("|cffffd100SpeakStone:|r " .. count .. " captured entries are waiting to be sent in"
-        .. " -- greetings and book text can only come from a live client like yours.")
-    print("  Type |cff00ff00/ssharvest export|r to copy them out, then paste at |cff00ccffspeakstone.beanw.co.uk|r.")
+    -- A dialog, not only a chat line: the chat line scrolled away in the
+    -- login spam and was the only prompt there was.
+    StaticPopup_Show("SPEAKSTONE_HARVEST_REMINDER", count)
+    print("|cffffd100SpeakStone:|r " .. count .. " captured entries are waiting to be sent in."
+        .. " |cff00ff00/ssharvest export|r copies them out for |cff00ccffspeakstone.beanw.co.uk|r.")
 end
+
+StaticPopupDialogs["SPEAKSTONE_HARVEST_REMINDER"] = {
+    text = "SpeakStone has captured %d quests, greetings and books that aren't voiced yet.\n\n"
+        .. "Send them in at speakstone.beanw.co.uk and they can be voiced for everyone -- "
+        .. "greetings and book text can only come from a live client like yours.",
+    button1 = "Export now",
+    button2 = "Later",
+    OnAccept = function()
+        if addon.ShowHarvestExport then addon.ShowHarvestExport() end
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    preferredIndex = 3,
+}
 
 -- --------------------------------------------------------------------------
 -- Counting and export
@@ -450,7 +646,14 @@ function addon.HarvestCounts()
     end
     local missing = 0
     for _ in pairs(h.missingIDs) do missing = missing + 1 end
-    return quests, passages, unvoiced, npcs, lines, items, pages, missing
+    local chatNPCs, chatLines = 0, 0
+    for _, entry in pairs(h.npcChat) do
+        chatNPCs = chatNPCs + 1
+        chatLines = chatLines + #entry.texts
+    end
+    local sent = 0
+    for _ in pairs(h.sent) do sent = sent + 1 end
+    return quests, passages, unvoiced, npcs, lines, items, pages, missing, chatNPCs, chatLines, sent
 end
 
 -- Minimal Lua-table serialiser. The website's parser only cares about the
@@ -597,6 +800,9 @@ function addon.HarvestExportBatches(maxBytes)
     for key, value in pairs(PlayerMetadata()) do
         meta[key] = value
     end
+    -- Every piece carries both lists, since any piece may point into them.
+    meta.chars = h.chars
+    meta.npcs = h.npcs
     local header = {}
     SerializeInto(header, meta, "  ")
     header = table.concat(header)
@@ -609,6 +815,7 @@ function addon.HarvestExportBatches(maxBytes)
     for key, entry in pairs(h.quests) do plan[#plan + 1] = { "quests", key, entry } end
     for key, entry in pairs(h.gossip) do plan[#plan + 1] = { "gossip", key, entry } end
     for key, entry in pairs(h.itemText) do plan[#plan + 1] = { "itemText", key, entry } end
+    for key, entry in pairs(h.npcChat) do plan[#plan + 1] = { "npcChat", key, entry } end
 
     local batches = {}
     local out, size, openKind, inBatch
@@ -691,9 +898,129 @@ function addon.HarvestExportText()
     return batches[1], count
 end
 
+-- Every captured line's SentKey, as of now. Taken when the export window
+-- opens, so marking it sent later clears exactly what the player was given
+-- and nothing captured since.
+function addon.HarvestSnapshot()
+    local h = Store()
+    local snap = {}
+    for questID, entry in pairs(h.quests) do
+        for _, passage in ipairs(QUEST_PASSAGES) do
+            local captured = entry[passage]
+            if captured and captured.text then
+                snap[SentKey("q", questID, passage, captured.text)] = true
+            end
+        end
+    end
+    for key, entry in pairs(h.gossip) do
+        for _, text in ipairs(entry.texts or {}) do
+            snap[SentKey("g", key, text)] = true
+        end
+    end
+    for key, entry in pairs(h.itemText) do
+        for page, text in pairs(entry.pages or {}) do
+            snap[SentKey("i", key, page, text)] = true
+        end
+    end
+    for key, entry in pairs(h.npcChat) do
+        for _, text in ipairs(entry.texts or {}) do
+            snap[SentKey("c", key, text)] = true
+        end
+    end
+    return snap
+end
+
+-- The player has pasted it in: drop those lines from the store and remember
+-- their hashes, so meeting the same line again doesn't capture it again.
+-- Returns how many lines were cleared.
+function addon.HarvestMarkSent(snap)
+    if type(snap) ~= "table" then return 0 end
+    local h = Store()
+    local cleared = 0
+    local function Take(key)
+        if snap[key] then
+            h.sent[key] = true
+            cleared = cleared + 1
+            return true
+        end
+    end
+
+    for questID, entry in pairs(h.quests) do
+        local left = false
+        for _, passage in ipairs(QUEST_PASSAGES) do
+            local captured = entry[passage]
+            if captured then
+                if captured.text and Take(SentKey("q", questID, passage, captured.text)) then
+                    entry[passage] = nil
+                else
+                    left = true
+                end
+            end
+        end
+        if not left then
+            h.quests[questID] = nil
+            h.missingIDs[questID] = nil
+        end
+    end
+    for key, entry in pairs(h.gossip) do
+        -- texts, chars and seen are parallel lists; they move together.
+        local kept, keptChars, keptSeen = {}, {}, {}
+        for i, text in ipairs(entry.texts or {}) do
+            if not Take(SentKey("g", key, text)) then
+                local n = #kept + 1
+                kept[n] = text
+                keptChars[n] = entry.chars and entry.chars[i]
+                keptSeen[n] = entry.seen and entry.seen[i]
+            end
+        end
+        if #kept == 0 then
+            h.gossip[key] = nil
+        else
+            entry.texts, entry.chars, entry.seen = kept, keptChars, keptSeen
+        end
+    end
+    for key, entry in pairs(h.itemText) do
+        for page, text in pairs(entry.pages or {}) do
+            if Take(SentKey("i", key, page, text)) then
+                entry.pages[page] = nil
+            end
+        end
+        if not next(entry.pages or {}) then
+            h.itemText[key] = nil
+        end
+    end
+    for key, entry in pairs(h.npcChat) do
+        local kept = {}
+        for _, text in ipairs(entry.texts or {}) do
+            if not Take(SentKey("c", key, text)) then
+                kept[#kept + 1] = text
+            end
+        end
+        if #kept == 0 then
+            h.npcChat[key] = nil
+        else
+            entry.texts = kept
+        end
+    end
+    -- An NPC nobody remaining points at has nothing left to describe.
+    local referenced = {}
+    for _, entry in pairs(h.quests) do
+        for _, passage in ipairs(QUEST_PASSAGES) do
+            local captured = entry[passage]
+            if captured and captured.npcID then referenced[captured.npcID] = true end
+        end
+    end
+    for npcID in pairs(h.npcs) do
+        if not referenced[npcID] then h.npcs[npcID] = nil end
+    end
+    h.lastReminder = nil
+    return cleared
+end
+
 function addon.HarvestWipe()
     local h = Store()
-    h.quests, h.gossip, h.itemText, h.missingIDs = {}, {}, {}, {}
+    h.quests, h.gossip, h.itemText, h.missingIDs, h.npcChat = {}, {}, {}, {}, {}
+    h.npcs = {}
     -- Nothing left to submit, so nothing to be reminded about: an empty store
     -- should not sit silently through the interval before it can prompt again.
     h.lastReminder = nil
@@ -712,7 +1039,21 @@ end
 --   2: speaker attribution was unreliable -- see CurrentSpeaker.
 --   3: the pass for 2 kept quest npcIDs. Every one of them was a zoneUID, so
 --      they all had to go, not just the ones that were obviously wrong.
-local HARVEST_SCHEMA = 3
+--   4: NPC traits moved off every quest passage into h.npcs. A layout
+--      change, not a repair: nothing is lost, the store just gets smaller.
+local HARVEST_SCHEMA = 4
+
+local function HoistNPCTraits(h)
+    for _, entry in pairs(h.quests) do
+        for _, passage in ipairs(QUEST_PASSAGES) do
+            local captured = entry[passage]
+            if captured and captured.npcID then
+                NoteNPC(h, captured.npcID, captured)
+                for _, key in ipairs(NPC_TRAITS) do captured[key] = nil end
+            end
+        end
+    end
+end
 
 -- Throw away what the speaker bug produced.
 --
@@ -764,10 +1105,14 @@ function addon.HarvestMigrate()
     local h = Store()
     local moved = 0
 
-    if (h.schema or 1) < HARVEST_SCHEMA then
+    local schema = h.schema or 1
+    if schema < 3 then
         RepairSpeakerData(h)
-        h.schema = HARVEST_SCHEMA
     end
+    if schema < 4 then
+        HoistNPCTraits(h)
+    end
+    h.schema = HARVEST_SCHEMA
 
     local old = SpeakStone_MainDB.missingCaptures
     if old and old.quests then

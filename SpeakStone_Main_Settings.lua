@@ -112,6 +112,12 @@ local SETTINGS_SECTIONS = {
                 tooltip = "Off by default: where Blizzard has voiced a line, that recording plays and SpeakStone waits its turn. Turn this on to mute the game's Dialog channel instead, so narration starts immediately and nothing plays over it.",
             },
             {
+                option = "yieldToNPCVoice",
+                label = "Give way when an NPC speaks",
+                indent = true,
+                tooltip = "When the game plays its own voiced line -- a talking head, or the NPC you're talking to speaking aloud -- narration waits until it finishes, and a talking head stops narration that is already playing. Has no effect while Blizzard's voice lines are silenced above.",
+            },
+            {
                 option = "stopDialogueOnClose",
                 label = "Stop narration when the window closes",
                 tooltip = "Walking away mid-sentence stops the audio instead of leaving a disembodied voice following you.",
@@ -466,7 +472,7 @@ function SpeakStone:CreateWindow()
                 Describe(value)
             end)
             slider:SetScript("OnShow", function(self)
-                local value = tonumber(SpeakStone_MainDB.autoPlayDelay) or 0.5
+                local value = tonumber(SpeakStone_MainDB.autoPlayDelay) or 1.5
                 self:SetValue(value)
                 Describe(value)
             end)
@@ -575,18 +581,25 @@ function SpeakStone:CreateWindow()
         end
 
         if addon.HarvestCounts then
-            local capturedQuests, passages, _, npcs, glines, items, pages = addon.HarvestCounts()
+            local capturedQuests, passages, _, npcs, glines, items, pages, _, chatNPCs, chatLines, sent = addon.HarvestCounts()
             -- Greetings and books lead. Neither has a table in the client nor
             -- a scrapeable equivalent, so capture is the only way they can
             -- ever be obtained; quest text can be sourced other ways.
             local summary = string.format("greeting(s) from %d NPC(s)\n%d page(s) in %d book(s) - %d quest(s), %d passage(s)",
                 npcs, pages, items, capturedQuests, passages)
+            if (chatLines or 0) > 0 then
+                summary = summary .. string.format("\n%d NPC chat line(s) from %d NPC(s)", chatLines, chatNPCs)
+            end
+            -- Everything above is waiting to go; this is what already went.
+            if (sent or 0) > 0 then
+                summary = summary .. string.format("\n|cff888888%d line(s) already submitted|r", sent)
+            end
             -- Once there is a real amount sitting here, the card stops being a
             -- statistic and starts asking for something. Capture that nobody
             -- submits helps nobody.
             -- The top-level entry total is exactly what HarvestCounts just
             -- counted, so it is handed over rather than walked for again.
-            local entries = capturedQuests + npcs + items
+            local entries = capturedQuests + npcs + items + (chatNPCs or 0)
             if addon.HarvestShouldSubmit and addon.HarvestShouldSubmit(entries) then
                 SetCardState(cards.captured, ACCENT_GOOD, glines,
                     summary .. "\n|cff00ff00Ready to submit -- click to export.|r")
