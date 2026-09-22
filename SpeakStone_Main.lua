@@ -703,8 +703,11 @@ addon.StopCurrentSound = StopCurrentSound
 -- the bottom of the file; read here so every autoplay path waits for it.
 local npcVoiceEndsAt = 0
 -- Breathing room after the NPC's line, so narration doesn't start on the
--- same beat the voice actor stops.
-local NPC_VOICE_GAP = 0.4
+-- same beat the voice actor stops. The same "Wait before speaking" slider as
+-- the autoplay delay: one setting for how long SpeakStone gives Blizzard.
+local function NPCVoiceGap()
+    return tonumber(SpeakStone_MainDB.autoPlayDelay) or 1.5
+end
 
 local function YieldingToNPCVoice()
     return SpeakStone_MainDB.yieldToNPCVoice ~= false and not SpeakStone_MainDB.muteGossip
@@ -718,7 +721,7 @@ end
 local function ScheduleSound(soundData, delay)
     delay = delay or 0
     if YieldingToNPCVoice() then
-        delay = math.max(delay, npcVoiceEndsAt - GetTime() + NPC_VOICE_GAP)
+        delay = math.max(delay, npcVoiceEndsAt - GetTime() + NPCVoiceGap())
     end
     if soundData.nextSoundTimer then
         soundData.nextSoundTimer:Cancel()
@@ -1340,6 +1343,7 @@ local function IsKnownVoicedLine(text)
     end)
     return ok and SpeakStone_VoicedLines[hash] ~= nil
 end
+addon.IsKnownVoicedLine = IsKnownVoicedLine
 
 local function NoteNPCVoice(seconds, interruptPlaying)
     if not SpeakStone_MainDB or not YieldingToNPCVoice() then

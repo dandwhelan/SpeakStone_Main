@@ -14,7 +14,7 @@ addon keeps its per-NPC guess for anything not listed.
 
 Usage:
     python tools/build_voiced_lines.py                     # latest retail
-    python tools/build_voiced_lines.py --build 1.60.1.69913 --out ../SpeakStone_Forever_Main/VoicedLines.lua
+    python tools/build_voiced_lines.py --product wow_classic_beta   # Forever
 
 The hash and the normalisation MUST match VoicedLineHash in
 SpeakStone_Main.lua.
@@ -40,8 +40,8 @@ def fetch(url):
         return resp.read().decode("utf-8")
 
 
-def latest_retail_build():
-    return json.loads(fetch(WAGO + "/api/builds/latest"))["wow"]["version"]
+def latest_build(product):
+    return json.loads(fetch(WAGO + "/api/builds/latest"))[product]["version"]
 
 
 def normalise(text):
@@ -58,11 +58,13 @@ def line_hash(text):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--build", help="client build, e.g. 12.1.0.69933 (default: latest retail)")
+    ap.add_argument("--build", help="client build, e.g. 12.1.0.69933 (default: latest for --product)")
+    ap.add_argument("--product", default="wow",
+                    help="wago product when --build is omitted: wow (retail), wow_classic_beta (Forever)")
     ap.add_argument("--out", default="VoicedLines.lua")
     args = ap.parse_args()
 
-    build = args.build or latest_retail_build()
+    build = args.build or latest_build(args.product)
     rows = csv.DictReader(io.StringIO(fetch(f"{WAGO}/db2/BroadcastText/csv?build={build}")))
 
     hashes, skipped, voiced = set(), 0, 0

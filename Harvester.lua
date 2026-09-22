@@ -43,6 +43,10 @@ local function Store()
     h.quests = h.quests or {}
     h.gossip = h.gossip or {}
     h.itemText = h.itemText or {}
+    -- What NPCs say aloud in chat (/say, /yell, whisper, party), per NPC.
+    -- The client can't tell which of these are voiced; the site can, by
+    -- matching them against sources that list NPC sounds. See RecordNPCChat.
+    h.npcChat = h.npcChat or {}
     -- Which captured quests had no audio installed at the time. A set of IDs
     -- pointing into h.quests, so it costs nothing beyond the IDs. It used to
     -- drive a separate "missing quests only" export; that is gone, and this is
@@ -309,6 +313,40 @@ local function RecordGossip(speaker, text)
     table.insert(entry.texts, text)
 end
 
+-- NPC chat lines. Same bucket shape as gossip ({ npcName, npcID, texts }),
+-- so the site can treat both alike.
+--
+-- Kept narrow on purpose, because chat is a firehose: only creatures (a
+-- GUID says so), never while the player is fighting (combat barks are most
+-- of the volume and none of the story), nothing already known to be voiced,
+-- and at most NPC_CHAT_MAX distinct lines per NPC.
+local NPC_CHAT_MAX = 25
+
+local function RecordNPCChat(text, sender, guid)
+    if type(text) ~= "string" or IsSecret(text) or text == "" then return end
+    if IsSecret(sender) then sender = nil end
+    local npcID = CreatureIDFromGUID(guid)
+    if not npcID then return end
+    if InCombatLockdown() or (UnitAffectingCombat and UnitAffectingCombat("player")) then return end
+    if addon.IsKnownVoicedLine and addon.IsKnownVoicedLine(text) then return end
+
+    text = Detokenize(text)
+    local h = Store()
+    if h.sent[SentKey("c", npcID, text)] then return end
+
+    local entry = h.npcChat[npcID]
+    if not entry then
+        entry = { npcName = sender, npcID = npcID, texts = {} }
+        h.npcChat[npcID] = entry
+    end
+    entry.npcName = sender or entry.npcName
+    if #entry.texts >= NPC_CHAT_MAX then return end
+    for _, existing in ipairs(entry.texts) do
+        if existing == text then return end
+    end
+    table.insert(entry.texts, text)
+end
+
 -- Books, letters, scrolls and dungeon plaques, read through ItemTextFrame.
 local function RecordItemText(itemID, itemName, page, text)
     if not text or text == "" then return end
@@ -343,9 +381,19 @@ frame:RegisterEvent("QUEST_PROGRESS")
 frame:RegisterEvent("QUEST_COMPLETE")
 frame:RegisterEvent("GOSSIP_SHOW")
 frame:RegisterEvent("ITEM_TEXT_READY")
+frame:RegisterEvent("CHAT_MSG_MONSTER_SAY")
+frame:RegisterEvent("CHAT_MSG_MONSTER_YELL")
+frame:RegisterEvent("CHAT_MSG_MONSTER_WHISPER")
+frame:RegisterEvent("CHAT_MSG_MONSTER_PARTY")
 
-frame:SetScript("OnEvent", function(_, event)
+frame:SetScript("OnEvent", function(_, event, ...)
     if not Enabled() then return end
+
+    if event:sub(1, 17) == "CHAT_MSG_MONSTER_" then
+        local text, sender = ...
+        RecordNPCChat(text, sender, (select(12, ...)))
+        return
+    end
 
     if event == "GOSSIP_SHOW" then
         local speaker = CurrentSpeaker()
@@ -421,6 +469,7 @@ function addon.HarvestEntryCount()
     for _ in pairs(h.quests) do count = count + 1 end
     for _ in pairs(h.gossip) do count = count + 1 end
     for _ in pairs(h.itemText) do count = count + 1 end
+    for _ in pairs(h.npcChat) do count = count + 1 end
     return count
 end
 
@@ -518,7 +567,14 @@ function addon.HarvestCounts()
     end
     local missing = 0
     for _ in pairs(h.missingIDs) do missing = missing + 1 end
-    return quests, passages, unvoiced, npcs, lines, items, pages, missing
+    local chatNPCs, chatLines = 0, 0
+    for _, entry in pairs(h.npcChat) do
+        chatNPCs = chatNPCs + 1
+        chatLines = chatLines + #entry.texts
+    end
+    local sent = 0
+    for _ in pairs(h.sent) do sent = sent + 1 end
+    return quests, passages, unvoiced, npcs, lines, items, pages, missing, chatNPCs, chatLines, sent
 end
 
 -- Minimal Lua-table serialiser. The website's parser only cares about the
@@ -677,6 +733,7 @@ function addon.HarvestExportBatches(maxBytes)
     for key, entry in pairs(h.quests) do plan[#plan + 1] = { "quests", key, entry } end
     for key, entry in pairs(h.gossip) do plan[#plan + 1] = { "gossip", key, entry } end
     for key, entry in pairs(h.itemText) do plan[#plan + 1] = { "itemText", key, entry } end
+    for key, entry in pairs(h.npcChat) do plan[#plan + 1] = { "npcChat", key, entry } end
 
     local batches = {}
     local out, size, openKind, inBatch
@@ -783,6 +840,11 @@ function addon.HarvestSnapshot()
             snap[SentKey("i", key, page, text)] = true
         end
     end
+    for key, entry in pairs(h.npcChat) do
+        for _, text in ipairs(entry.texts or {}) do
+            snap[SentKey("c", key, text)] = true
+        end
+    end
     return snap
 end
 
@@ -841,13 +903,26 @@ function addon.HarvestMarkSent(snap)
             h.itemText[key] = nil
         end
     end
+    for key, entry in pairs(h.npcChat) do
+        local kept = {}
+        for _, text in ipairs(entry.texts or {}) do
+            if not Take(SentKey("c", key, text)) then
+                kept[#kept + 1] = text
+            end
+        end
+        if #kept == 0 then
+            h.npcChat[key] = nil
+        else
+            entry.texts = kept
+        end
+    end
     h.lastReminder = nil
     return cleared
 end
 
 function addon.HarvestWipe()
     local h = Store()
-    h.quests, h.gossip, h.itemText, h.missingIDs = {}, {}, {}, {}
+    h.quests, h.gossip, h.itemText, h.missingIDs, h.npcChat = {}, {}, {}, {}, {}
     -- Nothing left to submit, so nothing to be reminded about: an empty store
     -- should not sit silently through the interval before it can prompt again.
     h.lastReminder = nil

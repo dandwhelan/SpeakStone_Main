@@ -1,0 +1,38 @@
+name: Refresh voiced NPC lines
+
+# Rebuilds VoicedLines.lua from the latest client's BroadcastText and opens a
+# PR when it changed. Weekly, because Blizzard ships new voiced lines with
+# patches and hotfixes, not on any schedule of ours.
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build VoicedLines.lua
+        run: python tools/build_voiced_lines.py --product wow --out VoicedLines.lua
+
+      - name: Open a PR if it changed
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: automation/voiced-lines
+          delete-branch: true
+          commit-message: Refresh VoicedLines.lua from the latest client data
+          title: Refresh voiced NPC lines
+          body: |
+            Weekly rebuild of `VoicedLines.lua` by `tools/build_voiced_lines.py` (product `wow`).
+            Data only, no code changes.
+          add-paths: VoicedLines.lua
