@@ -120,8 +120,9 @@ local defaultSettings = {
     -- Seconds to hold narration back so Blizzard's own voice line can finish
     -- first. Was hardcoded to 2; a slider is better because the right value
     -- depends on how fast the player clicks through dialogue. Only applies
-    -- while those lines are audible -- see muteGossip.
-    autoPlayDelay = 0.5,
+    -- while those lines are audible -- see muteGossip. 1.5s from 1.5.1: 0.5
+    -- started narration on top of most quest givers' greetings.
+    autoPlayDelay = 1.5,
 }
 
 -- Autoplay for one kind of text. The master switch gates all three, so
@@ -180,6 +181,14 @@ local function InitializeAddonDB()
         SpeakStone_MainDB.migratedAutoPlayDelayV2 = true
         if SpeakStone_MainDB.autoPlayDelay == 2 then
             SpeakStone_MainDB.autoPlayDelay = 0.5
+        end
+    end
+    -- And again when the default went from 0.5s to 1.5s, so Blizzard's own
+    -- greeting gets room by default. Same rule: only the old default moves.
+    if not SpeakStone_MainDB.migratedAutoPlayDelayV3 then
+        SpeakStone_MainDB.migratedAutoPlayDelayV3 = true
+        if SpeakStone_MainDB.autoPlayDelay == 0.5 then
+            SpeakStone_MainDB.autoPlayDelay = 1.5
         end
     end
 
@@ -835,7 +844,7 @@ function PlayQuestAudio(textType, skipDelay)
 
         -- Delay shortly to account for greeting audio when using autoplay
         if SpeakStone_MainDB.autoPlayEnabled and not skipDelay and not SpeakStone_MainDB.muteGossip then
-            ScheduleSound(soundData, tonumber(SpeakStone_MainDB.autoPlayDelay) or 0.5)
+            ScheduleSound(soundData, tonumber(SpeakStone_MainDB.autoPlayDelay) or 1.5)
         else
             DoPlaySound(soundData)
         end
@@ -999,7 +1008,7 @@ local function PlayGossipAudio()
     -- Same autoplay delay as the quest path above -- this was missing here,
     -- so gossip always narrated instantly regardless of the slider.
     if SpeakStone_MainDB.autoPlayEnabled and not SpeakStone_MainDB.muteGossip then
-        ScheduleSound(soundData, tonumber(SpeakStone_MainDB.autoPlayDelay) or 0.5)
+        ScheduleSound(soundData, tonumber(SpeakStone_MainDB.autoPlayDelay) or 1.5)
     else
         DoPlaySound(soundData)
     end
@@ -1067,7 +1076,7 @@ local function PlayItemAudioDirect(itemLink, page)
     -- so item/book narration always started instantly regardless of the
     -- slider.
     if SpeakStone_MainDB.autoPlayEnabled and not SpeakStone_MainDB.muteGossip then
-        ScheduleSound(soundData, tonumber(SpeakStone_MainDB.autoPlayDelay) or 0.5)
+        ScheduleSound(soundData, tonumber(SpeakStone_MainDB.autoPlayDelay) or 1.5)
     else
         DoPlaySound(soundData)
     end
@@ -1269,6 +1278,7 @@ end)
 --   clip already playing is left alone rather than cut off for a line that
 --   may well be silent.
 local NPC_CHARS_PER_SECOND = 15
+local TALKINGHEAD_LINE_GAP = 2
 
 local function EstimateSpokenSeconds(text)
     if type(text) ~= "string" or IsSecret(text) then
@@ -1333,12 +1343,21 @@ npcVoiceFrame:SetScript("OnEvent", function(_, event, ...)
         if not (C_TalkingHead and C_TalkingHead.GetCurrentLineInfo) then
             return
         end
-        local ok, _, _, vo, duration, _, _, _, text = pcall(C_TalkingHead.GetCurrentLineInfo)
+        local ok, _, _, vo, duration, lineNumber, numLines, _, text = pcall(C_TalkingHead.GetCurrentLineInfo)
         if not ok or not vo or IsSecret(vo) or vo <= 0 then
             return
         end
         if IsSecret(duration) or not duration or duration <= 0 then
             duration = EstimateSpokenSeconds(text)
+        end
+        -- A multi-line talking head pauses between lines. Without cover for
+        -- that pause, a held clip starts in it and is cut off by the next
+        -- line a moment later. The next line's own event resets the wait,
+        -- and TALKINGHEAD_CLOSE lets go early if the conversation ends.
+        if type(lineNumber) == "number" and type(numLines) == "number"
+            and not IsSecret(lineNumber) and not IsSecret(numLines)
+            and lineNumber < numLines then
+            duration = duration + TALKINGHEAD_LINE_GAP
         end
         NoteNPCVoice(duration, true)
     elseif event == "TALKINGHEAD_CLOSE" then

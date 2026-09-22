@@ -472,7 +472,7 @@ function SpeakStone:CreateWindow()
                 Describe(value)
             end)
             slider:SetScript("OnShow", function(self)
-                local value = tonumber(SpeakStone_MainDB.autoPlayDelay) or 0.5
+                local value = tonumber(SpeakStone_MainDB.autoPlayDelay) or 1.5
                 self:SetValue(value)
                 Describe(value)
             end)
