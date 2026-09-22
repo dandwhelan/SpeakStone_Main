@@ -56,6 +56,7 @@ local function Store()
     -- only, never a name; deduplicated, so it is one row per kind of
     -- character, not per login.
     h.chars = h.chars or {}
+    h.npcs = h.npcs or {}
     -- Which captured quests had no audio installed at the time. A set of IDs
     -- pointing into h.quests, so it costs nothing beyond the IDs. It used to
     -- drive a separate "missing quests only" export; that is gone, and this is
@@ -223,6 +224,21 @@ local function PlayerMetadata()
     }
 end
 
+-- An NPC's name, sex, race and creature type, kept once per creature ID.
+-- Every quest passage used to carry its own copy -- six fields, about 150
+-- bytes of saved variables each -- although the same quest giver hands out
+-- every passage of a quest chain. Passages keep only the npcID now; the
+-- export carries this table and the site reads a passage's speaker from it.
+local NPC_TRAITS = { "npcName", "npcSex", "npcRace", "npcRaceToken", "npcCreatureType" }
+
+local function NoteNPC(h, npcID, traits)
+    local npc = h.npcs[npcID] or {}
+    for _, key in ipairs(NPC_TRAITS) do
+        if traits[key] ~= nil then npc[key] = traits[key] end
+    end
+    h.npcs[npcID] = npc
+end
+
 -- The index into h.chars for the character playing now, adding a row the
 -- first time this kind of character captures anything. Cached for the
 -- session: none of these change without a relog.
@@ -267,16 +283,22 @@ local function RecordPassage(questID, passage, text, wasMissing)
     entry.title = GetTitleText() or entry.title
 
     local speaker = CurrentSpeaker()
-    entry[passage] = {
-        text = text,
-        npcID = speaker.id,
+    local traits = {
         npcName = speaker.name,
         npcSex = speaker.sex,
         npcRace = speaker.race,
         npcRaceToken = speaker.raceToken,
         npcCreatureType = speaker.creatureType,
-        char = CurrentCharIndex(),
     }
+    local captured = { text = text, npcID = speaker.id, char = CurrentCharIndex() }
+    if speaker.id then
+        -- Who the NPC is lives once in h.npcs; see NoteNPC.
+        NoteNPC(h, speaker.id, traits)
+    else
+        -- No ID to point at, so the passage has to carry them itself.
+        for key, value in pairs(traits) do captured[key] = value end
+    end
+    entry[passage] = captured
     if wasMissing then
         h.missingIDs[questID] = true
     end
@@ -778,8 +800,9 @@ function addon.HarvestExportBatches(maxBytes)
     for key, value in pairs(PlayerMetadata()) do
         meta[key] = value
     end
-    -- Every piece carries the full list, since any piece may point into it.
+    -- Every piece carries both lists, since any piece may point into them.
     meta.chars = h.chars
+    meta.npcs = h.npcs
     local header = {}
     SerializeInto(header, meta, "  ")
     header = table.concat(header)
@@ -979,6 +1002,17 @@ function addon.HarvestMarkSent(snap)
             entry.texts = kept
         end
     end
+    -- An NPC nobody remaining points at has nothing left to describe.
+    local referenced = {}
+    for _, entry in pairs(h.quests) do
+        for _, passage in ipairs(QUEST_PASSAGES) do
+            local captured = entry[passage]
+            if captured and captured.npcID then referenced[captured.npcID] = true end
+        end
+    end
+    for npcID in pairs(h.npcs) do
+        if not referenced[npcID] then h.npcs[npcID] = nil end
+    end
     h.lastReminder = nil
     return cleared
 end
@@ -986,6 +1020,7 @@ end
 function addon.HarvestWipe()
     local h = Store()
     h.quests, h.gossip, h.itemText, h.missingIDs, h.npcChat = {}, {}, {}, {}, {}
+    h.npcs = {}
     -- Nothing left to submit, so nothing to be reminded about: an empty store
     -- should not sit silently through the interval before it can prompt again.
     h.lastReminder = nil
@@ -1004,7 +1039,21 @@ end
 --   2: speaker attribution was unreliable -- see CurrentSpeaker.
 --   3: the pass for 2 kept quest npcIDs. Every one of them was a zoneUID, so
 --      they all had to go, not just the ones that were obviously wrong.
-local HARVEST_SCHEMA = 3
+--   4: NPC traits moved off every quest passage into h.npcs. A layout
+--      change, not a repair: nothing is lost, the store just gets smaller.
+local HARVEST_SCHEMA = 4
+
+local function HoistNPCTraits(h)
+    for _, entry in pairs(h.quests) do
+        for _, passage in ipairs(QUEST_PASSAGES) do
+            local captured = entry[passage]
+            if captured and captured.npcID then
+                NoteNPC(h, captured.npcID, captured)
+                for _, key in ipairs(NPC_TRAITS) do captured[key] = nil end
+            end
+        end
+    end
+end
 
 -- Throw away what the speaker bug produced.
 --
@@ -1056,10 +1105,14 @@ function addon.HarvestMigrate()
     local h = Store()
     local moved = 0
 
-    if (h.schema or 1) < HARVEST_SCHEMA then
+    local schema = h.schema or 1
+    if schema < 3 then
         RepairSpeakerData(h)
-        h.schema = HARVEST_SCHEMA
     end
+    if schema < 4 then
+        HoistNPCTraits(h)
+    end
+    h.schema = HARVEST_SCHEMA
 
     local old = SpeakStone_MainDB.missingCaptures
     if old and old.quests then
