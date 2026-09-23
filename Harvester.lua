@@ -13,9 +13,8 @@
 -- the client either, and no scrapeable equivalent, so it can *only* come from
 -- capture like this.
 --
--- The standalone addon still exists and still works. If someone has it
--- installed and enabled, this module stands down entirely rather than both
--- recording the same lines into two different stores.
+-- The standalone addon is retired: this module always captures, and never
+-- stands down for it. Its leftover saved data is still merged on export.
 
 local addonName, addon = ...
 
@@ -25,15 +24,10 @@ local function DebugPrint(...)
     if addon.DebugPrint then addon.DebugPrint(...) end
 end
 
--- The standalone companion addon, if the player still has it, owns capture.
-local function StandaloneActive()
-    return C_AddOns and C_AddOns.IsAddOnLoaded
-        and C_AddOns.IsAddOnLoaded("SpeakStoneHarvester")
-end
-
+-- Capture is owned by this addon alone; the old standalone Harvester is no
+-- longer deferred to (its saved data is still merged into exports below).
 local function Enabled()
     return SpeakStone_MainDB and SpeakStone_MainDB.harvestEnabled
-        and not StandaloneActive()
 end
 addon.HarvestEnabled = Enabled
 

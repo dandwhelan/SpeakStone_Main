@@ -22,19 +22,11 @@ local function OpenAudioLibraryUI()
     end
 end
 
--- The standalone companion addon, where someone still has it, owns capture and
--- the export commands. Every route into export has to ask, not assume.
-local function StandaloneHarvesterActive()
-    return C_AddOns and C_AddOns.IsAddOnLoaded
-        and C_AddOns.IsAddOnLoaded("SpeakStoneHarvester")
-end
-
+-- Capture lives entirely in this addon. The old standalone Harvester addon
+-- is no longer deferred to; anything it left in its saved variables is still
+-- folded into the export (Harvester.lua), so nothing recorded with it is lost.
 local function ExportHarvest()
-    if StandaloneHarvesterActive() and SlashCmdList["SPEAKSTONEHARVEST"] then
-        SlashCmdList["SPEAKSTONEHARVEST"]("export")
-    else
-        addon.ShowHarvestExport()
-    end
+    addon.ShowHarvestExport()
 end
 
 StaticPopupDialogs["QUESTREADER_CONFIRM_CLEAR_HARVEST"] = {
@@ -42,12 +34,7 @@ StaticPopupDialogs["QUESTREADER_CONFIRM_CLEAR_HARVEST"] = {
     button1 = YES,
     button2 = NO,
     OnAccept = function()
-        -- Only when the *standalone* addon owns that command. This addon now
-        -- registers /qrharvest itself, so an unqualified check ran the
-        -- built-in wipe here and again below, printing "cleared" twice.
-        if StandaloneHarvesterActive() and SlashCmdList["SPEAKSTONEHARVEST"] then
-            SlashCmdList["SPEAKSTONEHARVEST"]("wipe")
-        elseif SpeakStoneHarvesterDB then
+        if SpeakStoneHarvesterDB then
             -- Left over from the standalone addon, cleared silently: the one
             -- line printed below covers both stores, and two "cleared"
             -- messages for one click read as if something went twice.
@@ -139,11 +126,6 @@ local SETTINGS_SECTIONS = {
                 tooltip = "The button at the bottom of the quest window and in the quest log. Hide it if your quest UI already covers that spot -- narration still works.",
                 onChange = function() if addon.UpdateQuestButtonVisibility then addon.UpdateQuestButtonVisibility() end end,
             },
-            {
-                option = "showDebugMessages",
-                label = "Show debug messages in chat",
-                tooltip = "Prints which clip was chosen, and says so when a quest has no audio installed. Useful when reporting a problem.",
-            },
         },
     },
     {
@@ -151,9 +133,14 @@ local SETTINGS_SECTIONS = {
         options = {
             {
                 option = "harvestEnabled",
-                label = "Capture quest text to help voice missing quests",
+                label = "Auto capture quest text to help voice missing quests",
                 tooltip = "Records the text of quests, greetings and books you encounter, so unvoiced ones can be queued up. Your character's name is replaced with $n before anything is stored.",
                 onChange = function() if addon.RefreshSettingsStatus then addon.RefreshSettingsStatus() end end,
+            },
+            {
+                option = "showDebugMessages",
+                label = "Show debug messages in chat",
+                tooltip = "Prints which clip was chosen, and says so when a quest has no audio installed. Useful when reporting a problem.",
             },
         },
     },
@@ -256,6 +243,48 @@ local function SetCardState(card, accent, value, caption)
     card.caption:SetText(caption or "")
 end
 
+-- Every pack a complete install has, per family. A missing pack cannot
+-- announce itself -- it is not loaded -- so the only way to say what is absent
+-- is to know what should be there. Update this when a pack is added or a
+-- volume split is sealed (tools/pack_split_state.json).
+local EXPECTED_PACK_FAMILIES = {
+    {
+        prefix = "SpeakStone_Pack_",
+        packs = {
+            "Classic_Part1", "Classic_Part2", "TheBurningCrusade",
+            "WrathoftheLichKing", "Cataclysm", "MistsofPandaria",
+            "WarlordsofDraenor", "Legion", "BattleforAzeroth", "Shadowlands",
+            "Dragonflight", "TheWarWithin", "Midnight", "Chatter",
+        },
+    },
+    {
+        prefix = "SpeakStone_Forever_",
+        packs = { "Audio_Part1", "Audio_Part2", "Audio_Part3", "Audio_Part4" },
+    },
+}
+
+-- Judged against whichever family the player actually uses, so someone on
+-- the Forever bundle is not told they lack every expansion pack.
+local function MissingPacks(installedPacks)
+    local installed = {}
+    for _, pack in ipairs(installedPacks) do installed[pack.name] = true end
+    local best, bestHits = EXPECTED_PACK_FAMILIES[1], -1
+    for _, family in ipairs(EXPECTED_PACK_FAMILIES) do
+        local hits = 0
+        for _, short in ipairs(family.packs) do
+            if installed[family.prefix .. short] then hits = hits + 1 end
+        end
+        if hits > bestHits then best, bestHits = family, hits end
+    end
+    local missing = {}
+    for _, short in ipairs(best.packs) do
+        if not installed[best.prefix .. short] then
+            table.insert(missing, (short:gsub("_", " ")))
+        end
+    end
+    return missing
+end
+
 local ACCENT_GOOD = { 0.25, 0.82, 0.48 }
 local ACCENT_BAD = { 1, 0.42, 0.37 }
 local ACCENT_NEUTRAL = { 0.85, 0.75, 0.45 }
@@ -302,8 +331,8 @@ function SpeakStone:CreateWindow()
     cards.packs = PlaceCard({ label = "VOICE PACKS", onClick = OpenAudioLibraryUI }, 1)
     AttachTooltip(cards.packs, "Voice packs", "How much audio is installed and where it came from. Click to browse and replay every voiced quest your packs provide.")
 
-    cards.captured = PlaceCard({ label = "CAPTURED", onClick = ExportHarvest }, 2)
-    AttachTooltip(cards.captured, "Captured text", "Greetings and book pages exist nowhere but a live client, so they are the part worth sending. Click to export everything recorded so far.")
+    cards.captured = PlaceCard({ label = "YOUR CAPTURES", onClick = ExportHarvest }, 2)
+    AttachTooltip(cards.captured, "Your captures", "Greetings and book pages exist nowhere but a live client, so they are the part worth sending. Click to export everything recorded so far.")
 
     cards.capture = PlaceCard({ label = "CAPTURE" }, 3)
     AttachTooltip(cards.capture, "Capture", "Whether SpeakStone is recording the text it encounters. Your character's name is replaced with $n before anything is stored.")
@@ -472,7 +501,7 @@ function SpeakStone:CreateWindow()
                 Describe(value)
             end)
             slider:SetScript("OnShow", function(self)
-                local value = tonumber(SpeakStone_MainDB.autoPlayDelay) or 1.5
+                local value = tonumber(SpeakStone_MainDB.autoPlayDelay) or 1.0
                 self:SetValue(value)
                 Describe(value)
             end)
@@ -528,40 +557,17 @@ function SpeakStone:CreateWindow()
                 SetCardState(cards.packs, ACCENT_BAD, "None installed",
                     "The addon has nothing to play until you add one. Get a pack at " .. WEBSITE .. ".")
             else
-                -- Full names ("SpeakStone_Pack_BattleforAzeroth") ran
-                -- the caption off the bottom of the card even before the clip
-                -- fix above; showing a handful and folding the rest into a
-                -- count keeps the card readable regardless of how many packs
-                -- are installed.
-                local MAX_NAMES_SHOWN = 3
-                local names = {}
-                for _, pack in ipairs(packs) do
-                    local shortName = pack.name:gsub("^SpeakStone_Pack_", "")
-                    table.insert(names, shortName)
-                end
-                local nameList
-                if #names > MAX_NAMES_SHOWN then
-                    local shown = {}
-                    for i = 1, MAX_NAMES_SHOWN do shown[i] = names[i] end
-                    nameList = table.concat(shown, ", ") .. string.format(" +%d more", #names - MAX_NAMES_SHOWN)
+                -- What the player wants to know is what they lack, not a list
+                -- of what they already have -- that ran off the card and
+                -- answered the wrong question.
+                local missing = MissingPacks(packs)
+                local packLine
+                if #missing == 0 then
+                    packLine = "|cff00ff00All voice packs installed|r"
                 else
-                    nameList = table.concat(names, ", ")
+                    packLine = "|cffff6b5eMissing:|r " .. table.concat(missing, ", ")
                 end
-                local caption = string.format("clip(s) across %d quest(s)\n%s", quests, nameList)
-                -- Silenced-not-missing: these clips exist and are correctly
-                -- voiced, but never autoplay because the NPC's gossip is
-                -- known or suspected to change with quest state (see
-                -- DynamicGossipNPCs.lua). That cost is otherwise invisible --
-                -- an NPC that never speaks looks the same as one nobody has
-                -- captured yet -- so it is called out here rather than left
-                -- to be noticed as silence in-game.
-                if addon.GetSuppressedGossipCount then
-                    local suppressed = addon.GetSuppressedGossipCount()
-                    if suppressed > 0 then
-                        caption = caption .. string.format(
-                            "\n%d gossip clip(s) captured but not autoplayed (browse via /qrlibrary)", suppressed)
-                    end
-                end
+                local caption = string.format("clip(s) across %d quest(s)\n%s", quests, packLine)
                 SetCardState(cards.packs, ACCENT_GOOD, clips, caption)
             end
         end
@@ -569,10 +575,7 @@ function SpeakStone:CreateWindow()
         -- Whether capture is running is not a fact about the counts, so it is
         -- set outside the block below: with the capture module absent, the
         -- card used to be left blank rather than saying anything.
-        if StandaloneHarvesterActive() then
-            SetCardState(cards.capture, ACCENT_NEUTRAL, "Harvester",
-                "The standalone Harvester addon is installed and is doing the capturing; SpeakStone's own capture is standing down.")
-        elseif SpeakStone_MainDB.harvestEnabled then
+        if SpeakStone_MainDB.harvestEnabled then
             SetCardState(cards.capture, ACCENT_GOOD, "Recording",
                 "Quest text, greetings and books are being recorded as you meet them.")
         else

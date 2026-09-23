@@ -93,7 +93,8 @@ local defaultSettings = {
     -- came for where it exists; SpeakStone fills the silence where it does
     -- not. Turning this on silences the game's Dialog channel instead and
     -- narrates immediately.
-    muteGossip = false,
+    -- On by default from 1.5.1, owner's call.
+    muteGossip = true,
     -- Blizzard's voiced story lines don't all arrive with the quest window:
     -- a talking head, or the quest giver speaking aloud after you accept or
     -- hand in, starts whenever the server scripts it. With this on, narration
@@ -107,7 +108,9 @@ local defaultSettings = {
     -- cutting a sentence off, matching how Blizzard's own voiced dialogue
     -- behaves (it doesn't stop just because you closed the quest frame).
     stopDialogueOnClose = false,
-    showDebugMessages = false,
+    -- On by default from 1.5.1, owner's call: debug output is what makes a
+    -- player's bug report useful.
+    showDebugMessages = true,
     -- Capture quest/gossip/book text as it is encountered, so gaps in the
     -- voiced library can be filled. On by default: this is the one thing the
     -- project needs from players that nothing else can supply, it costs
@@ -120,9 +123,9 @@ local defaultSettings = {
     -- Seconds to hold narration back so Blizzard's own voice line can finish
     -- first. Was hardcoded to 2; a slider is better because the right value
     -- depends on how fast the player clicks through dialogue. Only applies
-    -- while those lines are audible -- see muteGossip. 1.5s from 1.5.1: 0.5
+    -- while those lines are audible -- see muteGossip. 1.0s from 1.5.1: 0.5
     -- started narration on top of most quest givers' greetings.
-    autoPlayDelay = 1.5,
+    autoPlayDelay = 1.0,
 }
 
 -- Autoplay for one kind of text. The master switch gates all three, so
@@ -183,12 +186,12 @@ local function InitializeAddonDB()
             SpeakStone_MainDB.autoPlayDelay = 0.5
         end
     end
-    -- And again when the default went from 0.5s to 1.5s, so Blizzard's own
+    -- And again when the default went from 0.5s to 1.0s, so Blizzard's own
     -- greeting gets room by default. Same rule: only the old default moves.
     if not SpeakStone_MainDB.migratedAutoPlayDelayV3 then
         SpeakStone_MainDB.migratedAutoPlayDelayV3 = true
         if SpeakStone_MainDB.autoPlayDelay == 0.5 then
-            SpeakStone_MainDB.autoPlayDelay = 1.5
+            SpeakStone_MainDB.autoPlayDelay = 1.0
         end
     end
 
@@ -240,9 +243,7 @@ local questReaderLauncher = LDB:NewDataObject("SpeakStone_Main", {
         if button == "LeftButton" then
             addon:OpenSettings()
         elseif button == "RightButton" then
-            -- Capture is built in now, so this always has somewhere to go.
-            -- The standalone Harvester addon still wins if it is installed,
-            -- since in that case it, not this addon, holds the recordings.
+            -- Capture is built in, so this always has somewhere to go.
             if SlashCmdList["QUESTREADERHARVEST"] then
                 SlashCmdList["QUESTREADERHARVEST"]("export")
             else
@@ -706,7 +707,7 @@ local npcVoiceEndsAt = 0
 -- same beat the voice actor stops. The same "Wait before speaking" slider as
 -- the autoplay delay: one setting for how long SpeakStone gives Blizzard.
 local function NPCVoiceGap()
-    return tonumber(SpeakStone_MainDB.autoPlayDelay) or 1.5
+    return tonumber(SpeakStone_MainDB.autoPlayDelay) or 1.0
 end
 
 local function YieldingToNPCVoice()
@@ -847,7 +848,7 @@ function PlayQuestAudio(textType, skipDelay)
 
         -- Delay shortly to account for greeting audio when using autoplay
         if SpeakStone_MainDB.autoPlayEnabled and not skipDelay and not SpeakStone_MainDB.muteGossip then
-            ScheduleSound(soundData, tonumber(SpeakStone_MainDB.autoPlayDelay) or 1.5)
+            ScheduleSound(soundData, tonumber(SpeakStone_MainDB.autoPlayDelay) or 1.0)
         else
             DoPlaySound(soundData)
         end
@@ -1069,7 +1070,7 @@ local function PlayGossipAudio()
     -- Same autoplay delay as the quest path above -- this was missing here,
     -- so gossip always narrated instantly regardless of the slider.
     if SpeakStone_MainDB.autoPlayEnabled and not SpeakStone_MainDB.muteGossip then
-        ScheduleSound(soundData, tonumber(SpeakStone_MainDB.autoPlayDelay) or 1.5)
+        ScheduleSound(soundData, tonumber(SpeakStone_MainDB.autoPlayDelay) or 1.0)
     else
         DoPlaySound(soundData)
     end
@@ -1137,7 +1138,7 @@ local function PlayItemAudioDirect(itemLink, page)
     -- so item/book narration always started instantly regardless of the
     -- slider.
     if SpeakStone_MainDB.autoPlayEnabled and not SpeakStone_MainDB.muteGossip then
-        ScheduleSound(soundData, tonumber(SpeakStone_MainDB.autoPlayDelay) or 1.5)
+        ScheduleSound(soundData, tonumber(SpeakStone_MainDB.autoPlayDelay) or 1.0)
     else
         DoPlaySound(soundData)
     end
@@ -1736,10 +1737,8 @@ SlashCmdList["QUESTREADERMISSING"] = function()
     addon.ShowHarvestExport()
 end
 
--- Everything captured: quests, gossip and book text, voiced or not. Not
--- registered if the standalone Harvester addon is loaded -- it claims these
--- same command names, and whichever loaded second would silently win.
-if not (C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("SpeakStoneHarvester")) then
+-- Everything captured: quests, gossip and book text, voiced or not.
+do
     SLASH_QUESTREADERHARVEST1, SLASH_QUESTREADERHARVEST2, SLASH_QUESTREADERHARVEST3 = '/qrharvest', '/ssharvest', '/speakstoneharvest'
     SlashCmdList["QUESTREADERHARVEST"] = function(msg)
         if msg == "export" or msg == "copy" then
