@@ -144,7 +144,10 @@ local function CurrentSpeaker()
     -- NPCs were once all assigned the same single fallback voice. Anything
     -- unavailable is left nil rather than guessed, so the resolver can tell
     -- "not captured" from "captured as unknown".
-    local sex = UnitSex("npc")
+    -- UnitSex can return a secret number (seen in Proving Grounds, 12.x);
+    -- comparing one taints and errors, so check before comparing.
+    local okSex, sex = pcall(UnitSex, "npc")
+    if not okSex or IsSecret(sex) then sex = nil end
     -- 1 is the API's "unknown", which is not a fact worth recording.
     if sex ~= 2 and sex ~= 3 then sex = nil end
 
@@ -338,6 +341,8 @@ local function RecordGossip(speaker, text)
     end
 
     if Store().sent[SentKey("g", key, text)] then
+        DebugPrint("SpeakStone: gossip from " .. tostring(npcName or key)
+            .. " already exported earlier, not captured again.")
         return
     end
 
@@ -371,6 +376,8 @@ local function RecordGossip(speaker, text)
             else
                 entry.seen[i] = { count = 1, first = now, last = now }
             end
+            DebugPrint("SpeakStone: gossip from " .. tostring(npcName or key)
+                .. " already captured (seen " .. entry.seen[i].count .. "x).")
             return
         end
     end
@@ -378,6 +385,7 @@ local function RecordGossip(speaker, text)
     local i = #entry.texts
     entry.chars[i] = CurrentCharIndex()
     entry.seen[i] = { count = 1, first = now, last = now }
+    DebugPrint("SpeakStone: captured gossip from " .. tostring(npcName or key) .. ".")
 end
 
 -- NPC chat lines. Same bucket shape as gossip ({ npcName, npcID, texts }),
@@ -473,7 +481,14 @@ frame:SetScript("OnEvent", function(_, event, ...)
         local ok, text = pcall(C_GossipInfo.GetText)
         -- A greeting already matched to a voiced clip is already in the
         -- corpus; recording it again only grows the store.
-        if ok and not (addon.GossipTextKnown and addon.GossipTextKnown(speaker.id, text)) then
+        local who = tostring(speaker.name or "?") .. " (" .. tostring(speaker.id or "no id") .. ")"
+        if not ok or IsSecret(text) then
+            -- Hidden by the client (instances); nothing to say about it.
+        elseif not text or text == "" then
+            DebugPrint("SpeakStone: gossip from " .. who .. " has no greeting text.")
+        elseif addon.GossipTextKnown and addon.GossipTextKnown(speaker.id, text) then
+            DebugPrint("SpeakStone: gossip from " .. who .. " already voiced, not captured.")
+        else
             RecordGossip(speaker, text)
         end
         return

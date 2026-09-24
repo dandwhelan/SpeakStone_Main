@@ -859,6 +859,13 @@ local function BuildUI()
         -- waiting for, and it would keep waking every frame until it finished.
         CancelFilter()
         self:StopAudio()
+        -- The index is tens of thousands of rows and most of the addon's
+        -- memory. Rebuilding it on the next open costs a moment; keeping it
+        -- costs every player the memory all session.
+        self.allQuests, self.allGossip = nil, nil
+        self.filteredList, self.lastQuery, self.lastResult = nil, nil, nil
+        self.isIndexed = false
+        if addon.ReleaseAudioIndex then addon.ReleaseAudioIndex() end
     end)
 
     return frame

@@ -26,6 +26,7 @@ addon.soundSources["SpeakStone_Main"] = SpeakStoneSoundLengths
 -- register one.
 local function InvalidateAudioCaches()
     addon.audioIndex = nil
+    addon.audioCounts = nil
     if addon.AudioLibraryInvalidate then
         addon.AudioLibraryInvalidate()
     end
@@ -528,19 +529,77 @@ local function BuildAudioIndex()
 end
 addon.GetAudioIndex = BuildAudioIndex
 
+-- The Audio Library owns the full index only while it is open. Holding it
+-- for the session cost ~35,000 quest rows (two tables and a string each)
+-- plus a row per gossip clip -- most of the addon's memory, measured
+-- 2026-09-24 at 26 MB for the base addon -- for a window most players
+-- open rarely. The library calls this when it closes.
+function addon.ReleaseAudioIndex()
+    addon.audioIndex = nil
+end
+
+-- Counts only, for the settings dashboard. Same walk and same patterns as
+-- BuildAudioIndex so the two can never disagree, but nothing per quest
+-- survives it: the quest-ID set is local and goes when this returns, and
+-- only the handful of numbers is kept.
+local function CountAudio()
+    if addon.audioIndex then
+        local index = addon.audioIndex
+        return index.packs, index.clips, index.questCount, index.gossipSuppressedClips
+    end
+    if addon.audioCounts then
+        local c = addon.audioCounts
+        return c.packs, c.clips, c.questCount, c.gossipSuppressedClips
+    end
+    local packs, clips = {}, 0
+    local questSeen, questCount = {}, 0
+    local suppressed = 0
+    for packName, soundLengths in pairs(addon.soundSources or {}) do
+        if type(soundLengths) == "table" then
+            local packClips = 0
+            for soundFile in pairs(soundLengths) do
+                packClips = packClips + 1
+                local questID = soundFile:match("^(%d+)_%a+%.")
+                local id = questID and tonumber(questID)
+                if id then
+                    if not questSeen[id] then
+                        questSeen[id] = true
+                        questCount = questCount + 1
+                    end
+                else
+                    local npcIDStr = soundFile:match("^npc(%d+)_gossip%d+%.")
+                    if npcIDStr and addon.GossipClipAutoplayState(tonumber(npcIDStr)) == "suppressed" then
+                        suppressed = suppressed + 1
+                    end
+                end
+            end
+            if packClips > 0 then
+                table.insert(packs, { name = packName, clips = packClips })
+                clips = clips + packClips
+            end
+        end
+    end
+    table.sort(packs, function(a, b) return a.name < b.name end)
+    addon.audioCounts = {
+        packs = packs, clips = clips, questCount = questCount,
+        gossipSuppressedClips = suppressed,
+    }
+    return packs, clips, questCount, suppressed
+end
+
 -- How much audio is actually installed, and where it came from. The settings
 -- panel shows this: "no audio for this quest" and "no packs installed at all"
 -- look identical from the player's side otherwise.
 function addon.GetInstalledAudioSummary()
-    local index = BuildAudioIndex()
-    return index.packs, index.clips, index.questCount
+    local packs, clips, questCount = CountAudio()
+    return packs, clips, questCount
 end
 
 -- See the comment on gossipSuppressedClips above: this number only grows,
 -- silently, as more gossip gets captured for NPCs already on the dynamic
 -- list. The settings dashboard surfaces it so growth is visible.
 function addon.GetSuppressedGossipCount()
-    return BuildAudioIndex().gossipSuppressedClips
+    return (select(4, CountAudio()))
 end
 
 -- Function to detect available sound packs
