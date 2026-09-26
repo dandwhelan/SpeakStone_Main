@@ -524,6 +524,12 @@ function SpeakStone:CreateWindow()
             onClick = function() StaticPopup_Show("QUESTREADER_CONFIRM_CLEAR_HARVEST") end,
             tooltip = "Throw away everything captured so far. Submit it first if you have not.",
         },
+        {
+            text = "Profiles",
+            width = 110,
+            onClick = function() if addon.ShowTutorial then addon.ShowTutorial(2) end end,
+            tooltip = "Switch to a premade profile, or rerun the first-start setup. Also /ss tutorial.",
+        },
     }
 
     local previous
@@ -678,5 +684,13 @@ end
 
 SLASH_QUESTREADER1, SLASH_QUESTREADER2, SLASH_QUESTREADER3, SLASH_QUESTREADER4 = '/qr', '/questreader', '/ss', '/speakstone'
 SlashCmdList.QUESTREADER = function(msg)
+    msg = strlower(strtrim(msg or ""))
+    if msg == "tutorial" or msg == "setup" then
+        if addon.ShowTutorial then addon.ShowTutorial(1) end
+        return
+    elseif msg == "profile" or msg == "profiles" then
+        if addon.ShowTutorial then addon.ShowTutorial(2) end
+        return
+    end
     addon:OpenSettings()
 end
