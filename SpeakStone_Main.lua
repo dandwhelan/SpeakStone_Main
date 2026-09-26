@@ -332,7 +332,14 @@ loadingFrame:SetScript("OnEvent", function(self, event, loadedAddonName)
         -- All addons should now be loaded, call DetectSoundPacks safely here
         DetectSoundPacks()
         -- Delayed so late self-registering packs have arrived first.
-        C_Timer.After(5, PromptForAudioPacksIfMissing)
+        -- First start gets the tutorial, whose audio-pack page replaces the
+        -- separate popup.
+        C_Timer.After(3, function()
+            if addon.MaybeShowTutorial and addon.MaybeShowTutorial() then
+                return
+            end
+            C_Timer.After(2, PromptForAudioPacksIfMissing)
+        end)
         -- Held back so it is not lost in the wall of text every other addon
         -- prints at login.
         if addon.HarvestRemindIfLarge then
@@ -646,6 +653,7 @@ local AUDIO_PACK_PROMPT_TEXT = "SpeakStone works better with the audio packs ins
     .. "Please look on CurseForge to get the Audio packs. They are always being updated and improved."
     .. "\n\n"
     .. "Please bear with me while CurseForge approves the audio pack addons."
+addon.AUDIO_PACK_EXTRA_NOTE = "\n\nPlease bear with me while CurseForge approves the audio pack addons."
 
 -- WoW cannot open a browser, so the link sits in a pre-selected edit box
 -- the player can Ctrl+C.
