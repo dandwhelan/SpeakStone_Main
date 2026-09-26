@@ -294,6 +294,7 @@ addon.UpdateMinimapButtonVisibility = UpdateMinimapButtonVisibility
 -- the PLAYER_LOGIN handler below closes over the local rather than looking
 -- for a global that no longer exists.
 local DetectSoundPacks
+local PromptForAudioPacksIfMissing
 
 -- Create a frame to listen for the ADDON_LOADED event
 local loadingFrame = CreateFrame("Frame")
@@ -330,6 +331,8 @@ loadingFrame:SetScript("OnEvent", function(self, event, loadedAddonName)
     elseif event == "PLAYER_LOGIN" then
         -- All addons should now be loaded, call DetectSoundPacks safely here
         DetectSoundPacks()
+        -- Delayed so late self-registering packs have arrived first.
+        C_Timer.After(5, PromptForAudioPacksIfMissing)
         -- Held back so it is not lost in the wall of text every other addon
         -- prints at login.
         if addon.HarvestRemindIfLarge then
@@ -625,6 +628,46 @@ function DetectSoundPacks()
     if registered then
         InvalidateAudioCaches()
     end
+end
+
+-- Nudge players with no audio pack installed towards CurseForge. Only the
+-- base addon's own entry in soundSources means no pack registered, whether
+-- by self-registration or the legacy OptionalDeps load above.
+local function HasAnyAudioPack()
+    for packName in pairs(addon.soundSources) do
+        if packName ~= addonName then
+            return true
+        end
+    end
+    return false
+end
+
+local AUDIO_PACK_PROMPT_TEXT = "SpeakStone works better with the audio packs installed.\n\n"
+    .. "Please look on CurseForge to get the Audio packs. They are always being updated and improved."
+    .. "\n\n"
+    .. "Please bear with me while CurseForge approves the audio pack addons."
+
+StaticPopupDialogs["SPEAKSTONE_AUDIO_PACK_PROMPT"] = {
+    text = AUDIO_PACK_PROMPT_TEXT,
+    button1 = OKAY,
+    button2 = "Don't show again",
+    OnCancel = function(_, _, reason)
+        if reason == "clicked" and SpeakStone_MainDB then
+            SpeakStone_MainDB.hideAudioPackPrompt = true
+        end
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    preferredIndex = 3,
+}
+
+function PromptForAudioPacksIfMissing()
+    if HasAnyAudioPack() or (SpeakStone_MainDB and SpeakStone_MainDB.hideAudioPackPrompt) then
+        return
+    end
+    print("|cff33ff99SpeakStone:|r " .. AUDIO_PACK_PROMPT_TEXT:gsub("\n\n", " "))
+    StaticPopup_Show("SPEAKSTONE_AUDIO_PACK_PROMPT")
 end
 
 local function GetCurrentSound()
