@@ -109,9 +109,9 @@ local defaultSettings = {
     -- cutting a sentence off, matching how Blizzard's own voiced dialogue
     -- behaves (it doesn't stop just because you closed the quest frame).
     stopDialogueOnClose = false,
-    -- On by default from 1.5.1, owner's call: debug output is what makes a
-    -- player's bug report useful.
-    showDebugMessages = true,
+    -- Off by default again, owner's call: new players get a quiet chat. The
+    -- Helper / Tester profile and /ssdebug turn it on for bug reports.
+    showDebugMessages = false,
     -- Capture quest/gossip/book text as it is encountered, so gaps in the
     -- voiced library can be filled. On by default: this is the one thing the
     -- project needs from players that nothing else can supply, it costs
