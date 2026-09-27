@@ -30,47 +30,34 @@ local searchTimer
 -- --------------------------------------------------------------------------
 -- Voice info (race and sex of the voice on each clip)
 --
--- Shipped by the voice pipeline as its own Load-on-Demand addon, so it costs
--- nothing until someone opens this window. WoW cannot unload an addon, so
--- once loaded it stays for the session. Absent or not yet built, every
--- lookup returns nil and the library looks exactly as it did before.
---
--- SpeakStone_VoiceInfo = {
---     format = 1,
---     races = { Hu = "Human", Or = "Orc", ... },   -- code -> display name
---     npc   = { [npcID] = "HuM", ... },            -- race code + M/F/N
---     quest = { [questID] = "HuM",                 -- one voice for all three
---               [questID] = { d = "HuM", p = "HuM", c = "DwF" }, ... },
--- }
+-- Each audio pack can hand its own voice data to SpeakStone_RegisterSoundPack
+-- (format documented there). Packs without it, or older packs, just show no
+-- voice, and the library looks exactly as it did before.
 -- --------------------------------------------------------------------------
-local VOICE_INFO_ADDON = "SpeakStone_VoiceInfo"
-local voiceInfoTried = false
 local SEX_NAMES = { M = "male", F = "female", N = "" }
 local QUEST_TYPE_KEYS = { description = "d", progress = "p", completion = "c" }
 -- Tag -> { label = "Human male", search = " human male " }. A few dozen
 -- distinct tags cover every clip, so this stays tiny.
 local tagCache = {}
 
-local function LoadVoiceInfo()
-    if SpeakStone_VoiceInfo then return SpeakStone_VoiceInfo end
-    if voiceInfoTried then return nil end
-    voiceInfoTried = true
-    local load = (C_AddOns and C_AddOns.LoadAddOn) or LoadAddOn
-    if load then pcall(load, VOICE_INFO_ADDON) end
-    return SpeakStone_VoiceInfo
+local function RaceName(code)
+    for _, info in pairs(addon.voiceSources or {}) do
+        local name = info.races and info.races[code]
+        if name then return name end
+    end
+    return code
 end
 
 local function DescribeTag(tag)
     if type(tag) ~= "string" or tag == "" then return nil end
     local cached = tagCache[tag]
     if cached then return cached end
-    local info = SpeakStone_VoiceInfo
     local sexCode = tag:sub(-1)
     local raceCode = tag:sub(1, -2)
     if not SEX_NAMES[sexCode] then
         sexCode, raceCode = nil, tag
     end
-    local race = info and info.races and info.races[raceCode] or raceCode
+    local race = RaceName(raceCode)
     local sex = sexCode and SEX_NAMES[sexCode] or ""
     local label = sex ~= "" and (race .. " " .. sex) or race
     cached = { label = label, search = " " .. label:lower() .. " " }
@@ -81,9 +68,12 @@ end
 -- kind is "npc" or "quest"; questType picks one of a quest's three clips,
 -- or nil for the quest as a whole (its description voice, else the first).
 local function GetVoice(kind, id, questType)
-    local info = SpeakStone_VoiceInfo
-    local byID = info and info[kind]
-    local entry = byID and byID[id]
+    local entry
+    for _, info in pairs(addon.voiceSources or {}) do
+        local byID = info[kind]
+        entry = byID and byID[id]
+        if entry then break end
+    end
     if type(entry) == "table" then
         if questType then
             entry = entry[QUEST_TYPE_KEYS[questType]]
@@ -936,7 +926,6 @@ local function BuildUI()
             self:SetPoint("CENTER")
         end
         self:Raise()
-        LoadVoiceInfo()
         titleLoader:RegisterEvent("QUEST_DATA_LOAD_RESULT")
         -- A title the client did not know last time it may know now -- so the
         -- narrowed result from the previous open, computed while those were
