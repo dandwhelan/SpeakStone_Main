@@ -431,14 +431,29 @@ local function Build()
 
     -- Closed without picking a profile: a fresh install gets the recommended
     -- one; an existing player keeps the settings they already had.
-    -- Beside Settings rather than on top of it. The Audio Library takes the
-    -- right-hand side, so this goes left and both can be open at once.
+    -- Beside Settings rather than on top of it: left if it fits (the Audio
+    -- Library takes the right), else right. Settings is wide, so when neither
+    -- side has room, Settings slides over to make space. A plain side anchor
+    -- just got clamped back on top of Settings.
     frame:SetScript("OnShow", function(self)
+        local settings = SpeakStoneSettingsFrame
         self:ClearAllPoints()
-        if SpeakStoneSettingsFrame and SpeakStoneSettingsFrame:IsShown() then
-            self:SetPoint("RIGHT", SpeakStoneSettingsFrame, "LEFT", -12, 0)
-        else
+        if not (settings and settings:IsShown() and settings:GetLeft()) then
             self:SetPoint("CENTER")
+        else
+            local gap, w = 12, self:GetWidth()
+            local screen = UIParent:GetWidth()
+            if settings:GetLeft() - gap >= w then
+                self:SetPoint("RIGHT", settings, "LEFT", -gap, 0)
+            elseif screen - settings:GetRight() - gap >= w then
+                self:SetPoint("LEFT", settings, "RIGHT", gap, 0)
+            else
+                local start = math.max(0, (screen - (w + gap + settings:GetWidth())) / 2)
+                local _, y = settings:GetCenter()
+                settings:ClearAllPoints()
+                settings:SetPoint("LEFT", UIParent, "BOTTOMLEFT", start + w + gap, y)
+                self:SetPoint("RIGHT", settings, "LEFT", -gap, 0)
+            end
         end
         self:Raise()
     end)
