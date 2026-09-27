@@ -57,9 +57,16 @@ local function DescribeTag(tag)
     if not SEX_NAMES[sexCode] then
         sexCode, raceCode = nil, tag
     end
-    local race = RaceName(raceCode)
     local sex = sexCode and SEX_NAMES[sexCode] or ""
-    local label = sex ~= "" and (race .. " " .. sex) or race
+    local label
+    if raceCode == "" then
+        -- A bare "M"/"F": the pack knows the sex but not a race worth naming.
+        if sex == "" then return nil end
+        label = sex:sub(1, 1):upper() .. sex:sub(2)
+    else
+        local race = RaceName(raceCode)
+        label = sex ~= "" and (race .. " " .. sex) or race
+    end
     cached = { label = label, search = " " .. label:lower() .. " " }
     tagCache[tag] = cached
     return cached
