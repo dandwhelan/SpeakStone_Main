@@ -1,0 +1,9 @@
+## Interface: 110207, 120000, 120001, 120100
+## Title: SpeakStone Voice Info
+## Notes: Race and sex of each SpeakStone voice, for the audio library. Loaded only when the library is opened.
+## Author: Nerf, SpeakStone@beanw.co.uk
+## Version: 1
+## LoadOnDemand: 1
+## Dependencies: SpeakStone_Main
+
+VoiceInfo.lua

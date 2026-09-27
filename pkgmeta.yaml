@@ -1,6 +1,11 @@
 package-as: SpeakStone_Main
 enable-nolib-creation: no
 
+# The voice info addon is Load-on-Demand, so it must be its own top-level
+# folder in AddOns. It ships in the same zip as the base addon.
+move-folders:
+  SpeakStone_Main/SpeakStone_VoiceInfo: SpeakStone_VoiceInfo
+
 # `package-as` is the FOLDER NAME inside the zip a player downloads, and
 # WoW requires the .toc basename to match its folder exactly -- it looks
 # for AddOns/<Folder>/<Folder>.toc. So this must track the addon rename or
