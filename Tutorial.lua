@@ -429,13 +429,15 @@ local function Build()
     header:SetPoint("TOP", 0, -5)
     header:SetText("SpeakStone setup")
 
-    -- Closed without picking a profile: a fresh install gets the recommended
-    -- one; an existing player keeps the settings they already had.
     -- Beside Settings rather than on top of it: left if it fits (the Audio
     -- Library takes the right), else right. Settings is wide, so when neither
     -- side has room, Settings slides over to make space. A plain side anchor
     -- just got clamped back on top of Settings.
-    frame:SetScript("OnShow", function(self)
+    frame:SetScript("OnShow", function(self) addon.PlaceTutorial() end)
+
+    function addon.PlaceTutorial()
+        local self = frame
+        if not self:IsShown() then return end
         local settings = SpeakStoneSettingsFrame
         self:ClearAllPoints()
         if not (settings and settings:IsShown() and settings:GetLeft()) then
@@ -456,7 +458,7 @@ local function Build()
             end
         end
         self:Raise()
-    end)
+    end
 
     frame:SetScript("OnHide", function()
         -- Done only once the player has actually had it in front of them and
@@ -464,6 +466,8 @@ local function Build()
         -- UIParent hiding (Alt+Z, a cinematic) fires this too; not a close.
         if DB() and UIParent:IsShown() then DB().tutorialVersion = TUTORIAL_VERSION end
         if testHandle then StopSound(testHandle) testHandle = nil end
+        -- Closed without picking a profile: a fresh install gets the recommended
+        -- one; an existing player keeps the settings they already had.
         if DB() and not DB().profile and addon.isFreshInstall then ApplyProfile("full") end
     end)
 
@@ -498,6 +502,8 @@ function addon.ShowTutorial(page)
     if not frame then Build() end
     selectedProfile = nil
     frame:Show()
+    -- Show() on an already-open frame does not fire OnShow.
+    addon.PlaceTutorial()
     ShowPage(page or 1)
 end
 

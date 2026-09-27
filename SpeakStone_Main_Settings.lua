@@ -298,6 +298,10 @@ function SpeakStone:CreateWindow()
     frame:SetFrameStrata("DIALOG")
     frame:Hide()
     tinsert(UISpecialFrames, "SpeakStoneSettingsFrame")
+    -- The tutorial opens at login, so Settings often opens on top of it.
+    frame:HookScript("OnShow", function()
+        if addon.PlaceTutorial then addon.PlaceTutorial() end
+    end)
 
     if frame.TitleText then
         frame.TitleText:SetText("SpeakStone")
