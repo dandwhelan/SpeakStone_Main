@@ -1,10 +1,15 @@
 local addonName, addon = ...
 
--- First-start tutorial and premade settings profiles. Shown once on first
--- login (tutorialDone), and again on demand with /ss tutorial or the
+-- First-start tutorial and premade settings profiles. Shown at login until the
+-- player closes it (tutorialVersion), and again on demand with /ss tutorial or the
 -- Profiles button in the settings window.
 
-local CURSEFORGE_URL = "https://www.curseforge.com/members/dandwhelan/projects"
+-- Bump to show the tutorial once more to everyone, e.g. after adding a page.
+-- Replaces the old tutorialDone flag, which is ignored so players who had it
+-- set without ever seeing the tutorial get it once.
+local TUTORIAL_VERSION = 1
+
+local CURSEFORGE_URL ="https://www.curseforge.com/members/dandwhelan/projects"
 local WEBSITE_URL = "https://speakstone.beanw.co.uk"
 
 -- Every profile sets every playback option, so picking one gives the same
@@ -426,7 +431,23 @@ local function Build()
 
     -- Closed without picking a profile: a fresh install gets the recommended
     -- one; an existing player keeps the settings they already had.
+    -- Beside Settings rather than on top of it. The Audio Library takes the
+    -- right-hand side, so this goes left and both can be open at once.
+    frame:SetScript("OnShow", function(self)
+        self:ClearAllPoints()
+        if SpeakStoneSettingsFrame and SpeakStoneSettingsFrame:IsShown() then
+            self:SetPoint("RIGHT", SpeakStoneSettingsFrame, "LEFT", -12, 0)
+        else
+            self:SetPoint("CENTER")
+        end
+        self:Raise()
+    end)
+
     frame:SetScript("OnHide", function()
+        -- Done only once the player has actually had it in front of them and
+        -- closed it; marking it on show lost it to whatever hid it at login.
+        -- UIParent hiding (Alt+Z, a cinematic) fires this too; not a close.
+        if DB() and UIParent:IsShown() then DB().tutorialVersion = TUTORIAL_VERSION end
         if testHandle then StopSound(testHandle) testHandle = nil end
         if DB() and not DB().profile and addon.isFreshInstall then ApplyProfile("full") end
     end)
@@ -468,10 +489,7 @@ end
 -- Called from PLAYER_LOGIN. Returns true if the tutorial was shown.
 function addon.MaybeShowTutorial()
     local db = DB()
-    if not db or db.tutorialDone then return false end
-    -- Marked on show, not on close, so a logout or crash mid-tutorial
-    -- still counts: it only ever appears on the first login.
-    db.tutorialDone = true
+    if not db or (db.tutorialVersion or 0) >= TUTORIAL_VERSION then return false end
     addon.ShowTutorial(1)
     return true
 end
