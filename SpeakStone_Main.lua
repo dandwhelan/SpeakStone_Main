@@ -17,6 +17,8 @@ local SOUND_EXTENSIONS = { ".ogg", ".wav" }
 -- entry, and the "no audio for this quest" path already used for gaps in the
 -- base library covers it too. No error, no crash, just silence.
 addon.soundSources = {}
+-- Voice race/sex per pack, for the audio library. See RegisterSoundPack.
+addon.voiceSources = {}
 addon.soundSources["SpeakStone_Main"] = SpeakStoneSoundLengths
 
 -- Anything derived from soundSources is cached, because deriving it means
@@ -41,10 +43,16 @@ addon.InvalidateAudioCaches = InvalidateAudioCaches
 -- visible as soon as both sides have run, whichever order that happens in.
 --
 -- Packs call this as:
---   SpeakStone_RegisterSoundPack(addonName, ThisPackSoundLengths)
+--   SpeakStone_RegisterSoundPack(addonName, ThisPackSoundLengths, ThisPackVoiceInfo)
+-- The third argument is optional: the race and sex of each voice in the
+-- pack, shown in the audio library. Format:
+--   { races = { Hu = "Human", ... },        -- code -> display name
+--     npc   = { [npcID] = "HuM", ... },     -- race code + M/F/N
+--     quest = { [questID] = "HuM",          -- one voice for all three clips
+--               [questID] = { d = "HuM", p = "HuM", c = "DwF" } } }
 -- falling back to the pending-queue global if it is not yet defined. See
 -- the example pack under packs/ for the exact two-line pattern.
-function SpeakStone_RegisterSoundPack(packName, soundLengths)
+function SpeakStone_RegisterSoundPack(packName, soundLengths, voiceInfo)
     if type(packName) ~= "string" or type(soundLengths) ~= "table" then
         return
     end
@@ -52,6 +60,9 @@ function SpeakStone_RegisterSoundPack(packName, soundLengths)
     -- with the base addon in an earlier version of this mechanism, and
     -- breaking here meant only one pack could ever be registered.
     addon.soundSources[packName] = soundLengths
+    if type(voiceInfo) == "table" then
+        addon.voiceSources[packName] = voiceInfo
+    end
     -- The audio library caches its index on first open, and the settings
     -- dashboard caches its clip counts. A pack arriving after either would
     -- otherwise stay invisible until reload.
@@ -61,7 +72,7 @@ end
 -- Drain anything a pack queued before this file ran (see above).
 if type(_G.SpeakStonePendingSoundPacks) == "table" then
     for _, entry in ipairs(_G.SpeakStonePendingSoundPacks) do
-        SpeakStone_RegisterSoundPack(entry.name, entry.index)
+        SpeakStone_RegisterSoundPack(entry.name, entry.index, entry.voice)
     end
     _G.SpeakStonePendingSoundPacks = nil
 end
@@ -166,6 +177,9 @@ local function InitializeAddonDB()
     if dbInitialized then return end
     dbInitialized = true
     SpeakStone_MainDB = SpeakStone_MainDB or {}
+    -- Nothing saved yet means this is the first time the addon has run on
+    -- this account. The tutorial only applies its default profile then.
+    addon.isFreshInstall = next(SpeakStone_MainDB) == nil
     SpeakStone_MainDB.minimapButton = SpeakStone_MainDB.minimapButton or { hide = false }
     SpeakStone_MainDB.minimapIconPosition = SpeakStone_MainDB.minimapIconPosition or {}
 

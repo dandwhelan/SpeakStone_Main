@@ -28,6 +28,81 @@ local UI
 local searchTimer
 
 -- --------------------------------------------------------------------------
+-- Voice info (race and sex of the voice on each clip)
+--
+-- Each audio pack can hand its own voice data to SpeakStone_RegisterSoundPack
+-- (format documented there). Packs without it, or older packs, just show no
+-- voice, and the library looks exactly as it did before.
+-- --------------------------------------------------------------------------
+local SEX_NAMES = { M = "male", F = "female", N = "" }
+local QUEST_TYPE_KEYS = { description = "d", progress = "p", completion = "c" }
+-- Tag -> { label = "Human male", search = " human male " }. A few dozen
+-- distinct tags cover every clip, so this stays tiny.
+local tagCache = {}
+
+local function RaceName(code)
+    for _, info in pairs(addon.voiceSources or {}) do
+        local name = info.races and info.races[code]
+        if name then return name end
+    end
+    return code
+end
+
+local function DescribeTag(tag)
+    if type(tag) ~= "string" or tag == "" then return nil end
+    local cached = tagCache[tag]
+    if cached then return cached end
+    local sexCode = tag:sub(-1)
+    local raceCode = tag:sub(1, -2)
+    if not SEX_NAMES[sexCode] then
+        sexCode, raceCode = nil, tag
+    end
+    local sex = sexCode and SEX_NAMES[sexCode] or ""
+    local label
+    if raceCode == "" then
+        -- A bare "M"/"F": the pack knows the sex but not a race worth naming.
+        if sex == "" then return nil end
+        label = sex:sub(1, 1):upper() .. sex:sub(2)
+    else
+        local race = RaceName(raceCode)
+        label = sex ~= "" and (race .. " " .. sex) or race
+    end
+    cached = { label = label, search = " " .. label:lower() .. " " }
+    tagCache[tag] = cached
+    return cached
+end
+
+-- kind is "npc" or "quest"; questType picks one of a quest's three clips,
+-- or nil for the quest as a whole (its description voice, else the first).
+local function GetVoice(kind, id, questType)
+    local entry
+    for _, info in pairs(addon.voiceSources or {}) do
+        local byID = info[kind]
+        entry = byID and byID[id]
+        if entry then break end
+    end
+    if type(entry) == "table" then
+        if questType then
+            entry = entry[QUEST_TYPE_KEYS[questType]]
+        else
+            entry = entry.d or entry.p or entry.c
+        end
+    end
+    return DescribeTag(entry)
+end
+addon.GetVoiceInfo = GetVoice
+
+-- Every word typed must start a word of the voice label, so "male" does not
+-- match "female" and "orc f" finds female orcs.
+local function VoiceMatches(voice, words)
+    if not voice or #words == 0 then return false end
+    for _, word in ipairs(words) do
+        if not voice.search:find(" " .. word, 1, true) then return false end
+    end
+    return true
+end
+
+-- --------------------------------------------------------------------------
 -- Quest titles
 --
 -- Resolving one is two pcall'd API calls, and the search filter asks for every
@@ -159,7 +234,7 @@ local function BuildUI()
     searchBox:SetAutoFocus(false)
     searchBox:SetMaxLetters(60)
     if searchBox.Instructions then
-        searchBox.Instructions:SetText("Search quest ID or name...")
+        searchBox.Instructions:SetText("Search quest ID, name, race or sex...")
     end
     frame.searchBox = searchBox
 
@@ -305,6 +380,10 @@ local function BuildUI()
                 local name = SpeakStone_NPCNames and SpeakStone_NPCNames[g.npcID]
                 GameTooltip:AddLine(name or ("NPC " .. g.npcID), 1, 0.82, 0)
                 GameTooltip:AddLine("NPC ID: " .. g.npcID .. "  |  Gossip variant " .. g.variant, 0.7, 0.7, 0.7)
+                local voice = GetVoice("npc", g.npcID)
+                if voice then
+                    GameTooltip:AddLine("Voice: " .. voice.label, 0.8, 0.8, 1)
+                end
                 local duration = frame:GetGossipDuration(g.npcID, g.variant)
                 if duration then
                     GameTooltip:AddLine(string.format("%.1fs", duration), 0.3, 1, 0.3)
@@ -332,6 +411,12 @@ local function BuildUI()
                 GameTooltip:AddLine("Quest ID: " .. row.questData.id, 0.7, 0.7, 0.7)
             else
                 GameTooltip:AddLine("Quest ID: " .. row.questData.id, 1, 0.82, 0)
+            end
+            for _, questType in ipairs({ "description", "progress", "completion" }) do
+                local voice = row.questData.types[questType] and GetVoice("quest", row.questData.id, questType)
+                if voice then
+                    GameTooltip:AddLine(questType:sub(1, 1):upper() .. questType:sub(2) .. " voice: " .. voice.label, 0.8, 0.8, 1)
+                end
             end
 
             local dLen = frame:GetAudioDuration(row.questData.id, "description")
@@ -494,7 +579,9 @@ local function BuildUI()
             startingList = self.lastResult
         end
 
-        local state = { query = cleanQuery, source = startingList, index = 1, results = {} }
+        local words = {}
+        for word in cleanQuery:gmatch("%S+") do words[#words + 1] = word end
+        local state = { query = cleanQuery, words = words, source = startingList, index = 1, results = {} }
         activeFilter = state
         self.filteredList = state.results
         self.filtering = true
@@ -517,7 +604,8 @@ local function BuildUI()
                     local idStr = entry.npcIDStr or tostring(entry.npcID)
                     local name = SpeakStone_NPCNames and SpeakStone_NPCNames[entry.npcID]
                     if idStr:find(needle, 1, true)
-                        or (name and name:lower():find(needle, 1, true)) then
+                        or (name and name:lower():find(needle, 1, true))
+                        or VoiceMatches(GetVoice("npc", entry.npcID), state.words) then
                         results[#results + 1] = entry
                     end
                 else
@@ -526,7 +614,8 @@ local function BuildUI()
                         results[#results + 1] = entry
                     else
                         local title = GetQuestTitle(entry.id)
-                        if title and title:lower():find(needle, 1, true) then
+                        if (title and title:lower():find(needle, 1, true))
+                            or VoiceMatches(GetVoice("quest", entry.id), state.words) then
                             results[#results + 1] = entry
                         end
                     end
@@ -607,6 +696,10 @@ local function BuildUI()
 
                     local state = addon.GossipClipAutoplayState and addon.GossipClipAutoplayState(data.npcID)
                     local label = "NPC " .. data.npcID .. "  \194\183  Gossip " .. data.variant
+                    local voice = GetVoice("npc", data.npcID)
+                    if voice then
+                        label = label .. "  \194\183  |cffb0b0ff" .. voice.label .. "|r"
+                    end
                     if state == "suppressed" then
                         label = label .. "  \194\183  |cffff8000not autoplayed|r"
                     elseif state == "matched" then
@@ -635,7 +728,12 @@ local function BuildUI()
                     else
                         row.text:SetText("|cff9d9d9dUnknown quest|r")
                     end
-                    row.idText:SetText("Quest " .. data.id)
+                    local voice = GetVoice("quest", data.id)
+                    if voice then
+                        row.idText:SetText("Quest " .. data.id .. "  \194\183  |cffb0b0ff" .. voice.label .. "|r")
+                    else
+                        row.idText:SetText("Quest " .. data.id)
+                    end
 
                     -- Description
                     if data.types["description"] then
@@ -783,10 +881,10 @@ local function BuildUI()
         self.mode = mode
         if mode == "gossip" then
             modeButton:SetText("Quests")
-            searchBox.Instructions:SetText("Search NPC ID or name...")
+            searchBox.Instructions:SetText("Search NPC ID, name, race or sex...")
         else
             modeButton:SetText("Gossip")
-            searchBox.Instructions:SetText("Search quest ID or name...")
+            searchBox.Instructions:SetText("Search quest ID, name, race or sex...")
         end
         -- A rebuilt index invalidates the narrowing FilterList relies on --
         -- the previous result was drawn from the other mode's list.
