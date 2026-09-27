@@ -197,7 +197,7 @@ local function BuildProfiles()
     title:SetText("Pick a profile")
     local hint = Text(page, "GameFontHighlightSmall", WIDTH - 40)
     hint:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -4)
-    hint:SetText("Every option can still be changed afterwards in /ss. Skip this page and |cff00ff00Full Narration|r is used.")
+    hint:SetText("Every option can still be changed afterwards in /ss. Skip this page and |cff00ff00Full Narration|r is used on a new install; otherwise your current settings are kept.")
 
     local buttons = {}
     local function Refresh()
@@ -424,10 +424,11 @@ local function Build()
     header:SetPoint("TOP", 0, -5)
     header:SetText("SpeakStone setup")
 
-    -- Closed without picking a profile: use the recommended one.
+    -- Closed without picking a profile: a fresh install gets the recommended
+    -- one; an existing player keeps the settings they already had.
     frame:SetScript("OnHide", function()
         if testHandle then StopSound(testHandle) testHandle = nil end
-        if DB() and not DB().profile then ApplyProfile("full") end
+        if DB() and not DB().profile and addon.isFreshInstall then ApplyProfile("full") end
     end)
 
     frame.back = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")

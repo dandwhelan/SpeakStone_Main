@@ -166,6 +166,9 @@ local function InitializeAddonDB()
     if dbInitialized then return end
     dbInitialized = true
     SpeakStone_MainDB = SpeakStone_MainDB or {}
+    -- Nothing saved yet means this is the first time the addon has run on
+    -- this account. The tutorial only applies its default profile then.
+    addon.isFreshInstall = next(SpeakStone_MainDB) == nil
     SpeakStone_MainDB.minimapButton = SpeakStone_MainDB.minimapButton or { hide = false }
     SpeakStone_MainDB.minimapIconPosition = SpeakStone_MainDB.minimapIconPosition or {}
 
