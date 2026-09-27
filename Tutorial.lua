@@ -5,6 +5,7 @@ local addonName, addon = ...
 -- Profiles button in the settings window.
 
 local CURSEFORGE_URL = "https://www.curseforge.com/members/dandwhelan/projects"
+local WEBSITE_URL = "https://speakstone.beanw.co.uk"
 
 -- Every profile sets every playback option, so picking one gives the same
 -- result whatever the player had before. Interface and capture options are
@@ -149,6 +150,20 @@ local function Text(parent, template, width)
     return fs
 end
 
+local function CopyBox(parent, url, width)
+    local box = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
+    box:SetSize(width, 22)
+    box:SetAutoFocus(false)
+    box:SetText(url)
+    box:SetCursorPosition(0)
+    box:SetScript("OnTextChanged", function(self, userInput)
+        if userInput then self:SetText(url) self:HighlightText() end
+    end)
+    box:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
+    box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    return box
+end
+
 local function NewPage()
     local page = CreateFrame("Frame", nil, frame)
     page:SetPoint("TOPLEFT", 20, -34)
@@ -170,7 +185,8 @@ local function BuildWelcome()
         .. "This quick setup takes under a minute:\n"
         .. "  1. Pick how much you want narrated.\n"
         .. "  2. Check your audio packs.\n"
-        .. "  3. Learn where the controls are.\n\n"
+        .. "  3. Learn where the controls are.\n"
+        .. "  4. See how you can help the project.\n\n"
         .. "You can reopen it any time with |cffffd100/ss tutorial|r.")
 end
 
@@ -181,7 +197,7 @@ local function BuildProfiles()
     title:SetText("Pick a profile")
     local hint = Text(page, "GameFontHighlightSmall", WIDTH - 40)
     hint:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -4)
-    hint:SetText("Every option can still be changed afterwards in /ss. Skip this page to keep your current settings.")
+    hint:SetText("Every option can still be changed afterwards in /ss. Skip this page and |cff00ff00Full Narration|r is used.")
 
     local buttons = {}
     local function Refresh()
@@ -239,15 +255,8 @@ local function BuildPacks()
     local linkLabel = Text(page, "GameFontNormalSmall")
     linkLabel:SetPoint("TOPLEFT", status, "BOTTOMLEFT", 0, -16)
     linkLabel:SetText("All SpeakStone addons on CurseForge (Ctrl+C to copy):")
-    local box = CreateFrame("EditBox", nil, page, "InputBoxTemplate")
-    box:SetSize(WIDTH - 60, 22)
+    local box = CopyBox(page, CURSEFORGE_URL, WIDTH - 60)
     box:SetPoint("TOPLEFT", linkLabel, "BOTTOMLEFT", 6, -6)
-    box:SetAutoFocus(false)
-    box:SetScript("OnTextChanged", function(self, userInput)
-        if userInput then self:SetText(CURSEFORGE_URL) self:HighlightText() end
-    end)
-    box:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
-    box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
 
     local test = CreateFrame("Button", nil, page, "UIPanelButtonTemplate")
     test:SetSize(160, 24)
@@ -260,8 +269,6 @@ local function BuildPacks()
     end)
 
     page:SetScript("OnShow", function()
-        box:SetText(CURSEFORGE_URL)
-        box:SetCursorPosition(0)
         if HasAnyAudioPack() then
             status:SetText("|cff00ff00Audio packs found.|r You're ready to go. Press Test a voice to hear one.\n\n"
                 .. "Packs are always being updated and improved, so check CurseForge now and then for new ones.")
@@ -294,6 +301,85 @@ local function BuildControls()
         .. "|cffffd100/ss tutorial|r: reopen this guide and change profile.")
 end
 
+local function BuildContribute()
+    local page = NewPage()
+    local title = Text(page, "GameFontNormalLarge")
+    title:SetPoint("TOPLEFT", 0, 0)
+    title:SetText("Help SpeakStone grow")
+
+    local voiceHead = Text(page, "GameFontNormal")
+    voiceHead:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -10)
+    voiceHead:SetText("Lend your voice")
+    local voice = Text(page, "GameFontHighlight", WIDTH - 40)
+    voice:SetPoint("TOPLEFT", voiceHead, "BOTTOMLEFT", 0, -4)
+    voice:SetText("Want your voice in the quest voice pool? Visit the site below and click |cffffd100Lend your voice|r. "
+        .. "You can record straight from your web browser or upload a clip.")
+
+    local shareHead = Text(page, "GameFontNormal")
+    shareHead:SetPoint("TOPLEFT", voice, "BOTTOMLEFT", 0, -12)
+    shareHead:SetText("Share what you capture")
+    local share = Text(page, "GameFontHighlight", WIDTH - 40)
+    share:SetPoint("TOPLEFT", shareHead, "BOTTOMLEFT", 0, -4)
+    share:SetText("New voices are built from text the community submits. As you play, SpeakStone captures quests, "
+        .. "NPC talk, books and items that aren't voiced yet. Export it, then import it on the same site.")
+
+    local stats = {}
+    local labels = { "QUESTS", "NPC TALK", "BOOKS & ITEMS" }
+    local statWidth = math.floor((WIDTH - 40 - 12) / 3)
+    for i, label in ipairs(labels) do
+        local tile = CreateFrame("Frame", nil, page)
+        tile:SetSize(statWidth, 40)
+        tile:SetPoint("TOPLEFT", share, "BOTTOMLEFT", (i - 1) * (statWidth + 6), -8)
+        local bg = tile:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints()
+        bg:SetColorTexture(0.09, 0.08, 0.07, 0.85)
+        local value = tile:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+        value:SetPoint("TOP", 0, -4)
+        local name = tile:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+        name:SetPoint("BOTTOM", 0, 4)
+        name:SetText(label)
+        stats[i] = value
+        if i == 1 then page.statsAnchor = tile end
+    end
+
+    local capture = CreateFrame("CheckButton", nil, page, "UICheckButtonTemplate")
+    capture:SetSize(24, 24)
+    capture:SetPoint("TOPLEFT", page.statsAnchor, "BOTTOMLEFT", -4, -6)
+    local captureText = Text(capture, "GameFontHighlight")
+    captureText:SetPoint("LEFT", capture, "RIGHT", 2, 0)
+    captureText:SetText("Capture text as I play")
+    capture:SetScript("OnClick", function(self)
+        DB().harvestEnabled = self:GetChecked() and true or false
+        if addon.RefreshSettingsStatus then addon.RefreshSettingsStatus() end
+    end)
+
+    local export = CreateFrame("Button", nil, page, "UIPanelButtonTemplate")
+    export:SetSize(170, 24)
+    export:SetPoint("TOPRIGHT", page.statsAnchor, "BOTTOMLEFT", WIDTH - 40, -6)
+    export:SetText("Export captured text")
+    export:SetScript("OnClick", function()
+        if addon.ShowHarvestExport then addon.ShowHarvestExport() end
+    end)
+
+    local linkLabel = Text(page, "GameFontNormalSmall")
+    linkLabel:SetPoint("TOPLEFT", capture, "BOTTOMLEFT", 4, -8)
+    linkLabel:SetText("Website (Ctrl+C to copy):")
+    local box = CopyBox(page, WEBSITE_URL, WIDTH - 60)
+    box:SetPoint("TOPLEFT", linkLabel, "BOTTOMLEFT", 6, -4)
+
+    page:SetScript("OnShow", function()
+        local quests, lines, items = 0, 0, 0
+        if addon.HarvestCounts then
+            local q, _, _, _, l, i = addon.HarvestCounts()
+            quests, lines, items = q or 0, l or 0, i or 0
+        end
+        stats[1]:SetText(quests)
+        stats[2]:SetText(lines)
+        stats[3]:SetText(items)
+        capture:SetChecked(DB().harvestEnabled)
+    end)
+end
+
 local function BuildDone()
     local page = NewPage()
     local title = Text(page, "GameFontNormalHuge")
@@ -304,9 +390,10 @@ local function BuildDone()
     body:SetSpacing(4)
     page:SetScript("OnShow", function()
         local current = ProfileName(DB().profile)
-        body:SetText((current and ("Profile: |cff00ff00" .. current .. "|r\n\n") or "Your existing settings were kept.\n\n")
+        body:SetText((current and ("Profile: |cff00ff00" .. current .. "|r\n\n") or "")
             .. "Talk to a quest giver to hear SpeakStone in action.\n\n"
-            .. "Wrong voice or missing audio? Report it from the settings window (/ss).")
+            .. "Wrong voice or missing audio? Report it from the settings window (/ss).\n\n"
+            .. "Thanks for helping voice Azeroth. Every capture you submit and every voice you lend makes the next pack better.")
     end)
 end
 
@@ -337,9 +424,10 @@ local function Build()
     header:SetPoint("TOP", 0, -5)
     header:SetText("SpeakStone setup")
 
-    -- Closing by any route counts as done; it can always be reopened.
+    -- Closed without picking a profile: use the recommended one.
     frame:SetScript("OnHide", function()
-        if DB() then DB().tutorialDone = true end
+        if testHandle then StopSound(testHandle) testHandle = nil end
+        if DB() and not DB().profile then ApplyProfile("full") end
     end)
 
     frame.back = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
@@ -363,6 +451,7 @@ local function Build()
     BuildProfiles()
     BuildPacks()
     BuildControls()
+    BuildContribute()
     BuildDone()
 end
 
@@ -379,6 +468,9 @@ end
 function addon.MaybeShowTutorial()
     local db = DB()
     if not db or db.tutorialDone then return false end
+    -- Marked on show, not on close, so a logout or crash mid-tutorial
+    -- still counts: it only ever appears on the first login.
+    db.tutorialDone = true
     addon.ShowTutorial(1)
     return true
 end
