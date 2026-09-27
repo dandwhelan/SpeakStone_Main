@@ -109,9 +109,9 @@ local defaultSettings = {
     -- cutting a sentence off, matching how Blizzard's own voiced dialogue
     -- behaves (it doesn't stop just because you closed the quest frame).
     stopDialogueOnClose = false,
-    -- On by default from 1.5.1, owner's call: debug output is what makes a
-    -- player's bug report useful.
-    showDebugMessages = true,
+    -- Off by default again, owner's call: new players get a quiet chat. The
+    -- Helper / Tester profile and /ssdebug turn it on for bug reports.
+    showDebugMessages = false,
     -- Capture quest/gossip/book text as it is encountered, so gaps in the
     -- voiced library can be filled. On by default: this is the one thing the
     -- project needs from players that nothing else can supply, it costs
@@ -294,6 +294,7 @@ addon.UpdateMinimapButtonVisibility = UpdateMinimapButtonVisibility
 -- the PLAYER_LOGIN handler below closes over the local rather than looking
 -- for a global that no longer exists.
 local DetectSoundPacks
+local PromptForAudioPacksIfMissing
 
 -- Create a frame to listen for the ADDON_LOADED event
 local loadingFrame = CreateFrame("Frame")
@@ -330,6 +331,15 @@ loadingFrame:SetScript("OnEvent", function(self, event, loadedAddonName)
     elseif event == "PLAYER_LOGIN" then
         -- All addons should now be loaded, call DetectSoundPacks safely here
         DetectSoundPacks()
+        -- Delayed so late self-registering packs have arrived first.
+        -- First start gets the tutorial, whose audio-pack page replaces the
+        -- separate popup.
+        C_Timer.After(3, function()
+            if addon.MaybeShowTutorial and addon.MaybeShowTutorial() then
+                return
+            end
+            C_Timer.After(2, PromptForAudioPacksIfMissing)
+        end)
         -- Held back so it is not lost in the wall of text every other addon
         -- prints at login.
         if addon.HarvestRemindIfLarge then
@@ -625,6 +635,64 @@ function DetectSoundPacks()
     if registered then
         InvalidateAudioCaches()
     end
+end
+
+-- Nudge players with no audio pack installed towards CurseForge. Only the
+-- base addon's own entry in soundSources means no pack registered, whether
+-- by self-registration or the legacy OptionalDeps load above.
+local function HasAnyAudioPack()
+    for packName in pairs(addon.soundSources) do
+        if packName ~= addonName then
+            return true
+        end
+    end
+    return false
+end
+
+local AUDIO_PACK_PROMPT_TEXT = "SpeakStone works better with the audio packs installed.\n\n"
+    .. "Please look on CurseForge to get the Audio packs. They are always being updated and improved."
+    .. "\n\n"
+    .. "Please bear with me while CurseForge approves the audio pack addons."
+addon.AUDIO_PACK_EXTRA_NOTE = "\n\nPlease bear with me while CurseForge approves the audio pack addons."
+
+-- WoW cannot open a browser, so the link sits in a pre-selected edit box
+-- the player can Ctrl+C.
+local CURSEFORGE_URL = "https://www.curseforge.com/members/dandwhelan/projects"
+
+StaticPopupDialogs["SPEAKSTONE_AUDIO_PACK_PROMPT"] = {
+    text = AUDIO_PACK_PROMPT_TEXT .. "\n\nPress Ctrl+C to copy the link:",
+    button1 = OKAY,
+    hasEditBox = true,
+    editBoxWidth = 320,
+    OnShow = function(self)
+        local editBox = self.editBox or self.EditBox or _G[self:GetName() .. "EditBox"]
+        if editBox then
+            editBox:SetText(CURSEFORGE_URL)
+            editBox:HighlightText()
+            editBox:SetFocus()
+        end
+    end,
+    EditBoxOnEnterPressed = function(editBox)
+        editBox:GetParent():Hide()
+    end,
+    EditBoxOnEscapePressed = function(editBox)
+        editBox:GetParent():Hide()
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    preferredIndex = 3,
+}
+
+-- Shown once ever: the flag is saved the first time the prompt appears.
+function PromptForAudioPacksIfMissing()
+    if HasAnyAudioPack() or not SpeakStone_MainDB or SpeakStone_MainDB.audioPackPromptShown then
+        return
+    end
+    SpeakStone_MainDB.audioPackPromptShown = true
+    print("|cff33ff99SpeakStone:|r " .. AUDIO_PACK_PROMPT_TEXT:gsub("\n\n", " "))
+    print("|cff33ff99SpeakStone:|r " .. CURSEFORGE_URL)
+    StaticPopup_Show("SPEAKSTONE_AUDIO_PACK_PROMPT")
 end
 
 local function GetCurrentSound()
