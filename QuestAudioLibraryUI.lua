@@ -938,15 +938,31 @@ local function BuildUI()
     edge:SetPoint("BOTTOMRIGHT", -6, 6)
     edge:SetColorTexture(0.93, 0.87, 0.73, 1)
     local bTitle = view:CreateFontString(nil, "OVERLAY", "QuestTitleFontBlackShadow")
-    bTitle:SetPoint("TOP", view, "TOP", 0, -26)
+    bTitle:SetPoint("TOP", view, "TOP", 0, -18)
     bTitle:SetWidth(320)
     bTitle:SetTextColor(0.25, 0.16, 0.06)
-    local bPage = view:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
-    bPage:SetPoint("CENTER", view, "CENTER", 0, 40)
-    bPage:SetTextColor(0.3, 0.2, 0.08)
-    local bStatus = view:CreateFontString(nil, "OVERLAY", "GameFontBlack")
-    bStatus:SetPoint("TOP", bPage, "BOTTOM", 0, -12)
+    local bStatus = view:CreateFontString(nil, "OVERLAY", "GameFontBlackSmall")
+    bStatus:SetPoint("TOP", bTitle, "BOTTOM", 0, -4)
     bStatus:SetWidth(300)
+
+    -- The page's words (owner, 2026-09-28: "look at adding the book text"),
+    -- from BookTexts.lua, scrollable for long pages.
+    local textScroll = CreateFrame("ScrollFrame", nil, view, "UIPanelScrollFrameTemplate")
+    textScroll:SetPoint("TOPLEFT", view, "TOPLEFT", 22, -58)
+    textScroll:SetPoint("BOTTOMRIGHT", view, "BOTTOMRIGHT", -34, 118)
+    local textChild = CreateFrame("Frame", nil, textScroll)
+    textChild:SetSize(300, 10)
+    textScroll:SetScrollChild(textChild)
+    local bText = textChild:CreateFontString(nil, "OVERLAY", "QuestFont")
+    bText:SetPoint("TOPLEFT", 0, 0)
+    bText:SetWidth(300)
+    bText:SetJustifyH("LEFT")
+    bText:SetJustifyV("TOP")
+    bText:SetTextColor(0.18, 0.12, 0.05)
+
+    local bPage = view:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    bPage:SetPoint("BOTTOM", view, "BOTTOM", 0, 86)
+    bPage:SetTextColor(0.3, 0.2, 0.08)
     local function Btn(label, w, point, x, y)
         local b = CreateFrame("Button", nil, view, "UIPanelButtonTemplate")
         b:SetSize(w, 24)
@@ -954,11 +970,34 @@ local function BuildUI()
         b:SetText(label)
         return b
     end
-    local prevBtn = Btn("< Prev", 80, "LEFT", 20, 40)
-    local nextBtn = Btn("Next >", 80, "RIGHT", -20, 40)
-    local playPageBtn = Btn("Play page", 100, "BOTTOM", -56, 70)
-    local readBtn = Btn("Read book", 100, "BOTTOM", 56, 70)
-    local backBtn = Btn("Back to books", 120, "BOTTOM", 0, 26)
+    local prevBtn = Btn("< Prev", 80, "BOTTOMLEFT", 20, 80)
+    local nextBtn = Btn("Next >", 80, "BOTTOMRIGHT", -20, 80)
+    local playPageBtn = Btn("Play page", 100, "BOTTOM", -56, 46)
+    local readBtn = Btn("Read book", 100, "BOTTOM", 56, 46)
+    local backBtn = Btn("Back to books", 120, "BOTTOM", 0, 12)
+
+    -- Book text as the player would see it: $B line breaks, and the player's
+    -- own name / class / race / gendered words filled in.
+    local function PageText(book, index)
+        local pages = SpeakStone_BookTexts and SpeakStone_BookTexts[book.base]
+        local t = pages and pages[book.pages[index]]
+        if not t or t == "" then
+            return "|cff7a6a50(No text on file for this page.)|r"
+        end
+        local ok, out = pcall(function()
+            local name = UnitName("player") or "friend"
+            local _, class = UnitClass("player")
+            local race = UnitRace("player") or "traveller"
+            local female = UnitSex("player") == 3
+            t = t:gsub("%$[bB]", "\n")
+            t = t:gsub("%$[gG]%s*([^:;]*):([^;]*);", function(m, f) return female and f or m end)
+            t = t:gsub("%$[nN]", name):gsub("<name>", name)
+            t = t:gsub("%$[cC]", (class and class:lower():gsub("^%l", string.upper)) or "hero"):gsub("<class>", class or "hero")
+            t = t:gsub("%$[rR]", race):gsub("<race>", race)
+            return t
+        end)
+        return ok and out or t
+    end
     frame.bookView = view
 
     function frame:RefreshBook()
@@ -966,6 +1005,12 @@ local function BuildUI()
         local book, idx = view.book, view.index
         bTitle:SetText(BookName(book.base))
         bPage:SetText(string.format("Page %d of %d", idx, #book.pages))
+        if view.shownIndex ~= idx or view.shownBook ~= book then
+            bText:SetText(PageText(book, idx))
+            textChild:SetHeight(math.max(10, bText:GetStringHeight() + 8))
+            textScroll:SetVerticalScroll(0)
+            view.shownIndex, view.shownBook = idx, book
+        end
         local reading = activeBook == book and activeBookWhole
         if activeBook == book and activeBookPage == book.pages[idx] then
             bStatus:SetText(reading and "Reading the book..." or "Playing this page")
@@ -1014,8 +1059,7 @@ local function BuildUI()
         end
     end)
     backBtn:SetScript("OnClick", function() frame:CloseBook() end)
-    view:EnableMouseWheel(true)
-    view:SetScript("OnMouseWheel", function(_, delta) Turn(delta > 0 and -1 or 1) end)
+    -- The wheel scrolls the page's text; Prev/Next turn pages.
 
     local function StartBookPage(book, index, whole)
         local page = book.pages[index]
@@ -1274,9 +1318,14 @@ function addon.AudioLibraryInvalidate()
     end
 end
 
-function addon.OpenAudioLibrary()
+-- `mode` ("quests", "gossip" or "books") opens straight onto that tab: the
+-- settings window's Play section has one button per tab.
+function addon.OpenAudioLibrary(mode)
     local frame = EnsureUI()
     frame:Show()
+    if type(mode) == "string" then
+        frame:SetMode(mode)
+    end
     return frame
 end
 

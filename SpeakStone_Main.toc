@@ -26,5 +26,6 @@ VoicedLines.lua
 SpeakStone_Main.lua
 Harvester.lua
 SpeakStone_Main_Settings.lua
+BookTexts.lua
 QuestAudioLibraryUI.lua
 Tutorial.lua

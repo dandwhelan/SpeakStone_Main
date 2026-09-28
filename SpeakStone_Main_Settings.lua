@@ -14,9 +14,9 @@ end)
 
 local WEBSITE = "speakstone.beanw.co.uk"
 
-local function OpenAudioLibraryUI()
+local function OpenAudioLibraryUI(mode)
     if addon.OpenAudioLibrary then
-        addon.OpenAudioLibrary()
+        addon.OpenAudioLibrary(mode)
     else
         print("SpeakStone: the audio library window is not available.")
     end
@@ -326,7 +326,7 @@ function SpeakStone:CreateWindow()
         return card
     end
 
-    cards.packs = PlaceCard({ label = "VOICE PACKS", onClick = OpenAudioLibraryUI }, 1)
+    cards.packs = PlaceCard({ label = "VOICE PACKS", onClick = function() OpenAudioLibraryUI() end }, 1)
     AttachTooltip(cards.packs, "Voice packs", "How much audio is installed and where it came from. Click to browse and replay every voiced quest your packs provide.")
 
     cards.captured = PlaceCard({ label = "YOUR CAPTURES", onClick = ExportHarvest }, 2)
@@ -511,38 +511,60 @@ function SpeakStone:CreateWindow()
     -- ----------------------------------------------------------------------
     -- Actions. The cards are shortcuts to two of these, not replacements.
     -- ----------------------------------------------------------------------
+    -- "Play" section (owner, 2026-09-28): one button per Audio Library tab,
+    -- in place of a single "Open Audio Library" button.
+    local playLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    playLabel:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", LEFT_X, 19)
+    playLabel:SetText("Play")
+    local previous
+    for _, spec in ipairs({
+        { "books", "Books", "Browse every voiced book and read it aloud, whole or page by page." },
+        { "gossip", "Gossip", "Browse and replay voiced NPC greetings." },
+        { "quests", "Quests", "Browse and replay every voiced quest your installed packs provide. Also /qrlibrary." },
+    }) do
+        local mode, label, tip = spec[1], spec[2], spec[3]
+        local button = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+        button:SetSize(68, 24)
+        button:SetText(label)
+        if previous then
+            button:SetPoint("LEFT", previous, "RIGHT", 4, 0)
+        else
+            button:SetPoint("LEFT", playLabel, "RIGHT", 6, 0)
+        end
+        button:SetScript("OnClick", function() OpenAudioLibraryUI(mode) end)
+        AttachTooltip(button, label, tip)
+        previous = button
+    end
+
     local buttons = {
         {
-            text = "Open Audio Library",
-            onClick = OpenAudioLibraryUI,
-            tooltip = "Browse and replay every voiced quest your installed packs provide. Also /qrlibrary.",
-        },
-        {
             text = "Export Captured Text",
+            width = 150,
             onClick = ExportHarvest,
             tooltip = "Everything recorded: NPC greetings, books and quest text, in one payload to paste at the site. Also /ssharvest export.",
         },
         {
             text = "Clear Captured Data",
-            width = 150,
+            width = 140,
             onClick = function() StaticPopup_Show("QUESTREADER_CONFIRM_CLEAR_HARVEST") end,
             tooltip = "Throw away everything captured so far. Submit it first if you have not.",
         },
         {
             text = "Profiles",
-            width = 110,
+            width = 90,
             onClick = function() if addon.ShowTutorial then addon.ShowTutorial(2) end end,
             tooltip = "Switch to a premade profile, or rerun the first-start setup. Also /ss tutorial.",
         },
     }
 
-    local previous
+    local first = true
     for _, spec in ipairs(buttons) do
         local button = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
         button:SetSize(spec.width or 170, 24)
         button:SetText(spec.text)
         if previous then
-            button:SetPoint("LEFT", previous, "RIGHT", 8, 0)
+            button:SetPoint("LEFT", previous, "RIGHT", first and 14 or 8, 0)
+            first = false
         else
             button:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", LEFT_X, 14)
         end
