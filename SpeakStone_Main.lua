@@ -99,6 +99,15 @@ local defaultSettings = {
     autoPlayQuests = true,
     autoPlayGossip = true,
     autoPlayItemText = true,
+    -- Books read on to the end: opening one queues every page from page 1,
+    -- and closing the window does not stop it (owner, 2026-09-28). A page
+    -- turn jumps the reading to that page; /ss stop or the book's Stop
+    -- button ends it.
+    keepReadingBooks = true,
+    -- Same for quest dialogue (owner, 2026-09-28): closing the quest window
+    -- (or accepting) lets the line finish, and reopening the same quest
+    -- panel while it is still playing does not restart it.
+    keepReadingQuests = true,
     autoPlayInQuestMap = false,
     -- Off: Blizzard's own voice acting plays, and narration waits its turn
     -- (see autoPlayDelay). The game's voiced dialogue is the thing the player
@@ -777,6 +786,11 @@ local function FinishPlayback(soundData)
     soundData.endTimer = nil
     addon.activeSound = nil
     UnmuteDialogChannel()
+    -- Natural end only (StopCurrentSound never reaches here): lets a book
+    -- queue its next page.
+    if soundData.onFinished and soundData.soundHandle then
+        soundData.onFinished(soundData)
+    end
 end
 
 -- Longest a clip is assumed to run when its pack does not record a length.
@@ -974,6 +988,15 @@ function PlayQuestAudio(textType, skipDelay)
 
     -- Debug: Ensure questID and textType are valid
     if questID and textType ~= "" then
+        -- Reopened the quest whose line is still being read (keepReadingQuests):
+        -- let it carry on rather than starting it again. A manual play
+        -- (skipDelay) still restarts, since pressing play means "from the top".
+        local cur = GetCurrentSound()
+        if not skipDelay and SpeakStone_MainDB.keepReadingQuests ~= false and cur
+            and cur.questID == questID and cur.textType == textType
+            and (cur.isPlaying or cur.nextSoundTimer) then
+            return
+        end
         -- Unconditionally, not only when something is audible. A clip still
         -- waiting out the autoplay delay is not "playing", so gating on that
         -- left its timer running to fire over whatever came next.
@@ -1246,8 +1269,45 @@ end
 local currentItemName = nil
 local currentItemPage = 1
 local itemAudioTimer = nil
+-- The book being read aloud, which can outlive its window (keepReadingBooks).
+-- `page` is the page currently playing; the next one is queued when it ends.
+local bookReading = nil
+local UpdateBookButton
 
-local function PlayItemAudioDirect(itemLink, page)
+-- Some titles are shared by books with different text: 65 of them in the
+-- server data measured 2026-09-28 ("Placard", "Memorial Plaque", "Singed
+-- Page"...), so a title alone can play the wrong book. Each book is also keyed
+-- by the first words of its FIRST page, captured when it opens (books always
+-- open on page 1), so the key stays the same while it reads on through later
+-- pages. The pipeline names those clips <title>_<first six words>_page<n>.
+-- Must match book_slug() in tools/: lowercase, keep a-z0-9 and spaces, first
+-- six words joined by "_".
+local BOOK_SLUG_WORDS = 6
+local bookSlugs = {}
+
+local function BookSlug(text)
+    local slug
+    pcall(function()
+        local words = {}
+        for w in text:lower():gsub("[^%w%s]", ""):gmatch("%S+") do
+            words[#words + 1] = w
+            if #words >= BOOK_SLUG_WORDS then break end
+        end
+        if #words > 0 then slug = table.concat(words, "_") end
+    end)
+    return slug
+end
+
+local function RememberBookSlug(itemLink)
+    if not itemLink or (ItemTextGetPage() or 1) ~= 1 then return end
+    local text = ItemTextGetText()
+    local slug = text and text ~= "" and BookSlug(text)
+    bookSlugs[itemLink] = slug or nil
+end
+
+-- Returns true when a clip was found and started (or scheduled).
+-- `immediate` skips the autoplay delay: used when the next page follows on.
+local function PlayItemAudioDirect(itemLink, page, immediate)
     -- Also clears a clip still waiting out the autoplay delay; see the quest
     -- path above.
     StopCurrentSound()
@@ -1269,13 +1329,19 @@ local function PlayItemAudioDirect(itemLink, page)
             clean = itemLink:lower():gsub("[^%w%s]", ""):gsub("%s+", "_")
         end)
         if ok and clean and clean ~= "" then
+            -- Title + first-page words first: the only name that tells apart
+            -- two books sharing a title.
+            local slug = bookSlugs[itemLink]
+            if slug then
+                table.insert(baseNames, clean .. "_" .. slug .. "_page" .. page)
+            end
             table.insert(baseNames, "item_" .. clean .. "_page" .. page)
             table.insert(baseNames, clean .. "_page" .. page)
         end
     end
 
     if #baseNames == 0 then
-        return
+        return false
     end
 
     local soundFile, soundPath, duration = FindSound(baseNames)
@@ -1288,7 +1354,7 @@ local function PlayItemAudioDirect(itemLink, page)
             DebugPrint("SpeakStone: no audio for " .. displayName .. " (page " .. page .. ")")
         end
         addon.activeSound = nil
-        return
+        return false
     end
 
     local soundData = {
@@ -1301,15 +1367,47 @@ local function PlayItemAudioDirect(itemLink, page)
     addon.activeSound = soundData
     DebugPrint("SpeakStone: playing " .. (itemID and ("item " .. itemID) or ("'" .. itemLink .. "'")) .. " (page " .. page .. ")")
 
+    -- Read the whole book: when this page ends on its own, the next page
+    -- follows. The chain stops at the first page with no audio, or as soon
+    -- as anything else replaces this clip (StopCurrentSound never calls
+    -- onFinished).
+    bookReading = { link = itemLink, page = page }
+    if SpeakStone_MainDB.keepReadingBooks ~= false then
+        soundData.onFinished = function()
+            if bookReading and bookReading.link == itemLink and bookReading.page == page then
+                if not PlayItemAudioDirect(itemLink, page + 1, true) then
+                    bookReading = nil
+                end
+                if UpdateBookButton then UpdateBookButton() end
+            end
+        end
+    end
+
     -- Same autoplay delay as the quest path above -- this was missing here,
     -- so item/book narration always started instantly regardless of the
     -- slider.
-    if SpeakStone_MainDB.autoPlayEnabled and not SpeakStone_MainDB.muteGossip then
+    if not immediate and SpeakStone_MainDB.autoPlayEnabled and not SpeakStone_MainDB.muteGossip then
         ScheduleSound(soundData, tonumber(SpeakStone_MainDB.autoPlayDelay) or 1.0)
     else
         DoPlaySound(soundData)
     end
+    if UpdateBookButton then UpdateBookButton() end
+    return true
 end
+
+local function BookIsReading()
+    local cur = GetCurrentSound()
+    return bookReading ~= nil and cur ~= nil and cur.textType == "item"
+end
+
+local function StopBook()
+    bookReading = nil
+    if BookIsReading() or (GetCurrentSound() and GetCurrentSound().textType == "item") then
+        StopCurrentSound()
+    end
+    if UpdateBookButton then UpdateBookButton() end
+end
+addon.StopBook = StopBook
 
 -- Defined below, but hooked from here. A forward declaration rather than a
 -- global, which is what let the hook reach it before.
@@ -1352,6 +1450,11 @@ function PlayItemAudio(page)
     if page then
         currentItemPage = page
         currentItemName = itemLink
+        -- Turning to the page the reading has already reached: carry on,
+        -- don't restart it.
+        if bookReading and bookReading.link == itemLink and bookReading.page == page and BookIsReading() then
+            return
+        end
         if itemAudioTimer then
             itemAudioTimer:Cancel()
             itemAudioTimer = nil
@@ -1360,10 +1463,18 @@ function PlayItemAudio(page)
         return
     end
 
+    -- Reopening a book that is still being read aloud: leave it running.
+    if itemLink ~= currentItemName and bookReading and bookReading.link == itemLink and BookIsReading() then
+        currentItemName = itemLink
+        currentItemPage = ItemTextGetPage() or 1
+        return
+    end
+
     -- Initial opening event from game: always start on Page 1
     if itemLink ~= currentItemName then
         currentItemName = itemLink
         currentItemPage = 1
+        RememberBookSlug(itemLink)
 
         if itemAudioTimer then
             itemAudioTimer:Cancel()
@@ -1383,7 +1494,11 @@ function PlayItemAudio(page)
             local p = ItemTextGetPage() or 1
             if p ~= currentItemPage then
                 currentItemPage = p
-                PlayItemAudioDirect(itemLink, p)
+                -- Follow the player's page turn, unless the reading is
+                -- already on that page (it moves ahead on its own).
+                if not (bookReading and bookReading.link == itemLink and bookReading.page == p and BookIsReading()) then
+                    PlayItemAudioDirect(itemLink, p, true)
+                end
             end
         end
     end
@@ -1397,6 +1512,45 @@ local originalDialogVolume = nil
 addon.PlayQuestAudio = PlayQuestAudio
 addon.PlayGossipAudio = PlayGossipAudio
 addon.PlayItemAudio = PlayItemAudio
+
+-- Play/Stop on the book window itself (owner, 2026-09-28). Play reads from
+-- the page on screen to the end of the book; Stop ends the reading, open or
+-- closed. Built lazily: ItemTextFrame belongs to Blizzard's UI.
+local bookButton
+function UpdateBookButton()
+    if bookButton then
+        bookButton:SetText(BookIsReading() and "Stop" or "Play")
+    end
+end
+local function EnsureBookButton()
+    if bookButton or not ItemTextFrame then
+        return
+    end
+    bookButton = CreateFrame("Button", "SpeakStoneBookButton", ItemTextFrame, "UIPanelButtonTemplate")
+    bookButton:SetSize(64, 22)
+    bookButton:SetPoint("TOPRIGHT", ItemTextFrame, "TOPRIGHT", -30, -28)
+    bookButton:SetFrameStrata("HIGH")
+    bookButton:SetScript("OnClick", function()
+        if BookIsReading() then
+            StopBook()
+            return
+        end
+        local link = ItemTextGetItem()
+        if link and link ~= "" then
+            local page = ItemTextGetPage() or 1
+            if page == 1 then RememberBookSlug(link) end
+            currentItemName = link
+            currentItemPage = page
+            if not PlayItemAudioDirect(link, page, true) then
+                DebugPrint("SpeakStone: no audio for this page.")
+            end
+        end
+        UpdateBookButton()
+    end)
+    bookButton:SetScript("OnShow", UpdateBookButton)
+    UpdateBookButton()
+end
+addon.EnsureBookButton = EnsureBookButton
 
 local function OnPlayerLogout()
     local currentSound = GetCurrentSound()
@@ -1451,6 +1605,8 @@ questEventFrame:SetScript("OnEvent", function(self, event, ...)
         end
         return
     elseif event == "ITEM_TEXT_READY" then
+        EnsureBookButton()
+        UpdateBookButton()
         if AutoPlayAllowed("autoPlayItemText") then
             PlayItemAudio()
         end
@@ -1462,8 +1618,13 @@ questEventFrame:SetScript("OnEvent", function(self, event, ...)
             itemAudioTimer:Cancel()
             itemAudioTimer = nil
         end
-        if SpeakStone_MainDB.stopDialogueOnClose then
+        -- Keep reading after the book is closed (owner, 2026-09-28): shut the
+        -- book, get back on the road, hear the rest. Only a book that is
+        -- actually being read carries on; anything else stops as before.
+        local keepGoing = SpeakStone_MainDB.keepReadingBooks ~= false and BookIsReading()
+        if SpeakStone_MainDB.stopDialogueOnClose and not keepGoing then
             StopCurrentSound()
+            bookReading = nil
         end
         return
     end
@@ -1487,7 +1648,14 @@ questEventFrame:SetScript("OnEvent", function(self, event, ...)
         end
         PlayQuestAudio(textType)  -- Call PlayQuestAudio with textType from event
     elseif event == "QUEST_FINISHED" and SpeakStone_MainDB.stopDialogueOnClose then
-        StopCurrentSound() -- Stop sound when the quest dialog finishes
+        -- Keep reading after the quest window closes (owner, 2026-09-28): a
+        -- quest line already playing finishes. Anything else stops as before.
+        local cur = GetCurrentSound()
+        local questLine = cur and (cur.textType == "description" or cur.textType == "progress"
+            or cur.textType == "completion") and cur.isPlaying
+        if not (SpeakStone_MainDB.keepReadingQuests ~= false and questLine) then
+            StopCurrentSound() -- Stop sound when the quest dialog finishes
+        end
     end
 
     lastTextType = textType
