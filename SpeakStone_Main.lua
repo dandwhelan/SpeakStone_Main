@@ -483,6 +483,11 @@ local function BuildAudioIndex()
     -- one nobody captured yet), so the settings dashboard surfaces the count
     -- rather than leaving it to be noticed as silence in-game.
     local gossipSuppressedClips = 0
+    -- Books (owner, 2026-09-28: a Books tab in the Audio Library that plays
+    -- whole books or single pages). Book clips are "<name>_page<n>.<ext>",
+    -- where <name> is "item<ID>", "item_<title>", "<title>" or
+    -- "<title>_<first words of page 1>"; grouped here by <name>.
+    local books, bookByBase = {}, {}
     for packName, soundLengths in pairs(addon.soundSources or {}) do
         if type(soundLengths) == "table" then
             local packClips = 0
@@ -510,6 +515,20 @@ local function BuildAudioIndex()
                     -- "if questID" block, so it could never run and the
                     -- Gossip tab was always empty.)
                     local npcIDStr, variantStr = soundFile:match("^npc(%d+)_gossip(%d+)%.")
+                    local bookBase, pageStr = soundFile:match("^(.-)_page(%d+)%.")
+                    if bookBase and not npcIDStr then
+                        local book = bookByBase[bookBase]
+                        if not book then
+                            book = { base = bookBase, pages = {}, pageSeen = {} }
+                            bookByBase[bookBase] = book
+                            table.insert(books, book)
+                        end
+                        local page = tonumber(pageStr)
+                        if not book.pageSeen[page] then
+                            book.pageSeen[page] = true
+                            table.insert(book.pages, page)
+                        end
+                    end
                     if npcIDStr then
                         local npcID = tonumber(npcIDStr)
                         table.insert(gossip, {
@@ -542,7 +561,14 @@ local function BuildAudioIndex()
         return a.npcID < b.npcID
     end)
 
+    for _, book in ipairs(books) do
+        table.sort(book.pages)
+        book.pageSeen = nil
+    end
+    table.sort(books, function(a, b) return a.base < b.base end)
+
     index = {
+        books = books,
         packs = packs, clips = clips,
         quests = quests, questCount = questCount,
         gossip = gossip, gossipNPCCount = gossipNPCCount,
