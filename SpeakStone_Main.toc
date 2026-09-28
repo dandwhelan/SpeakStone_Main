@@ -1,7 +1,7 @@
 ## Interface: 110207, 120000, 120001, 120100
 ## X-Interface: 110207, 120000, 120001, 120100
 ## Title: SpeakStone Narration
-## Notes: Plays AI-generated voiceovers for quests, books, and gossip, in each NPC's own voice.
+## Notes: Quests, books and gossip read aloud with voices similar to the in-game NPCs. Unofficial; not affiliated with Blizzard Entertainment.
 ## Author: Nerf, SpeakStone@beanw.co.uk
 ## X-Wago-ID: 4N2kQZ6L
 ## X-Curse-Project-ID: 1694370

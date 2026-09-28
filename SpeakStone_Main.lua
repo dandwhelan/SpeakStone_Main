@@ -2,7 +2,7 @@ local addonName, addon = ...
 local LDB = LibStub("LibDataBroker-1.1")
 local icon = LibStub("LibDBIcon-1.0")
 
--- Ogg first: new content is generated as Ogg Vorbis, and where both exist the
+-- Ogg first: new content ships as Ogg Vorbis, and where both exist the
 -- smaller file is preferred.
 -- Local, not a global: "SOUND_EXTENSIONS" is a name any other addon could
 -- plausibly claim, and whichever loaded second would win. The audio library
@@ -979,7 +979,7 @@ function PlayQuestAudio(textType, skipDelay)
         -- left its timer running to fire over whatever came next.
         StopCurrentSound()
 
-        -- Newly generated audio ships as Ogg Vorbis, which is a fraction of the
+        -- Newer audio ships as Ogg Vorbis, which is a fraction of the
         -- size of the original PCM library and is what the game itself uses.
         -- Both are accepted so a pack can mix them while it is converted over.
         local baseName = questID .. "_" .. textType
