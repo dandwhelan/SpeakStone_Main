@@ -394,12 +394,7 @@ local function BuildUI()
         -- only descBtn, relabeled "Play" -- see UpdateList.
         descBtn:SetScript("OnClick", function()
             if row.bookData then
-                local b = row.bookData
-                if b.kind == "book" then
-                    frame:PlayBook(b.book, 1)
-                else
-                    frame:PlayBookPage(b.book, b.page)
-                end
+                frame:OpenBook(row.bookData.book, 1)
             elseif row.gossipData then
                 frame:PlayGossipClip(row.gossipData.npcID, row.gossipData.variant)
             elseif row.questData then
@@ -407,7 +402,10 @@ local function BuildUI()
             end
         end)
         progBtn:SetScript("OnClick", function()
-            if row.questData then
+            if row.bookData then
+                frame:OpenBook(row.bookData.book, 1)
+                frame:PlayBook(row.bookData.book, 1)
+            elseif row.questData then
                 frame:PlaySpecificAudio(row.questData.id, "progress")
             end
         end)
@@ -587,13 +585,10 @@ local function BuildUI()
             for _, entry in ipairs(audioIndex.gossip) do
                 table.insert(gossip, entry)
             end
-            -- Books tab: one header row per book (plays the whole book), then
-            -- one row per page (plays just that page). Only book clips.
+            -- Books tab: one row per book. Its pages are shown in the book
+            -- view (owner, 2026-09-28: "a book with pages"). Only book clips.
             for _, book in ipairs(audioIndex.books or {}) do
                 table.insert(books, { kind = "book", book = book })
-                for _, page in ipairs(book.pages) do
-                    table.insert(books, { kind = "page", book = book, page = page })
-                end
             end
         end
         table.sort(quests, function(a, b) return a.id < b.id end)
@@ -781,20 +776,14 @@ local function BuildUI()
                     row.gossipData = nil
                     row.bookData = data
                     local name = BookName(data.book.base)
-                    row.progBtn:Hide()
                     row.compBtn:Hide()
                     row.descBtn:Show()
-                    if data.kind == "book" then
-                        row.text:SetText("|cffffd100" .. name .. "|r")
-                        row.idText:SetText(#data.book.pages .. (#data.book.pages == 1 and " page" or " pages"))
-                        local on = activeBook == data.book and activeBookWhole
-                        row.descBtn:SetText(on and "|cff00ff00Book|r" or "Book")
-                    else
-                        row.text:SetText("      Page " .. data.page)
-                        row.idText:SetText("      |cff9d9d9d" .. name .. "|r")
-                        local on = activeBook == data.book and activeBookPage == data.page
-                        row.descBtn:SetText(on and "|cff00ff00Play|r" or "Play")
-                    end
+                    row.progBtn:Show()
+                    row.text:SetText("|cffffd100" .. name .. "|r")
+                    row.idText:SetText(#data.book.pages .. (#data.book.pages == 1 and " page" or " pages"))
+                    row.descBtn:SetText("Open")
+                    local on = activeBook == data.book and activeBookWhole
+                    row.progBtn:SetText(on and "|cff00ff00Read|r" or "Read")
                 elseif isGossip then
                     row.questData = nil
                     row.bookData = nil
@@ -893,7 +882,7 @@ local function BuildUI()
             end
         end
 
-        local noun = isBooks and "book rows" or (isGossip and "gossip clips" or "quests")
+        local noun = isBooks and "books" or (isGossip and "gossip clips" or "quests")
         if self.filtering then
             -- A pass still running has not found everything yet, and "no
             -- matching quests" while it is still looking is simply wrong --
@@ -925,11 +914,109 @@ local function BuildUI()
         end
         activeBook, activeBookPage, activeBookWhole = nil, nil, false
         self:UpdateList()
+        if self.RefreshBook then self:RefreshBook() end
     end
 
     -- Plays one page of a book. With `whole`, the next page follows when this
     -- one ends, through to the last page; StopAudio (or playing anything
     -- else) ends the reading.
+    -- ------------------------------------------------------------------
+    -- Book view: one book shown as a book, page by page (owner, 2026-09-28).
+    -- Covers the list; the page shown follows the reading.
+    -- ------------------------------------------------------------------
+    local view = CreateFrame("Frame", nil, frame)
+    view:SetPoint("TOPLEFT", frame, "TOPLEFT", 14, LIST_TOP)
+    view:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -14, 44)
+    view:SetFrameLevel(frame:GetFrameLevel() + 20)
+    view:EnableMouse(true)
+    view:Hide()
+    local parchment = view:CreateTexture(nil, "BACKGROUND")
+    parchment:SetAllPoints()
+    parchment:SetColorTexture(0.87, 0.79, 0.62, 1)
+    local edge = view:CreateTexture(nil, "BORDER")
+    edge:SetPoint("TOPLEFT", 6, -6)
+    edge:SetPoint("BOTTOMRIGHT", -6, 6)
+    edge:SetColorTexture(0.93, 0.87, 0.73, 1)
+    local bTitle = view:CreateFontString(nil, "OVERLAY", "QuestTitleFontBlackShadow")
+    bTitle:SetPoint("TOP", view, "TOP", 0, -26)
+    bTitle:SetWidth(320)
+    bTitle:SetTextColor(0.25, 0.16, 0.06)
+    local bPage = view:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    bPage:SetPoint("CENTER", view, "CENTER", 0, 40)
+    bPage:SetTextColor(0.3, 0.2, 0.08)
+    local bStatus = view:CreateFontString(nil, "OVERLAY", "GameFontBlack")
+    bStatus:SetPoint("TOP", bPage, "BOTTOM", 0, -12)
+    bStatus:SetWidth(300)
+    local function Btn(label, w, point, x, y)
+        local b = CreateFrame("Button", nil, view, "UIPanelButtonTemplate")
+        b:SetSize(w, 24)
+        b:SetPoint(point, view, point, x, y)
+        b:SetText(label)
+        return b
+    end
+    local prevBtn = Btn("< Prev", 80, "LEFT", 20, 40)
+    local nextBtn = Btn("Next >", 80, "RIGHT", -20, 40)
+    local playPageBtn = Btn("Play page", 100, "BOTTOM", -56, 70)
+    local readBtn = Btn("Read book", 100, "BOTTOM", 56, 70)
+    local backBtn = Btn("Back to books", 120, "BOTTOM", 0, 26)
+    frame.bookView = view
+
+    function frame:RefreshBook()
+        if not view.book then return end
+        local book, idx = view.book, view.index
+        bTitle:SetText(BookName(book.base))
+        bPage:SetText(string.format("Page %d of %d", idx, #book.pages))
+        local reading = activeBook == book and activeBookWhole
+        if activeBook == book and activeBookPage == book.pages[idx] then
+            bStatus:SetText(reading and "Reading the book..." or "Playing this page")
+        else
+            bStatus:SetText(" ")
+        end
+        readBtn:SetText(reading and "Stop" or "Read book")
+        if idx > 1 then prevBtn:Enable() else prevBtn:Disable() end
+        if idx < #book.pages then nextBtn:Enable() else nextBtn:Disable() end
+    end
+
+    function frame:OpenBook(book, index)
+        view.book, view.index = book, index or 1
+        view:Show()
+        self:RefreshBook()
+    end
+
+    function frame:CloseBook()
+        view.book = nil
+        view:Hide()
+    end
+
+    local function Turn(delta)
+        local book = view.book
+        if not book then return end
+        local idx = math.max(1, math.min(#book.pages, view.index + delta))
+        if idx == view.index then return end
+        view.index = idx
+        -- Turning the page while the book is being read jumps the reading there.
+        if activeBook == book and activeBookWhole then
+            frame:PlayBook(book, idx)
+        end
+        frame:RefreshBook()
+    end
+    prevBtn:SetScript("OnClick", function() Turn(-1) end)
+    nextBtn:SetScript("OnClick", function() Turn(1) end)
+    playPageBtn:SetScript("OnClick", function()
+        if view.book then frame:PlayBookPage(view.book, view.book.pages[view.index]) end
+    end)
+    readBtn:SetScript("OnClick", function()
+        if not view.book then return end
+        if activeBook == view.book and activeBookWhole then
+            frame:StopAudio()
+        else
+            frame:PlayBook(view.book, view.index)
+        end
+    end)
+    backBtn:SetScript("OnClick", function() frame:CloseBook() end)
+    view:EnableMouseWheel(true)
+    view:SetScript("OnMouseWheel", function(_, delta) Turn(delta > 0 and -1 or 1) end)
+
     local function StartBookPage(book, index, whole)
         local page = book.pages[index]
         if not page then return false end
@@ -946,6 +1033,10 @@ local function BuildUI()
         if not (willPlay and handle) then return false end
         activeDebugSound = handle
         activeBook, activeBookPage, activeBookWhole = book, page, whole
+        if view.book == book then
+            view.index = index
+            frame:RefreshBook()
+        end
         bookTimer = C_Timer.NewTimer((tonumber(duration) or 5) + 0.4, function()
             bookTimer = nil
             if activeBook ~= book or activeBookPage ~= page then return end
@@ -954,7 +1045,10 @@ local function BuildUI()
             else
                 activeBook, activeBookPage, activeBookWhole = nil, nil, false
             end
-            if frame:IsShown() then frame:UpdateList() end
+            if frame:IsShown() then
+                frame:UpdateList()
+                frame:RefreshBook()
+            end
         end)
         return true
     end
@@ -1048,6 +1142,11 @@ local function BuildUI()
 
     function frame:SetMode(mode)
         if self.mode == mode then return end
+        -- Drop the previous tab's list BEFORE anything redraws: resetting the
+        -- scrollbar in FilterList redraws at once, and it used to draw the old
+        -- tab's rows under the new mode (gossip rows as books, etc.).
+        self.filteredList = nil
+        if self.CloseBook then self:CloseBook() end
         self:StopAudio()
         self.mode = mode
         local hints = {
@@ -1144,6 +1243,7 @@ local function BuildUI()
         -- waiting for, and it would keep waking every frame until it finished.
         CancelFilter()
         self:StopAudio()
+        self:CloseBook()
         -- The index is tens of thousands of rows and most of the addon's
         -- memory. Rebuilding it on the next open costs a moment; keeping it
         -- costs every player the memory all session.
