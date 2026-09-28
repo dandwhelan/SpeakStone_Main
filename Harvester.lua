@@ -8,7 +8,7 @@
 --
 -- Why capture at all: quest description/progress/completion text is delivered
 -- by the server at runtime and exists nowhere in the files Blizzard ships, so
--- the only ways to get it are to read it off a live client or scrape a site
+-- the only ways to get it are to read it off a live client or copy it from a site
 -- that already did. Gossip text is worse -- there is no gossip-text table in
 -- the client either, and no scrapeable equivalent, so it can *only* come from
 -- capture like this.
@@ -178,7 +178,7 @@ end
 -- became the character's name before the addon ever saw the string. Left
 -- alone that costs three things -- two players' captures of the same line are
 -- different text and can never confirm each other, a stranger's character
--- name gets baked into generated audio, and that name travels to whoever the
+-- name gets baked into the audio, and that name travels to whoever the
 -- capture is shared with for no purpose. So it is put back to "$n" at capture
 -- time and never reaches SavedVariables at all.
 --
@@ -513,7 +513,7 @@ frame:SetScript("OnEvent", function(_, event, ...)
 
     local questID = GetQuestID()
     -- Same for quest text: audio for a passage means its text was already
-    -- in hand when the clip was generated.
+    -- in hand when the clip was made.
     local passage = (event == "QUEST_DETAIL" and "description")
         or (event == "QUEST_PROGRESS" and "progress")
         or (event == "QUEST_COMPLETE" and "completion")

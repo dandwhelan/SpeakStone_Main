@@ -253,7 +253,7 @@ local EXPECTED_PACK_FAMILIES = {
     },
     {
         prefix = "SpeakStone_Forever_",
-        packs = { "Audio_Part1", "Audio_Part2", "Audio_Part3", "Audio_Part4" },
+        packs = { "Audio_Pack1", "Audio_Pack2" },
     },
 }
 
@@ -391,7 +391,7 @@ function SpeakStone:CreateWindow()
     cards.reportIssue = CreateLinkCard(5, "REPORT ISSUE", "Wrong voice, broken audio, or anything else -- report it at:", "/report")
     AttachTooltip(cards.reportIssue, "Report an issue", "Opens a copyable link to SpeakStone's issue-report page. Wrong-sex voices, mispronunciations, missing audio, and anything else worth flagging goes here.")
 
-    cards.addVoice = CreateLinkCard(6, "ADD YOUR VOICE", "Want your own voice cloned onto an NPC? Sign up at:", "/voice")
+    cards.addVoice = CreateLinkCard(6, "ADD YOUR VOICE", "Want to lend your voice to an NPC? Sign up at:", "/voice")
     AttachTooltip(cards.addVoice, "Add your voice", "Opens a copyable link to SpeakStone's voice-donation page, where you can contribute your own voice as a reference for future NPCs.")
 
     -- ----------------------------------------------------------------------

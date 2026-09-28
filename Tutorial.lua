@@ -186,7 +186,8 @@ local function BuildWelcome()
     local body = Text(page, "GameFontHighlight", WIDTH - 40)
     body:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -16)
     body:SetSpacing(4)
-    body:SetText("SpeakStone reads quests, NPC greetings and books aloud, each in the NPC's own AI-generated voice.\n\n"
+    body:SetText("SpeakStone reads quests, NPC greetings and books aloud, with voices similar to the in-game NPCs.\n"
+        .. "Unofficial; not affiliated with Blizzard Entertainment.\n\n"
         .. "This quick setup takes under a minute:\n"
         .. "  1. Pick how much you want narrated.\n"
         .. "  2. Check your audio packs.\n"
