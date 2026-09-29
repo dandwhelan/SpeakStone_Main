@@ -240,20 +240,21 @@ end
 -- Every pack a complete install has, per family. A missing pack cannot
 -- announce itself -- it is not loaded -- so the only way to say what is absent
 -- is to know what should be there. Update this when a pack is added or a
--- volume split is sealed (tools/pack_split_state.json).
+-- volume split is sealed (tools/pack_split_state.json). 2026-09-29: Cataclysm and
+-- Classic re-split (2 parts) below CurseForge's ~600 MB upload limit.
 local EXPECTED_PACK_FAMILIES = {
     {
         prefix = "SpeakStone_Pack_",
         packs = {
             "Classic_Part1", "Classic_Part2", "TheBurningCrusade",
-            "WrathoftheLichKing", "Cataclysm", "MistsofPandaria",
+            "WrathoftheLichKing", "Cataclysm_Part1", "Cataclysm_Part2", "MistsofPandaria",
             "WarlordsofDraenor", "Legion", "BattleforAzeroth", "Shadowlands",
             "Dragonflight", "TheWarWithin", "Midnight", "Chatter",
         },
     },
     {
         prefix = "SpeakStone_Forever_",
-        packs = { "Audio_Pack1", "Audio_Pack2" },
+        packs = { "Audio_Pack1", "Audio_Pack2", "Chatter" },
     },
 }
 
