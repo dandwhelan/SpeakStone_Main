@@ -222,6 +222,8 @@ local function BookName(base)
         else
             return "Item " .. itemID    -- not cached: the client may learn the name later
         end
+    elseif SpeakStone_BookTitles and SpeakStone_BookTitles[base] then
+        name = SpeakStone_BookTitles[base]
     else
         name = base:gsub("^item_", ""):gsub("_", " ")
         name = name:gsub("(%a)([%w']*)", function(first, rest) return first:upper() .. rest end)
@@ -939,7 +941,10 @@ local function BuildUI()
     edge:SetColorTexture(0.93, 0.87, 0.73, 1)
     local bTitle = view:CreateFontString(nil, "OVERLAY", "QuestTitleFontBlackShadow")
     bTitle:SetPoint("TOP", view, "TOP", 0, -18)
-    bTitle:SetWidth(320)
+    bTitle:SetWidth(300)
+    -- Long titles wrapped to three lines and ran into the page text; cap at two.
+    if bTitle.SetMaxLines then bTitle:SetMaxLines(2) end
+    bTitle:SetWordWrap(true)
     bTitle:SetTextColor(0.25, 0.16, 0.06)
     local bStatus = view:CreateFontString(nil, "OVERLAY", "GameFontBlackSmall")
     bStatus:SetPoint("TOP", bTitle, "BOTTOM", 0, -4)
@@ -948,6 +953,9 @@ local function BuildUI()
     -- The page's words (owner, 2026-09-28: "look at adding the book text"),
     -- from BookTexts.lua, scrollable for long pages.
     local textScroll = CreateFrame("ScrollFrame", nil, view, "UIPanelScrollFrameTemplate")
+    -- Top edge is set in RefreshBook from the title's height, so a two-line
+    -- title pushes the text down instead of the title and "Reading the
+    -- book..." sitting on top of it.
     textScroll:SetPoint("TOPLEFT", view, "TOPLEFT", 22, -58)
     textScroll:SetPoint("BOTTOMRIGHT", view, "BOTTOMRIGHT", -34, 118)
     local textChild = CreateFrame("Frame", nil, textScroll)
@@ -989,7 +997,17 @@ local function BuildUI()
             local _, class = UnitClass("player")
             local race = UnitRace("player") or "traveller"
             local female = UnitSex("player") == 3
+            -- SimpleHTML pages ("<HTML><BODY><H1 ...>", "<IMG .../>") and
+            -- world-state counters ("$4024w") were shown raw (owner, 2026-09-29).
+            -- BookTexts.lua is cleaned at build time; this covers older copies.
+            t = t:gsub("<[Bb][Rr]%s*/?>", "\n"):gsub("</[PpHh]%d?>", "\n")
+            for _, tag in ipairs({ "[Hh][Tt][Mm][Ll]", "[Bb][Oo][Dd][Yy]", "[Hh]%d", "[Pp]", "[Ii][Mm][Gg]" }) do
+                t = t:gsub("</?" .. tag .. "%f[%s/>][^<>]*>", "")
+            end
+            t = t:gsub("%$%d+[wW]", "")
             t = t:gsub("%$[bB]", "\n")
+            t = t:gsub("[ \t]+\n", "\n"):gsub("\n\n\n+", "\n\n"):gsub("^%s+", ""):gsub("%s+$", "")
+            if t == "" then t = "|cff7a6a50(This page is a picture.)|r" end
             t = t:gsub("%$[gG]%s*([^:;]*):([^;]*);", function(m, f) return female and f or m end)
             t = t:gsub("%$[nN]", name):gsub("<name>", name)
             t = t:gsub("%$[cC]", (class and class:lower():gsub("^%l", string.upper)) or "hero"):gsub("<class>", class or "hero")
@@ -1004,6 +1022,8 @@ local function BuildUI()
         if not view.book then return end
         local book, idx = view.book, view.index
         bTitle:SetText(BookName(book.base))
+        local top = 18 + math.ceil(bTitle:GetStringHeight() or 20) + 4 + 14 + 6
+        textScroll:SetPoint("TOPLEFT", view, "TOPLEFT", 22, -math.max(58, top))
         bPage:SetText(string.format("Page %d of %d", idx, #book.pages))
         if view.shownIndex ~= idx or view.shownBook ~= book then
             bText:SetText(PageText(book, idx))
