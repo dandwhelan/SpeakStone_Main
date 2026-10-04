@@ -249,7 +249,7 @@ local EXPECTED_PACK_FAMILIES = {
             "Classic_Part1", "Classic_Part2", "TheBurningCrusade",
             "WrathoftheLichKing", "Cataclysm_Part1", "Cataclysm_Part2", "MistsofPandaria",
             "WarlordsofDraenor", "Legion", "BattleforAzeroth", "Shadowlands",
-            "Dragonflight", "TheWarWithin", "Midnight", "Chatter",
+            "Dragonflight", "TheWarWithin", "Midnight", "Chatter_Part1", "Chatter_Part2",
         },
     },
     {
