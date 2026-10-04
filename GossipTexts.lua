@@ -131,6 +131,7 @@ SpeakStone_GossipTexts = {
 [375]={ -- Priestess Anetta
   ["I trust the Light is with you, adventurer. Is there something that I can I help you with?"]=1,
   ["Do not turn your back on the Light, $c, it may be the one thing that saves you some day."]=2,
+  ["Do not turn your back on the Light, shaman, it may be the one thing that saves you some day."]=3,
 },
 [376]={ -- High Priestess Laurena
   ["I trust the Light is with you, adventurer. Is there something that I can I help you with?"]=1,
@@ -1265,10 +1266,12 @@ SpeakStone_GossipTexts = {
 [2124]={ -- Isabella
   ["Greetings. I'm an undead mage trainer, and you're a mage."]=1,
   ["Well met, $c. My advice to you is this: As you travel the world, be wary of magic for it will burn the untrained."]=2,
+  ["Arcane Momentum is a technique that allows a mage to use their physical momentum to dictate the direction of their Blink spell rather than the basic technique of Blinking in the direction you are facing."]=3,
 },
 [2126]={ -- Maximillion
   ["It is wise that you humble yourself before me adventurer in your desire for more warlock knowledge."]=1,
   ["I have no time to waste on the likes of you $c."]=2,
+  ["I have no time to waste on the likes of you mage."]=3,
 },
 [2127]={ -- Rupert Boch
   ["It is wise that you humble yourself before me adventurer in your desire for more warlock knowledge."]=1,
@@ -4038,6 +4041,7 @@ SpeakStone_GossipTexts = {
 },
 [5749]={ -- Kayla Smithe
   ["Want to make your demons more powerful? It'll cost you, but you've come to the right place."]=1,
+  ["Sorry, but my services are only of use to warlocks."]=2,
 },
 [5750]={ -- Gina Lang
   ["Want to make your demons more powerful? It'll cost you, but you've come to the right place."]=1,
@@ -24668,6 +24672,10 @@ SpeakStone_GossipTexts = {
 [191150]={ -- Danielle Anglers
   ["Just imagine the kind of fish we might find here! Dragon fish! Proto-dragon fish! Or better yet--forbidden fish the dragons have been hiding away for centuries!"]=1,
 },
+[191205]={ -- Hemet Nesingwary
+  ["You didn't think retirement would keep me out of the game, did you? My eyes aren't what they used to be, and my hands are certainly less steady... but they can hold these reins! This whole Dragonscale Expedition is quite the operation, and I've a mind to do my part! As for the Azure Span, well... it reminds me of some of the best places I've ever been."]=1,
+  ["I've bagged enough trophies to last me ten lifetimes! Take Tiny and Junior here... Sure, I could put their heads on a wall as easy as pulling a pint of Dun Morogh stout, but it'd make my job as a wagon driver significantly harder! <Nesingwary laughs.> I suppose that makes me something of a conservationist!"]=2,
+},
 [191263]={ -- Salukan
   ["Where would you like to fly?"]=1,
 },
@@ -25937,7 +25945,6 @@ SpeakStone_GossipTexts = {
   ["It be good to see some fresh faces around here. My crew and I have been stranded for over seven years, and we were beginning to believe we'd have to rebuild society from scratch!"]=1,
   ["We'd been sailing Torga's Beak, a gift given to us by the Zandalari, when out of nowhere a great white serpent broke our hull. My crew acted quickly, and took us to shore before we took on too much water. Would have been better to let the ship sink and swim back to Zul'Aman, but little did we know the trap we had put ourselves in. After establishing ourselves on the island, we built small dinghies to escape--only to find the fogs constantly turning us back to shore. We've spent the last few years making this place a home. We had begun to acclimate, until just a day ago when the foul serpents poured forth from the mountainside. My crew scattered across this cursed island. What cruel winds, for the fog to lift only now."]=2,
   ["'Twas a cursed land, even before the snakes emerged. Many a crewmate found themselves attacked by the souls of the dead that wander here, and we've found a number of other Zandalari ships that met the fate of ours. To the north, we've made allies with a hermit by the name of Ofi, an Amani exile. She prefers to keep to herself, but is the only friendly face we've seen. To the east, the island turns to muck and mud, and a combination of murlocs and spirits make their home there. The murlocs have a crazed glint in their eyes... a curse that spread to some of my crewmates as well. As for the spirits, some of them seem friendly enough while others attack you on sight. We've generally found it best to avoid the dead."]=3,
-  ["To the south lays Gnarldor Isle, where some burly giants seem to have taken home. They're none too friendly and we give them a wide berth. To the west are the crypts and temples where the snakes emerged from. My crew is a superstitious sort and don't like messing with graves, so we thought to leave the quiet lands alone. We didn't expect venom to spew from the mountains and flying snakes with two heads! You'd best be getting on with your soldiers. I could use your help around here later, but for now it seems we have an outpost to fortify. You're a ray of hope, Nerfwins."]=4,
 },
 [262204]={ -- Witherbark Cook
   ["The ingredients I've got are... suspicious at best. Eh, with your help I'm sure it'll be at least edible."]=1,

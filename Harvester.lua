@@ -189,22 +189,85 @@ end
 -- and race travel as metadata instead and get resolved where several players'
 -- captures of one line can be compared.
 -- --------------------------------------------------------------------------
-local playerNamePattern = nil
+--
+-- Every name this account has played is scrubbed, not just the current one
+-- (2026-10-04). A capture leaked "Nerfwins" to the site in three lines, two of
+-- them voiced: the store is account-wide and also absorbs older captures
+-- (SpeakStoneHarvesterDB, missingCaptures) that predate this scrub or were
+-- taken on another character, and the old version cached the first name it
+-- saw for the session -- including the client's "Unknown" placeholder if a
+-- capture fired during loading, which then scrubbed nothing all session. The
+-- names live in SpeakStone_MainDB.selfNames, which no export ever writes.
+local function ValidSelfName(name)
+    return type(name) == "string" and name ~= "" and not IsSecret(name)
+        and name ~= UNKNOWNOBJECT and name ~= UNKNOWN and name ~= "Unknown"
+end
+
+local namePatterns, namePatternCount = nil, -1
+
+local function SelfNamePatterns()
+    if not SpeakStone_MainDB then return {} end
+    local names = SpeakStone_MainDB.selfNames or {}
+    SpeakStone_MainDB.selfNames = names
+    local me = UnitName("player")
+    if ValidSelfName(me) then names[me] = true end
+    local count = 0
+    for _ in pairs(names) do count = count + 1 end
+    if count ~= namePatternCount then
+        -- Longest first: a name that is a prefix of another must not eat
+        -- the front of the longer one.
+        local sorted = {}
+        for name in pairs(names) do sorted[#sorted + 1] = name end
+        table.sort(sorted, function(a, b) return #a > #b end)
+        namePatterns = {}
+        for _, name in ipairs(sorted) do
+            local ok, escaped = pcall(function() return (name:gsub("(%W)", "%%%1")) end)
+            if ok and escaped then namePatterns[#namePatterns + 1] = escaped end
+        end
+        namePatternCount = count
+    end
+    return namePatterns
+end
 
 local function Detokenize(text)
-    if not text or text == "" then return text end
-    if not playerNamePattern then
-        local name = UnitName("player")
-        if not name or name == "" then return text end
-        local ok, escaped = pcall(function() return (name:gsub("(%W)", "%%%1")) end)
-        if ok and escaped then
-            playerNamePattern = escaped
-        else
-            return text
+    if type(text) ~= "string" or text == "" or IsSecret(text) then return text end
+    for _, pattern in ipairs(SelfNamePatterns()) do
+        local ok, res = pcall(function() return (text:gsub(pattern, "$n")) end)
+        if ok and res then text = res end
+    end
+    return text
+end
+
+local function IsSelfName(name)
+    return ValidSelfName(name) and SpeakStone_MainDB and SpeakStone_MainDB.selfNames
+        and SpeakStone_MainDB.selfNames[name] == true
+end
+
+-- Second line of defence, run after migration and before every export: the
+-- same scrub over everything already stored, and no passage attributed to one
+-- of the account's own characters as its speaker (96612's completion was,
+-- after an old capture recorded the player as the NPC).
+local function ScrubStore(h)
+    local function texts(list)
+        for i, t in ipairs(list or {}) do list[i] = Detokenize(t) end
+    end
+    for _, entry in pairs(h.quests or {}) do
+        for _, captured in pairs(entry) do
+            if type(captured) == "table" then
+                captured.text = Detokenize(captured.text)
+                if IsSelfName(captured.npcName) then captured.npcName = nil end
+            end
         end
     end
-    local ok, res = pcall(function() return (text:gsub(playerNamePattern, "$n")) end)
-    return (ok and res) or text
+    for _, bucket in ipairs({ h.gossip, h.npcChat }) do
+        for _, entry in pairs(bucket or {}) do
+            texts(entry.texts)
+            if IsSelfName(entry.npcName) then entry.npcName = nil end
+        end
+    end
+    for _, entry in pairs(h.itemText or {}) do
+        for page, t in pairs(entry.pages or {}) do entry.pages[page] = Detokenize(t) end
+    end
 end
 
 local function PlayerMetadata()
@@ -783,6 +846,7 @@ local EXPORT_BATCH_BYTES = 384 * 1024
 function addon.HarvestExportBatches(maxBytes)
     maxBytes = maxBytes or EXPORT_BATCH_BYTES
     local h = Store()
+    ScrubStore(h)
 
     -- Every piece carries the same metadata. Which client, which build and
     -- which player wrote a capture is not a property of the quests in it, so
@@ -912,6 +976,7 @@ end
 -- and nothing captured since.
 function addon.HarvestSnapshot()
     local h = Store()
+    ScrubStore(h)   -- keys must be of the text the export will carry
     local snap = {}
     for questID, entry in pairs(h.quests) do
         for _, passage in ipairs(QUEST_PASSAGES) do
@@ -1149,6 +1214,9 @@ function addon.HarvestMigrate()
             if not h.itemText[key] then h.itemText[key] = entry end
         end
     end
+
+    -- Imported captures were never scrubbed; see ScrubStore.
+    ScrubStore(h)
 
     if moved > 0 then
         DebugPrint("SpeakStone: imported " .. moved .. " previously captured quest(s).")

@@ -1229,6 +1229,15 @@ local function PlayGossipAudio()
         addon.activeSound = nil
         return
     else
+        -- Blind tier: nothing proves gossip1 matches what is on screen. Picking
+        -- a gossip option re-fires GOSSIP_SHOW with the NPC's reply, which would
+        -- replay the greeting over it. So it plays once per open window; the
+        -- latch is cleared on GOSSIP_CLOSED.
+        if addon.blindGossipPlayedGUID == guid then
+            addon.activeSound = nil
+            return
+        end
+        addon.blindGossipPlayedGUID = guid
         variant = 1
     end
 
@@ -1600,6 +1609,7 @@ questEventFrame:SetScript("OnEvent", function(self, event, ...)
         end
         return
     elseif event == "GOSSIP_CLOSED" then
+        addon.blindGossipPlayedGUID = nil
         if SpeakStone_MainDB.stopDialogueOnClose then
             StopCurrentSound()
         end
