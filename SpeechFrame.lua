@@ -21,11 +21,14 @@ local SIZES = {
     { key = "small", label = "Small", scale = 0.8 },
     { key = "medium", label = "Medium", scale = 1.0 },
     { key = "large", label = "Large", scale = 1.25 },
+    { key = "xlarge", label = "Extra large", scale = 1.5 },
 }
 
-local WIDTH, HEIGHT = 660, 112
+local WIDTH, HEIGHT = 660, 130
 local PORTRAIT = 72
 local TEXT_LINES = 4
+-- "Show all the text": the most lines the frame grows to before it scrolls.
+local MAX_FIT_LINES = 24
 -- How long the frame stays up after a line ends on its own.
 local LINGER_SECONDS = 2
 local UPDATE_INTERVAL = 0.1
@@ -206,7 +209,9 @@ local function Build()
 
     frame.portrait = frame:CreateTexture(nil, "ARTWORK")
     frame.portrait:SetSize(PORTRAIT, PORTRAIT)
-    frame.portrait:SetPoint("LEFT", frame, "LEFT", 12, 0)
+    -- Pinned to the top (same spot as centred at the base height), so the
+    -- text below it stays inside the frame when "show all the text" grows it.
+    frame.portrait:SetPoint("TOPLEFT", frame, "TOPLEFT", 12, -(HEIGHT - PORTRAIT) / 2)
     local mask = frame:CreateMaskTexture()
     mask:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask",
         "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
@@ -247,10 +252,20 @@ local function Build()
         if paused then Resume() else Pause() end
     end, "Pause the narration. The game cannot pick a clip up part-way, so Resume starts the line again.")
     controls.pause:SetPoint("RIGHT", controls.stop, "LEFT", -4, 0)
+    controls.next = MakeButton(controls, "Next", 50, function()
+        paused = false
+        lingerUntil = nil
+        if addon.PlayNextQueued then addon.PlayNextQueued() end
+    end, "Skip to the next queued quest.")
+    controls.next:SetPoint("RIGHT", controls.pause, "LEFT", -4, 0)
+    controls.next:Hide()
 
     frame.name = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-    frame.name:SetPoint("TOPLEFT", frame.portrait, "TOPRIGHT", 14, 6)
-    frame.name:SetPoint("RIGHT", controls.pause, "LEFT", -10, 0)
+    -- Its own row under the buttons, full width, so the quest title is not
+    -- cut short by Pause/Stop/Replay/Next.
+    frame.name:SetPoint("LEFT", frame.portrait, "RIGHT", 14, 0)
+    frame.name:SetPoint("TOP", frame, "TOP", 0, -32)
+    frame.name:SetPoint("RIGHT", frame, "RIGHT", -16, 0)
     frame.name:SetJustifyH("LEFT")
     frame.name:SetWordWrap(false)
 
@@ -265,8 +280,11 @@ local function Build()
     scroll:SetPoint("TOPLEFT", frame.name, "BOTTOMLEFT", 0, -6)
     scroll:SetPoint("RIGHT", frame, "RIGHT", -16, 0)
     scroll:SetHeight(lineHeight * TEXT_LINES)
+    frame.lineHeight = lineHeight
     scroll:EnableMouseWheel(true)
     scroll:SetScript("OnMouseWheel", function(self, delta)
+        -- A manual scroll pauses the auto-scroll for a few seconds.
+        frame.manualScrollUntil = GetTime() + 4
         local target = self:GetVerticalScroll() - delta * lineHeight * 2
         self:SetVerticalScroll(math.max(0, math.min(target, self:GetVerticalScrollRange())))
     end)
@@ -341,7 +359,16 @@ local function Fill(sd)
     end
     frame.text:SetWidth(width)
     frame.text:SetText(text)
-    frame.scrollChild:SetSize(width, math.max(1, frame.text:GetStringHeight()))
+    local textHeight = math.max(1, frame.text:GetStringHeight())
+    frame.scrollChild:SetSize(width, textHeight)
+    -- Fixed four lines, or grown to fit the whole text (capped).
+    local lines = TEXT_LINES
+    if DB().speechFitText then
+        lines = math.max(TEXT_LINES, math.min(MAX_FIT_LINES, math.ceil(textHeight / frame.lineHeight)))
+    end
+    local scrollHeight = frame.lineHeight * lines
+    frame.scroll:SetHeight(scrollHeight)
+    frame:SetHeight(HEIGHT + scrollHeight - frame.lineHeight * TEXT_LINES)
     frame.scroll:SetVerticalScroll(0)
     frame.filledFor = sd
 end
@@ -354,13 +381,27 @@ local function Refresh()
     local elapsed = Elapsed(sd)
     local duration = Duration(sd)
     if duration then
-        frame.progress:SetValue(math.min(1, elapsed / duration))
+        local fraction = math.min(1, elapsed / duration)
+        frame.progress:SetValue(fraction)
+        -- Auto-scroll: keep the line being spoken (estimated from how far
+        -- through the clip we are) in the middle of the text area.
+        local range = frame.scroll:GetVerticalScrollRange()
+        if range > 0 and not paused and DB().speechAutoScroll ~= false and GetTime() >= (frame.manualScrollUntil or 0) then
+            local target = fraction * frame.scrollChild:GetHeight() - frame.scroll:GetHeight() / 2
+            frame.scroll:SetVerticalScroll(math.max(0, math.min(target, range)))
+        end
         frame.controls.time:SetText(Clock(math.min(elapsed, duration)) .. " / " .. Clock(duration))
     else
         frame.progress:SetValue(0)
         frame.controls.time:SetText(Clock(elapsed))
     end
     frame.controls.pause:SetText(paused and "Resume" or "Pause")
+    -- Queue position ("1/2") and Next, only while something is queued.
+    local total = addon.queueTotal or 0
+    if total > 1 and not sd.preview then
+        frame.controls.time:SetText((addon.queuePos or 1) .. "/" .. total .. "   " .. frame.controls.time:GetText())
+    end
+    frame.controls.next:SetShown(not sd.preview and addon.speechQueue and #addon.speechQueue > 0)
 end
 
 local function ShouldShow(sd)
@@ -488,6 +529,8 @@ function StopNarration()
         elseif addon.activeSound == sd then
             addon.StopCurrentSound()
         end
+        -- Stop means stop: the queue goes too.
+        if addon.ClearSpeechQueue then addon.ClearSpeechQueue() end
     end
     Clear()
 end
@@ -572,6 +615,18 @@ function OpenMenu(owner)
                 function() return (db.speechSize or "medium") == size.key end,
                 function() db.speechSize = size.key; ApplyPosition() end)
         end
+        root:CreateCheckbox("Auto-scroll the text",
+            function() return db.speechAutoScroll ~= false end,
+            function() db.speechAutoScroll = db.speechAutoScroll == false end)
+        root:CreateCheckbox("Show all the text (grow the frame)",
+            function() return db.speechFitText end,
+            function() db.speechFitText = not db.speechFitText; frame.filledFor = nil end)
+        root:CreateCheckbox("Queue quests (don't interrupt)",
+            function() return db.queueQuestSpeech end,
+            function()
+                db.queueQuestSpeech = not db.queueQuestSpeech
+                if not db.queueQuestSpeech and addon.ClearSpeechQueue then addon.ClearSpeechQueue() end
+            end)
         root:CreateCheckbox("Lock position",
             function() return db.speechFrameLocked end,
             function() db.speechFrameLocked = not db.speechFrameLocked end)

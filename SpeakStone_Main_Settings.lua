@@ -139,6 +139,21 @@ local SETTINGS_SECTIONS = {
                 tooltip = "When you close the quest window while it is still being read, a bar shows who is speaking and what they are saying, with Pause, Stop and Replay. Right-click it to change its size or lock it. /ss frame shows a sample to place it with.",
             },
             {
+                option = "speechAutoScroll",
+                label = "Auto-scroll the speech frame text",
+                tooltip = "Scroll the text along with the voice so the line being spoken stays in view. Off: the text stays put and the mouse wheel scrolls it.",
+            },
+            {
+                option = "speechFitText",
+                label = "Grow the speech frame to show all the text",
+                tooltip = "Make the frame taller so the whole passage shows without scrolling (very long text still scrolls). Pair with the Extra large size on the frame's gear menu.",
+            },
+            {
+                option = "queueQuestSpeech",
+                label = "Queue quests instead of interrupting",
+                tooltip = "Talking to another quest giver while a quest is still being read adds the new quest to a queue instead of cutting the first one off. The speech frame shows where you are (1/2) and a Next button to skip ahead. Stop clears the queue.",
+            },
+            {
                 option = "autoAcceptQuests",
                 label = "Auto-accept quests",
                 tooltip = "Accept quests as soon as they are offered and hear them in the speech frame instead. Hold Shift while talking to the quest giver to skip it for that quest.",
@@ -742,7 +757,7 @@ function SpeakStone:CreateSettings()
     -- The speech frame's two switches, here as well as in the window, so it
     -- can be turned off from the game's own Options without knowing /ss.
     local speechFrame = CreateFrame("Frame", nil, optionsFrame)
-    speechFrame:SetSize(500, 96)
+    speechFrame:SetSize(500, 174)
     speechFrame.layoutIndex = 4
     speechFrame.topPadding = 14
     local speechTitle = speechFrame:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
@@ -753,6 +768,9 @@ function SpeakStone:CreateSettings()
     local previous = speechTitle
     for _, spec in ipairs({
         { "showSpeechFrame", "Show the speech frame when you walk away" },
+        { "speechAutoScroll", "Auto-scroll the speech frame text" },
+        { "speechFitText", "Grow the speech frame to show all the text" },
+        { "queueQuestSpeech", "Queue quests instead of interrupting" },
         { "autoAcceptQuests", "Auto-accept quests (hold Shift to skip)" },
     }) do
         local key, label = spec[1], spec[2]

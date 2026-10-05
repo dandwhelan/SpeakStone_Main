@@ -1,5 +1,23 @@
 # Changelog
 
+## 3.1.0 (October 2026)
+
+### Speech bar
+
+- **Auto-scroll:** the text in the speech bar now scrolls along with the voice, so the line being spoken stays in
+  view. Scroll with the mouse wheel to look around and it waits a few seconds before carrying on. Can be turned off
+  ("Auto-scroll the speech frame text").
+- **Show all the text:** a new option makes the bar grow taller to fit the whole passage instead of scrolling (very
+  long text still scrolls). Off by default.
+- **Extra large size** added to the bar's Size menu (gear or right-click).
+- **Quest queue** (off by default, "Queue quests instead of interrupting"): talk to another quest giver while a quest
+  is still being read and the new quest waits its turn instead of cutting the first one off. The bar shows where you
+  are (1/2, 2/2...) and a **Next** button skips ahead. Stop clears the queue. While quests are queued, NPC greetings
+  don't interrupt them and closing a gossip window doesn't stop them.
+- The NPC name and quest title now sit on their own line, so the buttons no longer cover the quest name.
+- All the new options are in `/ss` under "Speech frame", in the game's Options › AddOns page, and on the bar's gear
+  menu.
+
 ## Unreleased
 
 ### Speech frame
