@@ -1,0 +1,465 @@
+<title>SpeakStone Speech Frame</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Marcellus&family=Alegreya+Sans:ital,wght@0,400;0,500;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one long design note; each mockup sits in a fake game viewport, controls under it. Deliberately single dark theme (in-game look). */
+:root {
+  --night: #0f1216;
+  --stone: #1a1f26;
+  --stone-2: #232a33;
+  --line: #3a4350;
+  --ink: #e7e1d3;
+  --ink-dim: #a39d8f;
+  --gold: #f0c35a;
+  --gold-dim: #9c7a2c;
+  --speak: #ffd75e;
+  --ok: #7fc48a;
+  --warn: #e4a25a;
+  --bad: #e2726a;
+  --f-display: "Marcellus", "Trajan Pro", Georgia, serif;
+  --f-body: "Alegreya Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--night); color: var(--ink); font-family: var(--f-body); font-size: 17px; line-height: 1.55; }
+.wrap { max-width: 980px; margin: 0 auto; padding-inline: 20px; padding-block: 40px 80px; display: grid; gap: 56px; }
+h1, h2, h3 { font-family: var(--f-display); font-weight: 400; text-wrap: balance; margin: 0; color: var(--gold); letter-spacing: .01em; }
+h1 { font-size: clamp(2rem, 5vw, 3rem); line-height: 1.1; }
+h2 { font-size: 1.6rem; }
+h3 { font-size: 1.15rem; color: var(--ink); }
+p { margin: 0; max-width: 68ch; }
+.lede { color: var(--ink-dim); font-size: 1.1rem; }
+.eyebrow { font-family: var(--f-mono); font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--gold-dim); }
+section { display: grid; gap: 18px; min-width: 0; }
+code, .mono { font-family: var(--f-mono); font-size: .86em; color: var(--gold); }
+ul { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; max-width: 70ch; }
+a { color: var(--gold); }
+
+/* ---------- fake game viewport ---------- */
+.viewport {
+  position: relative; width: 100%; aspect-ratio: 16 / 9; max-width: 100%;
+  border: 1px solid var(--line); border-radius: 6px; overflow: hidden;
+  background:
+    radial-gradient(120% 70% at 70% 20%, #3b5466 0%, transparent 60%),
+    radial-gradient(90% 60% at 20% 90%, #2f3a1f 0%, transparent 70%),
+    linear-gradient(180deg, #4d6a7d 0%, #2b3a2a 58%, #1d2419 100%);
+}
+.viewport canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.hud-chip { position: absolute; top: 10px; left: 12px; font-family: var(--f-mono); font-size: 11px; color: #cfd8c8; opacity: .7; }
+
+/* ---------- shared frame bits ---------- */
+.portrait {
+  flex: none; border-radius: 50%;
+  background: radial-gradient(circle at 50% 38%, #c99a6b 0 22%, transparent 23%),
+              radial-gradient(circle at 50% 100%, #6b4a2e 0 45%, transparent 46%),
+              radial-gradient(circle at 50% 50%, #33424f, #161c22);
+  border: 2px solid var(--gold-dim); box-shadow: 0 0 0 3px #00000088;
+  position: relative;
+}
+.portrait.talking::after {
+  content: ""; position: absolute; left: 44%; top: 47%; width: 12%; height: 4%;
+  background: #3a1e12; border-radius: 40%; animation: jaw .28s infinite alternate;
+}
+@keyframes jaw { to { height: 8%; } }
+.npc-name { font-family: var(--f-display); color: var(--speak); text-shadow: 0 1px 2px #000; }
+.ctl { display: flex; gap: 6px; align-items: center; }
+.ctl button {
+  font: 500 12px/1 var(--f-body); color: var(--ink); background: #00000066; border: 1px solid var(--gold-dim);
+  border-radius: 3px; padding: 5px 8px; cursor: pointer; min-width: 28px;
+}
+.ctl button:hover { border-color: var(--gold); color: var(--gold); }
+.ctl button:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+.ctl .time { font-family: var(--f-mono); font-size: 11px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+.progress { height: 2px; background: #ffffff1a; position: relative; }
+.progress i { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--gold); }
+.sent { transition: color .2s, opacity .2s; }
+.sent.past { color: #cfc6b2; opacity: .55; }
+.sent.now { color: #fff; }
+.w.now { color: var(--speak); }
+.sent.future { opacity: .8; }
+.paused-badge { font-family: var(--f-mono); font-size: 10px; letter-spacing: .1em; color: var(--warn); }
+
+/* A: cinematic bar (Legion-style) */
+.cine {
+  position: absolute; left: 50%; bottom: 6%; transform: translateX(-50%);
+  width: min(78%, 760px); display: flex; gap: 14px; align-items: center;
+  padding: 10px 14px 10px 10px;
+  background: linear-gradient(90deg, #000000c8, #000000a8 70%, #00000060);
+  border-top: 1px solid #f0c35a55; border-bottom: 1px solid #f0c35a33;
+}
+.cine .portrait { width: clamp(46px, 9vw, 78px); height: clamp(46px, 9vw, 78px); }
+.cine .body { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.cine .head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.cine .npc-name { font-size: clamp(13px, 1.9vw, 18px); }
+.cine .text { font-size: clamp(11px, 1.55vw, 15px); line-height: 1.45; height: 4.35em; overflow: hidden; position: relative; }
+.cine .text .inner { transition: transform .45s ease; }
+
+/* B: talking-head box */
+.th {
+  position: absolute; left: 50%; bottom: 20%; transform: translateX(-50%);
+  width: min(60%, 560px); padding: 12px 14px 8px 12px;
+  background: linear-gradient(180deg, #2a2116f2, #17120cf2);
+  border: 2px solid #6d5427; border-radius: 4px; box-shadow: 0 6px 18px #000a, inset 0 0 0 1px #000;
+  display: grid; grid-template-columns: auto 1fr; gap: 4px 12px;
+}
+.th .portrait { width: clamp(44px, 8vw, 72px); height: clamp(44px, 8vw, 72px); border-radius: 4px; grid-row: span 2; }
+.th .npc-name { font-size: clamp(12px, 1.7vw, 16px); }
+.th .text { position: relative; font-size: clamp(11px, 1.45vw, 14px); line-height: 1.4; height: 4.2em; overflow: hidden; }
+.th .text .inner { transition: transform .45s ease; }
+.th .foot { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; gap: 8px; padding-top: 4px; }
+.th .close { position: absolute; top: 4px; right: 6px; background: none; border: 0; color: var(--ink-dim); cursor: pointer; font-size: 14px; }
+
+/* C: subtitles only */
+.subs { position: absolute; left: 50%; bottom: 9%; transform: translateX(-50%); width: min(80%, 720px); text-align: center; display: grid; gap: 6px; justify-items: center; }
+.subs .line { font-size: clamp(12px, 1.8vw, 18px); line-height: 1.4; color: #fff; text-shadow: 0 0 4px #000, 0 1px 2px #000, 0 0 10px #000; min-height: 2.8em; }
+.subs .npc-name { font-size: clamp(11px, 1.4vw, 14px); }
+.subs .pill { opacity: 0; transition: opacity .2s; background: #000000a0; border-radius: 99px; padding: 4px 8px; }
+.viewport:hover .subs .pill, .subs .pill:focus-within, .subs.paused .pill { opacity: 1; }
+
+/* ---------- page controls ---------- */
+.demo-bar { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; padding: 12px 14px; background: var(--stone); border: 1px solid var(--line); border-radius: 6px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.seg button { font: 500 13px var(--f-body); background: transparent; color: var(--ink-dim); border: 0; padding: 6px 10px; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--stone-2); color: var(--gold); }
+.seg button:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
+.demo-bar label { font-size: 12px; color: var(--ink-dim); font-family: var(--f-mono); letter-spacing: .06em; text-transform: uppercase; }
+.grp { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.note { font-size: 14px; color: var(--ink-dim); }
+
+/* ---------- tables / cards ---------- */
+.tbl-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; }
+table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 15px; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-family: var(--f-mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--gold-dim); font-weight: 500; background: var(--stone); }
+tr:last-child td { border-bottom: 0; }
+.tag { font-family: var(--f-mono); font-size: 11px; padding: 2px 6px; border-radius: 3px; border: 1px solid currentColor; white-space: nowrap; }
+.tag.ok { color: var(--ok); } .tag.warn { color: var(--warn); } .tag.bad { color: var(--bad); }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.card { background: var(--stone); border: 1px solid var(--line); border-radius: 6px; padding: 16px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+pre { margin: 0; background: #0a0d10; border: 1px solid var(--line); border-radius: 6px; padding: 14px; overflow-x: auto; font-family: var(--f-mono); font-size: 12.5px; line-height: 1.6; color: #cfd3c8; }
+pre .c { color: #6f7a6a; }
+pre .k { color: var(--gold); }
+ol.steps { margin: 0; padding-left: 1.3em; display: grid; gap: 10px; max-width: 72ch; }
+ol.steps b { color: var(--ink); }
+@media (prefers-reduced-motion: reduce) {
+  .cine .text .inner, .th .text .inner { transition: none; }
+  .portrait.talking::after { animation: none; }
+}
+</style>
+
+<div class="wrap">
+
+<header style="display:grid;gap:14px">
+  <span class="eyebrow">Feature study · SpeakStone 3.x</span>
+  <h1>The NPC speech frame</h1>
+  <p class="lede">A small, Legion-style speaking frame that takes over when the quest window closes. It shows who is talking, lets you pause or stop the voice, and scrolls the text in step with the audio. Below: three interactive mockups, what the WoW API allows, and a build plan.</p>
+</header>
+
+<!-- ======================= MOCKUP ======================= -->
+<section aria-labelledby="mk">
+  <span class="eyebrow">Interactive mockup</span>
+  <h2 id="mk">Try the three layouts</h2>
+  <p class="note">Simulated 24-second clip, no real audio. Press Play, then try Pause, Stop, or switching the sync mode mid-line.</p>
+
+  <div class="demo-bar">
+    <div class="grp"><label>Layout</label>
+      <div class="seg" id="layoutSeg">
+        <button type="button" data-v="cine" aria-pressed="true">A · Cinematic bar</button>
+        <button type="button" data-v="th" aria-pressed="false">B · Talking head</button>
+        <button type="button" data-v="subs" aria-pressed="false">C · Subtitles</button>
+      </div>
+    </div>
+    <div class="grp"><label>Sync</label>
+      <div class="seg" id="syncSeg">
+        <button type="button" data-v="words" aria-pressed="true">Timestamps (word)</button>
+        <button type="button" data-v="est" aria-pressed="false">Estimated (sentence)</button>
+        <button type="button" data-v="none" aria-pressed="false">Off</button>
+      </div>
+    </div>
+    <div class="grp"><label>Resume</label>
+      <div class="seg" id="resumeSeg">
+        <button type="button" data-v="sentence" aria-pressed="true">From sentence</button>
+        <button type="button" data-v="top" aria-pressed="false">From top</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="viewport" id="vp">
+    <canvas id="scene" aria-hidden="true"></canvas>
+    <div class="hud-chip">quest window closed · narration continues</div>
+    <div id="frameHost"></div>
+  </div>
+  <p class="note" id="status">Ready.</p>
+</section>
+
+<!-- ======================= LAYOUT NOTES ======================= -->
+<section aria-labelledby="lay">
+  <span class="eyebrow">Layouts</span>
+  <h2 id="lay">What each one is for</h2>
+  <div class="cols">
+    <div class="card"><h3>A · Cinematic bar</h3><p class="note">Closest to the Legion and Dragonflight cinematic text boxes in the request. Wide, low, semi-transparent; three lines visible, auto-scrolling. Best default.</p></div>
+    <div class="card"><h3>B · Talking head</h3><p class="note">Matches Blizzard's own TalkingHeadFrame, so it feels native and players already know where to look. Can share its anchor so the two never overlap.</p></div>
+    <div class="card"><h3>C · Subtitles</h3><p class="note">No chrome, just the line being spoken. Controls appear on mouse-over or while paused. For players running Immersion or DialogueUI who want minimal UI.</p></div>
+  </div>
+</section>
+
+<!-- ======================= FEASIBILITY ======================= -->
+<section aria-labelledby="api">
+  <span class="eyebrow">Feasibility</span>
+  <h2 id="api">What WoW lets an addon do</h2>
+  <p>Most of this is easy. The one hard limit is pause: <code>PlaySoundFile</code> returns a handle you can only stop. There is no pause, no seek and no way to ask where playback is.</p>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>Need</th><th>How</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>Know the text after the window closes</td><td>Read <code>GetQuestText</code> / <code>GetProgressText</code> / <code>GetRewardText</code>, <code>C_GossipInfo.GetText</code> or <code>ItemTextGetText</code> at play time and keep it on the clip's <code>soundData</code>.</td><td><span class="tag ok">easy</span></td></tr>
+      <tr><td>Know elapsed time</td><td>Store <code>GetTime()</code> at <code>PlaySoundFile</code>. Total length is already in <code>SoundLengths</code>.</td><td><span class="tag ok">easy</span></td></tr>
+      <tr><td>Stop</td><td><code>StopSound(handle, fadeMs)</code>. Already wired via <code>StopCurrentSound</code>.</td><td><span class="tag ok">done</span></td></tr>
+      <tr><td>NPC portrait / 3D model</td><td><code>PlayerModel:SetCreature(npcID)</code> using the creature ID from the GUID (<code>CreatureIDFromGUID</code> exists). <code>SetPortraitTexture</code> needs a live unit, so grab it before the window closes. Talk animation via <code>SetAnimation(60)</code>.</td><td><span class="tag ok">easy</span></td></tr>
+      <tr><td>Pause and resume exactly</td><td>Not possible on one clip. Options below.</td><td><span class="tag bad">API limit</span></td></tr>
+      <tr><td>Scroll in sync</td><td>Estimate from character counts, or ship timestamps per clip.</td><td><span class="tag warn">needs data for best result</span></td></tr>
+      <tr><td>Instances in 12.x</td><td>Text can come back as a secret value. The existing <code>IsSecret</code> guard applies: show name and controls, hide text.</td><td><span class="tag warn">edge case</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3 style="margin-top:6px">Pause options</h3>
+  <div class="cols">
+    <div class="card"><span class="tag warn" style="justify-self:start">ship first</span><h3>Stop, resume from the top</h3><p class="note">Pause calls <code>StopSound</code> and keeps the frame open. Resume replays the whole clip and the text rewinds with it. Works with today's packs. Fine for short gossip, annoying near the end of a long quest.</p></div>
+    <div class="card"><span class="tag ok" style="justify-self:start">recommended</span><h3>Sentence-split clips</h3><p class="note">The pack ships each line as numbered parts (<code>123_description_01.ogg</code>, <code>_02</code>…). The addon chains them with the existing end timer. Pause stops the current part; resume replays that part. Losing a few seconds at most, and timestamps come for free.</p></div>
+    <div class="card"><span class="tag bad" style="justify-self:start">avoid</span><h3>Mute the channel</h3><p class="note">Set the Dialog volume to 0 while the clip keeps running. It is not a pause: the audio carries on silently and is gone when you unmute. It also fights with the existing "silence Blizzard's voice" setting.</p></div>
+  </div>
+</section>
+
+<!-- ======================= SYNC ======================= -->
+<section aria-labelledby="sync">
+  <span class="eyebrow">Read-along</span>
+  <h2 id="sync">Getting the text in step with the voice</h2>
+  <ol class="steps">
+    <li><b>Estimated (no new data).</b> Split the text into sentences and give each a share of the clip length by character count, with a small weight for punctuation pauses. TTS speaks at an even rate, so this lands within a second or so on most lines. Works today for every clip.</li>
+    <li><b>Sentence timestamps (small data).</b> Generate during pack build. Either take word timings straight from the TTS engine (most engines can return them) or run forced alignment over the existing audio with WhisperX, aeneas or Montreal Forced Aligner. Store sentence start times in a per-pack Lua table. Roughly 30–40 bytes a clip.</li>
+    <li><b>Word timestamps (karaoke).</b> Same pipeline, finer grain. Several times larger. Nice to have, not needed for scrolling.</li>
+  </ol>
+<pre><span class="c">-- SpeakStone_TWW_EN/Timings.lua  (generated, sentence start times in seconds)</span>
+SpeakStone_RegisterTimings(<span class="k">"SpeakStone_TWW_EN"</span>, {
+  [<span class="k">"78421_description"</span>] = { 0, 3.42, 7.9, 12.65, 17.1 },
+  [<span class="k">"78421_completion"</span>]  = { 0, 2.8, 6.05 },
+  [<span class="k">"gossip_214523_1"</span>]   = { 0, 4.1 },
+})</pre>
+  <p class="note">Matching: the addon splits the live text with the same sentence rules the build tool used. If the count differs (a player name token, a changed line), it falls back to the estimate for that clip.</p>
+</section>
+
+<!-- ======================= PLAN ======================= -->
+<section aria-labelledby="plan">
+  <span class="eyebrow">Build plan</span>
+  <h2 id="plan">How it would land in the code</h2>
+  <ol class="steps">
+    <li><b>Capture on play.</b> In <code>PlayQuestAudio</code>, <code>PlayGossipAudio</code> and <code>PlayItemAudioDirect</code>, add <code>text</code>, <code>npcID</code> and <code>title</code> to <code>soundData</code>. In <code>DoPlaySound</code>, record <code>startedAt = GetTime()</code>.</li>
+    <li><b>Playback events.</b> Fire a small internal callback (<code>OnClipStarted</code>, <code>OnClipFinished</code>, <code>OnClipStopped</code>) from <code>DoPlaySound</code>, <code>FinishPlayback</code> and <code>StopCurrentSound</code>. The frame listens; nothing else changes.</li>
+    <li><b>New file <code>SpeechFrame.lua</code>.</b> One frame, three skins (A/B/C). <code>OnUpdate</code> throttled to 10 Hz works out the current sentence and scrolls. Draggable, scale slider, remembers position.</li>
+    <li><b>When it shows.</b> Setting: Off / When the dialogue window closes (default) / Always. Hidden while Blizzard's talking head is up, which the yield logic already detects.</li>
+    <li><b>Controls.</b> Pause/Resume, Stop, Replay, Close. Books get Next page. Add a "Pause narration" keybind next to the existing one in <code>Bindings.xml</code>.</li>
+    <li><b>Sync data later.</b> Ship estimated sync first. Add <code>SpeakStone_RegisterTimings</code> and a <code>tools/build_timings.py</code> step to the pack pipeline when packs are next rebuilt.</li>
+    <li><b>Sentence-split audio.</b> Optional phase two: unlocks real pause/resume. Needs a pack format change, so version it and keep single-file clips working.</li>
+  </ol>
+</section>
+
+</div>
+
+<script>
+(() => {
+  // ---------- sample content (original text, not Blizzard's) ----------
+  const NPC = "Warden Ysolde Harrowmere";
+  const TEXT = "You came. Good. The wards along the eastern ridge have been failing for three nights now, and I cannot leave this post to see why. Something is drawing the light out of the runestones, one by one. Take this lantern and follow the ridge path north. If you find what is feeding on them, bring it down before the last ward goes dark.";
+  const DURATION = 24.0;
+
+  // sentences + words with fake engine timings (even rate, pauses at punctuation)
+  const sentences = TEXT.match(/[^.!?]+[.!?]+/g).map(s => s.trim());
+  const words = []; // {s, text, t0, t1}
+  (() => {
+    const raw = [];
+    sentences.forEach((s, si) => s.split(/\s+/).forEach(w => raw.push({ s: si, text: w })));
+    const weight = w => w.text.length + 2 + (/[.!?]$/.test(w.text) ? 7 : /[,;]$/.test(w.text) ? 3 : 0);
+    const total = raw.reduce((a, w) => a + weight(w), 0);
+    let t = 0.25; const usable = DURATION - 0.6;
+    raw.forEach(w => { const d = weight(w) / total * usable; words.push({ ...w, t0: t, t1: t + d * 0.82 }); t += d; });
+  })();
+  const sentStartWords = sentences.map((_, i) => words.find(w => w.s === i).t0);
+  // estimated: by characters only (no pause weighting) -> drifts a little, honestly
+  const sentStartEst = (() => {
+    const tot = sentences.reduce((a, s) => a + s.length, 0); let acc = 0;
+    return sentences.map(s => { const t = acc / tot * DURATION; acc += s.length; return t; });
+  })();
+
+  // ---------- state ----------
+  const st = { layout: "cine", sync: "words", resume: "sentence", playing: false, paused: false, t: 0, startedAt: 0, base: 0, raf: 0 };
+  const host = document.getElementById("frameHost");
+  const status = document.getElementById("status");
+  const fmt = s => { s = Math.max(0, s); return Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0"); };
+  const starts = () => st.sync === "est" ? sentStartEst : sentStartWords;
+  const curSentence = t => { const a = starts(); let i = 0; for (let k = 0; k < a.length; k++) if (t >= a[k]) i = k; return i; };
+
+  function textHTML() {
+    return sentences.map((s, si) => {
+      const ws = words.filter(w => w.s === si).map((w, wi) => `<span class="w" data-s="${si}" data-i="${words.indexOf(w)}">${w.text}</span>`).join(" ");
+      return `<span class="sent" data-s="${si}">${ws}</span>`;
+    }).join(" ");
+  }
+  function controlsHTML() {
+    return `<div class="ctl">
+      <button type="button" data-a="play" aria-label="Play or pause">▶</button>
+      <button type="button" data-a="stop" aria-label="Stop">■</button>
+      <button type="button" data-a="replay" aria-label="Replay from start">↺</button>
+      <span class="time"><span data-r="time">0:00</span> / ${fmt(DURATION)}</span>
+      <span class="paused-badge" data-r="pb" hidden>PAUSED</span>
+    </div>`;
+  }
+  function render() {
+    if (st.layout === "cine") {
+      host.innerHTML = `<div class="cine" role="region" aria-label="NPC speech">
+        <div class="portrait" data-r="por"></div>
+        <div class="body">
+          <div class="head"><span class="npc-name">${NPC}</span>${controlsHTML()}</div>
+          <div class="text"><div class="inner" data-r="inner">${textHTML()}</div></div>
+          <div class="progress"><i data-r="bar"></i></div>
+        </div></div>`;
+    } else if (st.layout === "th") {
+      host.innerHTML = `<div class="th" role="region" aria-label="NPC speech">
+        <button type="button" class="close" data-a="stop" aria-label="Close">✕</button>
+        <div class="portrait" data-r="por"></div>
+        <span class="npc-name">${NPC}</span>
+        <div class="text"><div class="inner" data-r="inner">${textHTML()}</div></div>
+        <div class="foot">${controlsHTML()}</div>
+        <div class="progress" style="grid-column:1/-1"><i data-r="bar"></i></div></div>`;
+    } else {
+      host.innerHTML = `<div class="subs" role="region" aria-label="NPC speech">
+        <span class="npc-name">${NPC}</span>
+        <div class="line" data-r="line"></div>
+        <div class="pill">${controlsHTML()}</div></div>`;
+    }
+    update();
+  }
+  const q = r => host.querySelector(`[data-r="${r}"]`);
+
+  function update() {
+    const t = st.t;
+    const si = curSentence(t);
+    const active = st.playing || st.paused;
+    const time = q("time"); if (time) time.textContent = fmt(t);
+    const bar = q("bar"); if (bar) bar.style.width = (t / DURATION * 100) + "%";
+    const pb = q("pb"); if (pb) pb.hidden = !st.paused;
+    const por = q("por"); if (por) por.classList.toggle("talking", st.playing);
+    const sub = host.querySelector(".subs"); if (sub) sub.classList.toggle("paused", st.paused || !active);
+    host.querySelectorAll('[data-a="play"]').forEach(b => b.textContent = st.playing ? "❚❚" : "▶");
+
+    host.querySelectorAll(".sent").forEach(el => {
+      const s = +el.dataset.s;
+      el.classList.remove("past", "now", "future");
+      if (st.sync === "none" || !active) return;
+      el.classList.add(s < si ? "past" : s === si ? "now" : "future");
+    });
+    host.querySelectorAll(".w[data-i]").forEach(el => {
+      const w = words[+el.dataset.i];
+      el.classList.toggle("now", st.sync === "words" && active && t >= w.t0 && t < w.t1 + 0.12);
+    });
+
+    const inner = q("inner");
+    if (inner) {
+      if (st.sync === "none") inner.style.transform = "";
+      else {
+        const target = inner.querySelector(`.sent[data-s="${si}"]`);
+        const box = inner.parentElement;
+        const lh = parseFloat(getComputedStyle(box).lineHeight) || 18;
+        let off = target ? target.offsetTop : 0;
+        // first word of a sentence may sit mid-line; align its line to row 1
+        const first = target && target.querySelector(".w");
+        if (first) off = first.offsetTop;
+        const max = Math.max(0, inner.scrollHeight - box.clientHeight);
+        inner.style.transform = `translateY(${-Math.min(off, max + lh * 0.0)}px)`;
+      }
+    }
+    const line = q("line");
+    if (line) {
+      if (!active && st.t === 0) line.innerHTML = '<span style="opacity:.6">Press ▶ to hear the line</span>';
+      else if (st.sync === "none") line.textContent = sentences[si];
+      else line.innerHTML = words.filter(w => w.s === si).map(w => `<span class="w${st.sync === "words" && t >= w.t0 && t < w.t1 + 0.12 ? " now" : ""}">${w.text}</span>`).join(" ");
+    }
+  }
+
+  function tick() {
+    if (!st.playing) return;
+    st.t = st.base + (performance.now() - st.startedAt) / 1000;
+    if (st.t >= DURATION) { st.t = DURATION; st.playing = false; status.textContent = "Clip finished. Frame fades out after 3 s in the real thing."; update(); return; }
+    update();
+    st.raf = requestAnimationFrame(tick);
+  }
+  function play(from) {
+    st.base = from; st.t = from; st.startedAt = performance.now(); st.playing = true; st.paused = false;
+    cancelAnimationFrame(st.raf); st.raf = requestAnimationFrame(tick);
+  }
+  function act(a) {
+    if (a === "play") {
+      if (st.playing) {
+        st.playing = false; st.paused = true; cancelAnimationFrame(st.raf);
+        status.textContent = "Paused. In-game this calls StopSound; the clip is gone and has to be replayed.";
+      } else if (st.paused) {
+        let from = 0;
+        if (st.resume === "sentence") { from = starts()[curSentence(st.t)]; status.textContent = `Resumed from sentence ${curSentence(st.t) + 1}. Needs sentence-split clips in the pack.`; }
+        else status.textContent = "Resumed from the top. All a single-file clip can do.";
+        play(from);
+      } else {
+        play(st.t >= DURATION ? 0 : st.t); status.textContent = "Playing.";
+      }
+    } else if (a === "stop") {
+      st.playing = false; st.paused = false; st.t = 0; cancelAnimationFrame(st.raf);
+      status.textContent = "Stopped. Frame hides.";
+    } else if (a === "replay") {
+      play(0); status.textContent = "Replaying from the start.";
+    }
+    update();
+  }
+  host.addEventListener("click", e => { const b = e.target.closest("[data-a]"); if (b) act(b.dataset.a); });
+
+  function seg(id, key, after) {
+    const el = document.getElementById(id);
+    el.addEventListener("click", e => {
+      const b = e.target.closest("button"); if (!b) return;
+      el.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b));
+      st[key] = b.dataset.v; after ? after() : update();
+    });
+  }
+  seg("layoutSeg", "layout", render);
+  seg("syncSeg", "sync");
+  seg("resumeSeg", "resume");
+  window.addEventListener("resize", () => update());
+
+  // ---------- scenery (decorative) ----------
+  const cv = document.getElementById("scene"), cx = cv.getContext("2d");
+  function scene() {
+    const r = cv.getBoundingClientRect(), d = devicePixelRatio || 1;
+    cv.width = r.width * d; cv.height = r.height * d; cx.scale(d, d);
+    const W = r.width, H = r.height;
+    const ridge = (y, amp, col, seed) => {
+      cx.fillStyle = col; cx.beginPath(); cx.moveTo(0, H);
+      for (let x = 0; x <= W; x += 6) cx.lineTo(x, y + Math.sin(x / (90 + seed * 20) + seed) * amp + Math.sin(x / 31 + seed * 3) * amp * .25);
+      cx.lineTo(W, H); cx.fill();
+    };
+    ridge(H * .48, H * .05, "#3e5160", 1);
+    ridge(H * .58, H * .04, "#2d3d33", 2);
+    ridge(H * .7, H * .03, "#1f2a1f", 3);
+    // runestones
+    [[.18, .64], [.42, .6], [.66, .66], [.86, .62]].forEach(([x, y], i) => {
+      const px = x * W, py = y * H, h = H * .07;
+      cx.fillStyle = "#14191a"; cx.fillRect(px - h * .18, py - h, h * .36, h);
+      const g = cx.createRadialGradient(px, py - h * .6, 0, px, py - h * .6, h * .9);
+      g.addColorStop(0, i === 3 ? "#7fd0ff00" : "#7fd0ffaa"); g.addColorStop(1, "#7fd0ff00");
+      cx.fillStyle = g; cx.beginPath(); cx.arc(px, py - h * .6, h * .9, 0, 7); cx.fill();
+    });
+  }
+  scene(); window.addEventListener("resize", () => { const c = cv.getContext("2d"); c.setTransform(1,0,0,1,0,0); scene(); });
+
+  render();
+})();
+</script>
