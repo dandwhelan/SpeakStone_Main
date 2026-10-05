@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Speech frame
+
+- **A new speech bar for narration that keeps going after you walk away.** Close the quest window mid-line and a
+  bar appears at the bottom of the screen with the NPC's portrait, their name, the quest title and the full text to
+  read along (scroll with the mouse wheel).
+- **Pause, Stop and Replay** buttons, plus a timer. The game can't pick a clip up part-way, so Resume starts the line
+  again from the beginning.
+- **Three sizes** (Small, Medium, Large). Right-click the bar or use its gear to change size, lock it or reset its
+  position. Drag it anywhere. `/ss frame` shows a sample to place it with.
+- **Auto-accept quests** (off by default): quests are accepted as soon as they're offered, and you hear them in the
+  speech bar. Hold Shift at the quest giver to skip it for that quest.
+- New keybind: **Pause / resume narration**.
+- Both can be switched in `/ss` under "Speech frame".
+
 ## 3.0.0 — the big voice update (October 2026)
 
 **The biggest update SpeakStone has ever had.** Almost the whole voice library has been redone, and there is more

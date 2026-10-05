@@ -82,7 +82,7 @@ a { color: var(--gold); }
 
 /* A: cinematic bar (Legion-style) */
 .cine {
-  position: absolute; left: 50%; bottom: 6%; transform: translateX(-50%);
+  position: absolute; left: 50%; bottom: 6%; transform: translateX(-50%) scale(var(--sz, 1)); transform-origin: 50% 100%;
   width: min(78%, 760px); display: flex; gap: 14px; align-items: center;
   padding: 10px 14px 10px 10px;
   background: linear-gradient(90deg, #000000c8, #000000a8 70%, #00000060);
@@ -97,7 +97,7 @@ a { color: var(--gold); }
 
 /* B: talking-head box */
 .th {
-  position: absolute; left: 50%; bottom: 20%; transform: translateX(-50%);
+  position: absolute; left: 50%; bottom: 20%; transform: translateX(-50%) scale(var(--sz, 1)); transform-origin: 50% 100%;
   width: min(60%, 560px); padding: 12px 14px 8px 12px;
   background: linear-gradient(180deg, #2a2116f2, #17120cf2);
   border: 2px solid #6d5427; border-radius: 4px; box-shadow: 0 6px 18px #000a, inset 0 0 0 1px #000;
@@ -111,7 +111,7 @@ a { color: var(--gold); }
 .th .close { position: absolute; top: 4px; right: 6px; background: none; border: 0; color: var(--ink-dim); cursor: pointer; font-size: 14px; }
 
 /* C: subtitles only */
-.subs { position: absolute; left: 50%; bottom: 9%; transform: translateX(-50%); width: min(80%, 720px); text-align: center; display: grid; gap: 6px; justify-items: center; }
+.subs { position: absolute; left: 50%; bottom: 9%; transform: translateX(-50%) scale(var(--sz, 1)); transform-origin: 50% 100%; width: min(80%, 720px); text-align: center; display: grid; gap: 6px; justify-items: center; }
 .subs .line { font-size: clamp(12px, 1.8vw, 18px); line-height: 1.4; color: #fff; text-shadow: 0 0 4px #000, 0 1px 2px #000, 0 0 10px #000; min-height: 2.8em; }
 .subs .npc-name { font-size: clamp(11px, 1.4vw, 14px); }
 .subs .pill { opacity: 0; transition: opacity .2s; background: #000000a0; border-radius: 99px; padding: 4px 8px; }
@@ -166,7 +166,7 @@ ol.steps b { color: var(--ink); }
   <div class="demo-bar">
     <div class="grp"><label>Layout</label>
       <div class="seg" id="layoutSeg">
-        <button type="button" data-v="cine" aria-pressed="true">A · Cinematic bar</button>
+        <button type="button" data-v="cine" aria-pressed="true">A · Cinematic bar (building)</button>
         <button type="button" data-v="th" aria-pressed="false">B · Talking head</button>
         <button type="button" data-v="subs" aria-pressed="false">C · Subtitles</button>
       </div>
@@ -176,6 +176,13 @@ ol.steps b { color: var(--ink); }
         <button type="button" data-v="words" aria-pressed="true">Timestamps (word)</button>
         <button type="button" data-v="est" aria-pressed="false">Estimated (sentence)</button>
         <button type="button" data-v="none" aria-pressed="false">Off</button>
+      </div>
+    </div>
+    <div class="grp"><label>Size</label>
+      <div class="seg" id="sizeSeg">
+        <button type="button" data-v="0.8" aria-pressed="false">Small</button>
+        <button type="button" data-v="1" aria-pressed="true">Medium</button>
+        <button type="button" data-v="1.25" aria-pressed="false">Large</button>
       </div>
     </div>
     <div class="grp"><label>Resume</label>
@@ -433,6 +440,7 @@ SpeakStone_RegisterTimings(<span class="k">"SpeakStone_TWW_EN"</span>, {
   seg("layoutSeg", "layout", render);
   seg("syncSeg", "sync");
   seg("resumeSeg", "resume");
+  seg("sizeSeg", "size", () => { host.style.setProperty("--sz", st.size); update(); });
   window.addEventListener("resize", () => update());
 
   // ---------- scenery (decorative) ----------
