@@ -2,4 +2,7 @@
   <Binding name="PLAYACTIVEQUEST" default="F6">
     PlayQuestAudio(nil, true)
   </Binding>
+  <Binding name="SPEAKSTONEPAUSE">
+    SpeakStone_TogglePause()
+  </Binding>
 </Bindings>

@@ -106,6 +106,21 @@ local SETTINGS_SECTIONS = {
         },
     },
     {
+        title = "Speech frame",
+        options = {
+            {
+                option = "showSpeechFrame",
+                label = "Show the speech frame when you walk away",
+                tooltip = "When you close the quest window while it is still being read, a bar shows who is speaking and what they are saying, with Pause, Stop and Replay. Right-click it to change its size or lock it. /ss frame shows a sample to place it with.",
+            },
+            {
+                option = "autoAcceptQuests",
+                label = "Auto-accept quests",
+                tooltip = "Accept quests as soon as they are offered and hear them in the speech frame instead. Hold Shift while talking to the quest giver to skip it for that quest.",
+            },
+        },
+    },
+    {
         title = "Interface",
         options = {
             {
@@ -717,6 +732,9 @@ SlashCmdList.QUESTREADER = function(msg)
         return
     elseif msg == "profile" or msg == "profiles" then
         if addon.ShowTutorial then addon.ShowTutorial(2) end
+        return
+    elseif msg == "frame" then
+        if addon.SpeechFramePreview then addon.SpeechFramePreview() end
         return
     end
     addon:OpenSettings()

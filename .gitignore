@@ -121,3 +121,4 @@ generation_forever/
 wow forever/cache/
 wow forever/*.stale-backup
 wow forever/*.bak-*
+luac.out

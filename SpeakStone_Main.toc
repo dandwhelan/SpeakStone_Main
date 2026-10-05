@@ -24,6 +24,7 @@ DynamicGossipNPCs.lua
 GossipTexts.lua
 VoicedLines.lua
 SpeakStone_Main.lua
+SpeechFrame.lua
 Harvester.lua
 SpeakStone_Main_Settings.lua
 BookTexts.lua
