@@ -583,6 +583,9 @@ function OpenMenu(owner)
         root:CreateCheckbox("Auto-accept quests",
             function() return db.autoAcceptQuests end,
             function() db.autoAcceptQuests = not db.autoAcceptQuests end)
+        root:CreateButton("SpeakStone settings...", function()
+            if addon.ShowSettings then addon:ShowSettings() end
+        end)
         root:CreateButton("Turn the speech frame off", function()
             db.showSpeechFrame = false
             print("|cff33ff99SpeakStone:|r speech frame off. Turn it back on in /ss.")

@@ -14,6 +14,30 @@ end)
 
 local WEBSITE = "speakstone.beanw.co.uk"
 
+-- Shown behind the info icon by the speech frame options, here and on the
+-- game's AddOns page.
+local SPEECH_FRAME_INFO = "When you walk away from a quest giver while a line is still being read (or a quest is "
+    .. "auto-accepted), a bar shows the NPC, the quest and the full text, with Pause, Stop and Replay.\n\n"
+    .. "|cffffd100About Pause:|r WoW can only play a sound file from the start. It can't pause one or jump into the "
+    .. "middle, so Pause stops the voice and Resume plays the line again from the beginning.\n\n"
+    .. "Right-click the bar to change its size or lock it. |cffffd100/ss frame|r shows a sample to place it with."
+
+-- A small "i" that explains a section on mouse-over.
+local function CreateInfoIcon(parent, title, body)
+    local icon = CreateFrame("Button", nil, parent)
+    icon:SetSize(18, 18)
+    icon:SetNormalTexture("Interface\\common\\help-i")
+    icon:SetHighlightTexture("Interface\\common\\help-i", "ADD")
+    icon:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine(title, 1, 0.82, 0)
+        GameTooltip:AddLine(body, 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    icon:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    return icon
+end
+
 local function OpenAudioLibraryUI(mode)
     if addon.OpenAudioLibrary then
         addon.OpenAudioLibrary(mode)
@@ -107,6 +131,7 @@ local SETTINGS_SECTIONS = {
     },
     {
         title = "Speech frame",
+        info = SPEECH_FRAME_INFO,
         options = {
             {
                 option = "showSpeechFrame",
@@ -439,10 +464,13 @@ function SpeakStone:CreateWindow()
         cursorY = cursorY - height
     end
 
-    local function makeSectionHeader(title)
+    local function makeSectionHeader(title, info)
         local text = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
         text:SetPoint("TOPLEFT", frame, "TOPLEFT", RIGHT_X, cursorY)
         text:SetText(title)
+        if info then
+            CreateInfoIcon(frame, title, info):SetPoint("LEFT", text, "RIGHT", 6, 0)
+        end
         Advance(20)
 
         local divider = frame:CreateTexture(nil, "ARTWORK")
@@ -487,7 +515,7 @@ function SpeakStone:CreateWindow()
 
     for index, section in ipairs(SETTINGS_SECTIONS) do
         if index > 1 then Advance(12) end
-        makeSectionHeader(section.title)
+        makeSectionHeader(section.title, section.info)
         for _, info in ipairs(section.options) do
             makeCheckButton(info)
         end
@@ -711,7 +739,43 @@ function SpeakStone:CreateSettings()
         addon:OpenSettings()
     end)
 
+    -- The speech frame's two switches, here as well as in the window, so it
+    -- can be turned off from the game's own Options without knowing /ss.
+    local speechFrame = CreateFrame("Frame", nil, optionsFrame)
+    speechFrame:SetSize(500, 96)
+    speechFrame.layoutIndex = 4
+    speechFrame.topPadding = 14
+    local speechTitle = speechFrame:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+    speechTitle:SetPoint("TOPLEFT", speechFrame, "TOPLEFT", 7, 0)
+    speechTitle:SetText("Speech frame")
+    CreateInfoIcon(speechFrame, "Speech frame", SPEECH_FRAME_INFO):SetPoint("LEFT", speechTitle, "RIGHT", 6, 0)
+
+    local previous = speechTitle
+    for _, spec in ipairs({
+        { "showSpeechFrame", "Show the speech frame when you walk away" },
+        { "autoAcceptQuests", "Auto-accept quests (hold Shift to skip)" },
+    }) do
+        local key, label = spec[1], spec[2]
+        local check = CreateFrame("CheckButton", nil, speechFrame, "UICheckButtonTemplate")
+        check:SetSize(26, 26)
+        check:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", previous == speechTitle and -4 or 0, previous == speechTitle and -6 or 0)
+        local text = check:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+        text:SetPoint("LEFT", check, "RIGHT", 2, 1)
+        text:SetText(label)
+        check:SetHitRectInsets(0, -text:GetStringWidth() - 4, 0, 0)
+        check:SetScript("OnShow", function(self) self:SetChecked(SpeakStone_MainDB[key]) end)
+        check:SetScript("OnClick", function(self) SpeakStone_MainDB[key] = self:GetChecked() and true or false end)
+        check:SetChecked(SpeakStone_MainDB[key])
+        previous = check
+    end
+
     optionsFrame:Layout()
+end
+
+-- Open the window without toggling it shut when it is already up.
+function addon:ShowSettings()
+    local frame = addon.settingsWindow or SpeakStone:CreateWindow()
+    frame:Show()
 end
 
 -- Function to open settings

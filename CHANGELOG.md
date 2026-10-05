@@ -14,7 +14,9 @@
 - **Auto-accept quests** (off by default): quests are accepted as soon as they're offered, and you hear them in the
   speech bar. Hold Shift at the quest giver to skip it for that quest.
 - New keybind: **Pause / resume narration**.
-- Both can be switched in `/ss` under "Speech frame".
+- Both can be switched in `/ss` under "Speech frame", or in the game's Options › AddOns › SpeakStone page. The ⓘ icon
+  there explains why Pause restarts the line.
+- The bar's right-click menu has a shortcut to SpeakStone's settings.
 
 ## 3.0.0 — the big voice update (October 2026)
 
