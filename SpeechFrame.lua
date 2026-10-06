@@ -590,6 +590,34 @@ function addon.SpeechFramePreview()
     Watch(sd)
 end
 
+-- For the tutorial's speech bar page: show the sample (unless it is up
+-- already), take it down again, and where the bar's edges are in UIParent
+-- units (bottom, top) so the tutorial can keep out of its way.
+function addon.SpeechFrameShowPreview()
+    if not (current and current.preview) then
+        addon.SpeechFramePreview()
+    end
+    return current ~= nil and current.preview == true
+end
+
+function addon.SpeechFrameHidePreview()
+    if current and current.preview then
+        Clear()
+    end
+end
+
+function addon.SpeechFramePreviewShown()
+    return current ~= nil and current.preview == true
+end
+
+function addon.SpeechFrameBounds()
+    if not (frame and frame:IsShown() and frame:GetTop()) then
+        return nil
+    end
+    local ratio = frame:GetEffectiveScale() / UIParent:GetEffectiveScale()
+    return frame:GetBottom() * ratio, frame:GetTop() * ratio
+end
+
 -- --------------------------------------------------------------------------
 -- Menu
 -- --------------------------------------------------------------------------
@@ -661,6 +689,8 @@ end
 function addon.SpeechSettingChanged(key)
     if key == "speechFitText" and frame then
         frame.filledFor = nil
+    elseif (key == "speechSize" or key == "speechFramePos") and frame then
+        ApplyPosition()
     elseif key == "queueQuestSpeech" and not DB().queueQuestSpeech and addon.ClearSpeechQueue then
         addon.ClearSpeechQueue()
     end

@@ -7,7 +7,9 @@ local addonName, addon = ...
 -- Bump to show the tutorial once more to everyone, e.g. after adding a page.
 -- Replaces the old tutorialDone flag, which is ignored so players who had it
 -- set without ever seeing the tutorial get it once.
-local TUTORIAL_VERSION = 1
+-- 2: the speech bar page. Players who saw version 1 get a short "what's
+-- new" run instead of the whole tutorial again.
+local TUTORIAL_VERSION = 2
 
 local CURSEFORGE_URL ="https://www.curseforge.com/members/dandwhelan/projects"
 local WEBSITE_URL = "https://speakstone.beanw.co.uk"
@@ -26,17 +28,32 @@ local PROFILES = {
             autoPlayInQuestMap = false, muteGossip = true, yieldToNPCVoice = true,
             stopDialogueOnClose = false, showDebugMessages = false, harvestEnabled = true,
             autoPlayDelay = 1.0,
+            showSpeechFrame = true, speechAutoScroll = true, speechFitText = false, queueQuestSpeech = false,
         },
     },
     {
         key = "story",
         name = "Story Only",
-        description = "Quests and books are read; passing NPC greetings stay quiet. Good if you talk to a lot of vendors.",
+        description = "Quests and books are read; passing NPC greetings stay quiet. Quests you pick up in a row wait their turn instead of cutting each other off.",
         settings = {
             autoPlayEnabled = true, autoPlayQuests = true, autoPlayGossip = false, autoPlayItemText = true,
             autoPlayInQuestMap = false, muteGossip = true, yieldToNPCVoice = true,
             stopDialogueOnClose = false, showDebugMessages = false, harvestEnabled = true,
             autoPlayDelay = 1.0,
+            showSpeechFrame = true, speechAutoScroll = true, speechFitText = false, queueQuestSpeech = true,
+        },
+    },
+    {
+        key = "subtitles",
+        name = "Subtitles",
+        description = "Full narration with a speech bar for reading along: extra large, the whole passage shown, quests queued. Good if you're hard of hearing or play with the sound low.",
+        settings = {
+            autoPlayEnabled = true, autoPlayQuests = true, autoPlayGossip = true, autoPlayItemText = true,
+            autoPlayInQuestMap = false, muteGossip = true, yieldToNPCVoice = true,
+            stopDialogueOnClose = false, showDebugMessages = false, harvestEnabled = true,
+            autoPlayDelay = 1.0,
+            showSpeechFrame = true, speechAutoScroll = true, speechFitText = true, queueQuestSpeech = true,
+            speechSize = "xlarge",
         },
     },
     {
@@ -48,6 +65,7 @@ local PROFILES = {
             autoPlayInQuestMap = false, muteGossip = false, yieldToNPCVoice = true,
             stopDialogueOnClose = false, showDebugMessages = false, harvestEnabled = true,
             autoPlayDelay = 1.5,
+            showSpeechFrame = true, speechAutoScroll = true, speechFitText = false, queueQuestSpeech = false,
         },
     },
     {
@@ -59,6 +77,7 @@ local PROFILES = {
             autoPlayInQuestMap = false, muteGossip = true, yieldToNPCVoice = true,
             stopDialogueOnClose = true, showDebugMessages = false, harvestEnabled = false,
             showQuestButton = true, autoPlayDelay = 1.0,
+            showSpeechFrame = false, speechAutoScroll = true, speechFitText = false, queueQuestSpeech = false,
         },
     },
     {
@@ -70,6 +89,7 @@ local PROFILES = {
             autoPlayInQuestMap = true, muteGossip = true, yieldToNPCVoice = true,
             stopDialogueOnClose = false, showDebugMessages = true, harvestEnabled = true,
             autoPlayDelay = 1.0,
+            showSpeechFrame = true, speechAutoScroll = true, speechFitText = false, queueQuestSpeech = false,
         },
     },
 }
@@ -88,6 +108,11 @@ local function ApplyProfile(key)
                 db[option] = value
             end
             db.profile = key
+            if addon.SpeechSettingChanged then
+                for _, option in ipairs({ "speechFitText", "queueQuestSpeech", "speechSize" }) do
+                    addon.SpeechSettingChanged(option)
+                end
+            end
             if addon.UpdateMinimapButtonVisibility then addon.UpdateMinimapButtonVisibility() end
             if addon.UpdateQuestButtonVisibility then addon.UpdateQuestButtonVisibility() end
             -- The settings window reads everything in OnShow; if it is open,
@@ -145,6 +170,12 @@ end
 -- --------------------------------------------------------------------------
 local WIDTH, HEIGHT = 560, 440
 local frame, pages, pageIndex
+-- The pages this run walks through, as indices into pages: the whole
+-- tutorial, or the short "what's new" run for players who saw an older one.
+local order, pageByName
+local ShowPage
+local FULL_ORDER = { "welcome", "profiles", "packs", "speech", "controls", "contribute", "done" }
+local WHATSNEW_ORDER = { "whatsnew", "speech", "done" }
 local selectedProfile
 
 local function Text(parent, template, width)
@@ -169,17 +200,25 @@ local function CopyBox(parent, url, width)
     return box
 end
 
-local function NewPage()
+local function NewPage(name)
     local page = CreateFrame("Frame", nil, frame)
     page:SetPoint("TOPLEFT", 20, -34)
     page:SetPoint("BOTTOMRIGHT", -20, 50)
     page:Hide()
     table.insert(pages, page)
+    pageByName[name] = #pages
     return page
 end
 
+local function SetOrder(names)
+    order = {}
+    for _, name in ipairs(names) do
+        table.insert(order, pageByName[name])
+    end
+end
+
 local function BuildWelcome()
-    local page = NewPage()
+    local page = NewPage("welcome")
     local title = Text(page, "GameFontNormalHuge")
     title:SetPoint("TOPLEFT", 0, -10)
     title:SetText("Welcome to SpeakStone")
@@ -188,16 +227,17 @@ local function BuildWelcome()
     body:SetSpacing(4)
     body:SetText("SpeakStone reads quests, NPC greetings and books aloud, with voices similar to the in-game NPCs.\n"
         .. "Unofficial; not affiliated with Blizzard Entertainment.\n\n"
-        .. "This quick setup takes under a minute:\n"
+        .. "This quick setup takes about a minute:\n"
         .. "  1. Pick how much you want narrated.\n"
         .. "  2. Check your audio packs.\n"
-        .. "  3. Learn where the controls are.\n"
-        .. "  4. See how you can help the project.\n\n"
+        .. "  3. Set up the speech bar.\n"
+        .. "  4. Learn where the controls are.\n"
+        .. "  5. See how you can help the project.\n\n"
         .. "You can reopen it any time with |cffffd100/ss tutorial|r.")
 end
 
 local function BuildProfiles()
-    local page = NewPage()
+    local page = NewPage("profiles")
     local title = Text(page, "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", 0, 0)
     title:SetText("Pick a profile")
@@ -224,7 +264,7 @@ local function BuildProfiles()
     for _, profile in ipairs(PROFILES) do
         local button = CreateFrame("Button", nil, page)
         button:SetPoint("TOPLEFT", 0, y)
-        button:SetSize(WIDTH - 40, 50)
+        button:SetSize(WIDTH - 40, 48)
         button.key = profile.key
         button.bg = button:CreateTexture(nil, "BACKGROUND")
         button.bg:SetAllPoints()
@@ -245,12 +285,12 @@ local function BuildProfiles()
             Refresh()
         end)
         table.insert(buttons, button)
-        y = y - 56
+        y = y - 52
     end
 end
 
 local function BuildPacks()
-    local page = NewPage()
+    local page = NewPage("packs")
     local title = Text(page, "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", 0, 0)
     title:SetText("Audio packs")
@@ -292,7 +332,7 @@ local function BuildPacks()
 end
 
 local function BuildControls()
-    local page = NewPage()
+    local page = NewPage("controls")
     local title = Text(page, "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", 0, 0)
     title:SetText("Where things are")
@@ -301,14 +341,17 @@ local function BuildControls()
     body:SetSpacing(5)
     body:SetText("|TInterface\\AddOns\\" .. addonName .. "\\cs_icon.tga:16:16|t  |cffffd100Minimap button|r: left-click opens settings, right-click exports captured text.\n\n"
         .. "|cffffd100Read Quest button|r: at the bottom of the quest window and quest log. Plays (or replays) the current quest.\n\n"
+        .. "|cffffd100Speech bar|r: Pause, Stop, Replay, and Next when quests are queued. Right-click it or use the gear for size and options; the mouse wheel scrolls the text.\n\n"
+        .. "|cffffd100Keys|r: F6 plays the current quest. Set a Pause / resume key in the game's Key Bindings, under SpeakStone.\n\n"
         .. "|cffffd100/ss|r: opens the settings window, voice pack status and audio library.\n"
         .. "|cffffd100/sstoggle|r: stop or replay the current narration.\n"
+        .. "|cffffd100/ss frame|r: show the sample speech bar to move or resize it.\n"
         .. "|cffffd100/ssmissing|r: list quests you've seen that have no audio yet.\n"
         .. "|cffffd100/ss tutorial|r: reopen this guide and change profile.")
 end
 
 local function BuildContribute()
-    local page = NewPage()
+    local page = NewPage("contribute")
     local title = Text(page, "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", 0, 0)
     title:SetText("Help SpeakStone grow")
@@ -387,7 +430,7 @@ local function BuildContribute()
 end
 
 local function BuildDone()
-    local page = NewPage()
+    local page = NewPage("done")
     local title = Text(page, "GameFontNormalHuge")
     title:SetPoint("TOPLEFT", 0, -10)
     title:SetText("All set!")
@@ -403,14 +446,182 @@ local function BuildDone()
     end)
 end
 
-local function ShowPage(index)
+local function BuildWhatsNew()
+    local page = NewPage("whatsnew")
+    local title = Text(page, "GameFontNormalHuge")
+    title:SetPoint("TOPLEFT", 0, -10)
+    title:SetText("New in SpeakStone")
+    local body = Text(page, "GameFontHighlight", WIDTH - 40)
+    body:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -16)
+    body:SetSpacing(4)
+    body:SetText("|cffffd100The speech bar|r keeps the words on screen when you walk away mid-line, scrolls along "
+        .. "with the voice, and can grow to show the whole passage.\n\n"
+        .. "|cffffd100Quest queue|r: talk to a second quest giver while the first is still being read and the new "
+        .. "quest waits its turn. Blizzard's talking heads only pause the queue.\n\n"
+        .. "|cffffd100Extra large size|r, and a new |cff00ff00Subtitles|r profile for reading along (in the full "
+        .. "tutorial, or the Profiles button in /ss).\n\n"
+        .. "Next: set up the speech bar.")
+
+    local full = CreateFrame("Button", nil, page, "UIPanelButtonTemplate")
+    full:SetSize(180, 24)
+    full:SetPoint("TOPLEFT", body, "BOTTOMLEFT", 0, -18)
+    full:SetText("See the full tutorial")
+    full:SetScript("OnClick", function()
+        SetOrder(FULL_ORDER)
+        ShowPage(1)
+    end)
+end
+
+-- Move the tutorial off the sample bar, above it if there is room, else
+-- below. Next frame, so a bar that has just been shown or resized has its
+-- new size.
+local function KeepClearOfBar()
+    C_Timer.After(0, function()
+        if not (frame and frame:IsShown() and addon.SpeechFrameBounds) then return end
+        local barBottom, barTop = addon.SpeechFrameBounds()
+        local bottom, top = frame:GetBottom(), frame:GetTop()
+        if not (barBottom and bottom) or barTop <= bottom or barBottom >= top then return end
+        local gap, height = 10, frame:GetHeight()
+        local x = frame:GetCenter() - UIParent:GetWidth() / 2
+        frame:ClearAllPoints()
+        if barTop + gap + height <= UIParent:GetHeight() then
+            frame:SetPoint("BOTTOM", UIParent, "BOTTOM", x, barTop + gap)
+        elseif barBottom - gap - height >= 0 then
+            frame:SetPoint("TOP", UIParent, "BOTTOM", x, barBottom - gap)
+        else
+            frame:SetPoint("CENTER", UIParent, "CENTER", x, 0)
+        end
+    end)
+end
+
+local SPEECH_SIZES = {
+    { "small", "Small" }, { "medium", "Medium" }, { "large", "Large" }, { "xlarge", "Extra large" },
+}
+
+local function BuildSpeechBar()
+    local page = NewPage("speech")
+    local title = Text(page, "GameFontNormalLarge")
+    title:SetPoint("TOPLEFT", 0, 0)
+    title:SetText("The speech bar")
+    local body = Text(page, "GameFontHighlight", WIDTH - 40)
+    body:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -10)
+    body:SetSpacing(4)
+    body:SetText("Walk away from a quest giver mid-line and this bar keeps the words on screen, with who is "
+        .. "speaking. A sample is showing now: |cffffd100drag it where you want it|r, then lock it. "
+        .. "Right-click it later for the same options.")
+
+    local function Changed(key)
+        if addon.SpeechSettingChanged then addon.SpeechSettingChanged(key) end
+        KeepClearOfBar()
+    end
+
+    local checks = {}
+    local previous = body
+    for _, spec in ipairs({
+        { "showSpeechFrame", "Show the speech bar when I walk away" },
+        { "speechAutoScroll", "Scroll the text along with the voice", true },
+        { "speechFitText", "Grow the bar to show all the text" },
+        { "queueQuestSpeech", "Queue quests instead of cutting one off (1/2 and a Next button)" },
+        { "speechFrameLocked", "Lock the bar in place" },
+    }) do
+        local key, label, onByDefault = spec[1], spec[2], spec[3]
+        local check = CreateFrame("CheckButton", nil, page, "UICheckButtonTemplate")
+        check:SetSize(24, 24)
+        check:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", previous == body and -4 or 0, previous == body and -8 or 2)
+        local text = Text(check, "GameFontHighlight")
+        text:SetPoint("LEFT", check, "RIGHT", 2, 0)
+        text:SetText(label)
+        check:SetHitRectInsets(0, -text:GetStringWidth() - 4, 0, 0)
+        function check.Refresh()
+            local value = DB()[key]
+            if onByDefault then value = value ~= false end
+            check:SetChecked(value and true or false)
+        end
+        check:SetScript("OnClick", function(self)
+            DB()[key] = self:GetChecked() and true or false
+            Changed(key)
+        end)
+        table.insert(checks, check)
+        previous = check
+    end
+
+    local sizeLabel = Text(page, "GameFontNormal")
+    sizeLabel:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", 4, -10)
+    sizeLabel:SetText("Size:")
+    local sizeButtons = {}
+    local function RefreshSizes()
+        local currentSize = DB().speechSize or "medium"
+        for _, button in ipairs(sizeButtons) do
+            if button.key == currentSize then button:LockHighlight() else button:UnlockHighlight() end
+        end
+    end
+    local anchor = sizeLabel
+    for _, size in ipairs(SPEECH_SIZES) do
+        local button = CreateFrame("Button", nil, page, "UIPanelButtonTemplate")
+        button:SetSize(size[1] == "xlarge" and 100 or 80, 22)
+        button:SetPoint("LEFT", anchor, "RIGHT", anchor == sizeLabel and 10 or 4, 0)
+        button:SetText(size[2])
+        button.key = size[1]
+        button:SetScript("OnClick", function()
+            DB().speechSize = size[1]
+            Changed("speechSize")
+            RefreshSizes()
+        end)
+        table.insert(sizeButtons, button)
+        anchor = button
+    end
+
+    local sample = CreateFrame("Button", nil, page, "UIPanelButtonTemplate")
+    sample:SetSize(140, 24)
+    sample:SetPoint("TOPLEFT", sizeLabel, "BOTTOMLEFT", -4, -16)
+    local function RefreshSample()
+        local shown = addon.SpeechFramePreviewShown and addon.SpeechFramePreviewShown()
+        sample:SetText(shown and "Hide the sample" or "Show the sample")
+    end
+    sample:SetScript("OnClick", function()
+        if addon.SpeechFramePreviewShown and addon.SpeechFramePreviewShown() then
+            addon.SpeechFrameHidePreview()
+        elseif addon.SpeechFrameShowPreview then
+            addon.SpeechFrameShowPreview()
+            KeepClearOfBar()
+        end
+        RefreshSample()
+    end)
+
+    local reset = CreateFrame("Button", nil, page, "UIPanelButtonTemplate")
+    reset:SetSize(140, 24)
+    reset:SetPoint("LEFT", sample, "RIGHT", 8, 0)
+    reset:SetText("Reset position")
+    reset:SetScript("OnClick", function()
+        DB().speechFramePos = nil
+        Changed("speechFramePos")
+    end)
+
+    page:SetScript("OnShow", function()
+        for _, check in ipairs(checks) do check.Refresh() end
+        RefreshSizes()
+        -- Not over narration that is already playing (the preview says so
+        -- in chat and stays down).
+        if addon.SpeechFrameShowPreview and addon.SpeechFrameShowPreview() then
+            KeepClearOfBar()
+        end
+        RefreshSample()
+    end)
+    page:SetScript("OnHide", function()
+        if addon.SpeechFrameHidePreview then addon.SpeechFrameHidePreview() end
+        if addon.PlaceTutorial then addon.PlaceTutorial() end
+    end)
+end
+
+function ShowPage(index)
     pageIndex = index
+    local shown = order[index]
     for i, page in ipairs(pages) do
-        page:SetShown(i == index)
+        page:SetShown(i == shown)
     end
     frame.back:SetEnabled(index > 1)
-    frame.next:SetText(index == #pages and "Finish" or "Next")
-    frame.counter:SetText(index .. " / " .. #pages)
+    frame.next:SetText(index == #order and "Finish" or "Next")
+    frame.counter:SetText(index .. " / " .. #order)
 end
 
 local function Build()
@@ -482,25 +693,30 @@ local function Build()
     frame.next:SetSize(100, 24)
     frame.next:SetPoint("BOTTOMRIGHT", -16, 14)
     frame.next:SetScript("OnClick", function()
-        if pageIndex == #pages then frame:Hide() else ShowPage(pageIndex + 1) end
+        if pageIndex == #order then frame:Hide() else ShowPage(pageIndex + 1) end
     end)
 
     frame.counter = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     frame.counter:SetPoint("BOTTOM", 0, 20)
 
-    pages = {}
+    pages, pageByName = {}, {}
     BuildWelcome()
+    BuildWhatsNew()
     BuildProfiles()
     BuildPacks()
+    BuildSpeechBar()
     BuildControls()
     BuildContribute()
     BuildDone()
+    SetOrder(FULL_ORDER)
 end
 
--- page: optional start page (2 = profiles).
-function addon.ShowTutorial(page)
+-- page: optional start page (2 = profiles). whatsNew: the short run for
+-- players who saw an older version of the tutorial.
+function addon.ShowTutorial(page, whatsNew)
     if not DB() then return end
     if not frame then Build() end
+    SetOrder(whatsNew and WHATSNEW_ORDER or FULL_ORDER)
     selectedProfile = nil
     frame:Show()
     -- Show() on an already-open frame does not fire OnShow.
@@ -511,7 +727,8 @@ end
 -- Called from PLAYER_LOGIN. Returns true if the tutorial was shown.
 function addon.MaybeShowTutorial()
     local db = DB()
-    if not db or (db.tutorialVersion or 0) >= TUTORIAL_VERSION then return false end
-    addon.ShowTutorial(1)
+    local seen = db and db.tutorialVersion or 0
+    if not db or seen >= TUTORIAL_VERSION then return false end
+    addon.ShowTutorial(1, seen >= 1)
     return true
 end
