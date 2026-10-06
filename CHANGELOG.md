@@ -1,5 +1,40 @@
 # Changelog
 
+## 3.1.1 (October 2026)
+
+### Speech bar
+
+- **Quest queue fixes:** anything else that cuts the current quest off (a book, a gossip line, the library) now clears
+  the queue too, so stale quests never start later out of nowhere, and a quest whose clip fails to play moves on to
+  the next. A talking head only pauses the queue: the rest carries on once the NPC has finished speaking.
+- Turning "Show all the text" on or off from `/ss` or the Options page now resizes the bar straight away.
+
+### Settings window
+
+- **Tidier layout:** Queue quests and Auto-accept moved to Playback. Auto-scroll and Grow sit under "Show the speech
+  frame" and grey out while it's off. Capture moved to Interface, and debug messages became a small Advanced line at
+  the bottom. The three link cards are now one Links card with a button per address, Export and Clear moved onto the
+  Capture card, and the bottom row is just the Library buttons and Profiles. The window is shorter, and the captures
+  card only lists what you've actually captured.
+
+### Tutorial
+
+- **Speech bar page:** shows the sample bar so you can drag it into place, pick a size and set its options. The
+  tutorial moves itself off the bar while you do. The "Where things are" page now covers the bar's buttons and
+  keybinds.
+- **What's new:** players who already went through the tutorial get a short run (what's new, the speech bar page)
+  instead of the whole thing, with a button for the full tutorial.
+- **Profiles** now set the speech bar options too (Story Only queues quests; Manual turns the bar off), and there's a
+  new **Subtitles** profile: extra large bar, the whole passage shown, quests queued.
+
+### Fixes
+
+- **Audio Library quest titles:** the built-in title list (for quests your character has never seen) was loaded but
+  never read, because of a leftover name from the rename. Far fewer quests now show as "Unknown quest".
+- Leftover QuestReader names inside the addon renamed to SpeakStone. The old `/qr...` commands still work.
+- **Lighter on busy cities:** NPC chat lines are no longer hashed when narration isn't set to wait for NPC voices, and
+  a line is checked once rather than twice when harvesting is on.
+
 ## 3.1.0 (October 2026)
 
 ### Speech bar

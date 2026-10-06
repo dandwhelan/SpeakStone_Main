@@ -1354,7 +1354,7 @@ function addon.ToggleAudioLibrary()
 end
 
 -- Slash command
-SLASH_QRLIBRARY1, SLASH_QRLIBRARY2 = '/qrlibrary', '/sslibrary'
-SlashCmdList["QRLIBRARY"] = function()
+SLASH_SPEAKSTONELIBRARY1, SLASH_SPEAKSTONELIBRARY2 = '/qrlibrary', '/sslibrary'
+SlashCmdList["SPEAKSTONELIBRARY"] = function()
     addon.ToggleAudioLibrary()
 end

@@ -485,7 +485,7 @@ function Pause()
     paused = true
     if not sd.preview then
         pausing = true
-        addon.StopCurrentSound()
+        addon.StopCurrentSound(true)
         pausing = false
     end
     Tick()
@@ -590,6 +590,34 @@ function addon.SpeechFramePreview()
     Watch(sd)
 end
 
+-- For the tutorial's speech bar page: show the sample (unless it is up
+-- already), take it down again, and where the bar's edges are in UIParent
+-- units (bottom, top) so the tutorial can keep out of its way.
+function addon.SpeechFrameShowPreview()
+    if not (current and current.preview) then
+        addon.SpeechFramePreview()
+    end
+    return current ~= nil and current.preview == true
+end
+
+function addon.SpeechFrameHidePreview()
+    if current and current.preview then
+        Clear()
+    end
+end
+
+function addon.SpeechFramePreviewShown()
+    return current ~= nil and current.preview == true
+end
+
+function addon.SpeechFrameBounds()
+    if not (frame and frame:IsShown() and frame:GetTop()) then
+        return nil
+    end
+    local ratio = frame:GetEffectiveScale() / UIParent:GetEffectiveScale()
+    return frame:GetBottom() * ratio, frame:GetTop() * ratio
+end
+
 -- --------------------------------------------------------------------------
 -- Menu
 -- --------------------------------------------------------------------------
@@ -620,12 +648,15 @@ function OpenMenu(owner)
             function() db.speechAutoScroll = db.speechAutoScroll == false end)
         root:CreateCheckbox("Show all the text (grow the frame)",
             function() return db.speechFitText end,
-            function() db.speechFitText = not db.speechFitText; frame.filledFor = nil end)
+            function()
+                db.speechFitText = not db.speechFitText
+                addon.SpeechSettingChanged("speechFitText")
+            end)
         root:CreateCheckbox("Queue quests (don't interrupt)",
             function() return db.queueQuestSpeech end,
             function()
                 db.queueQuestSpeech = not db.queueQuestSpeech
-                if not db.queueQuestSpeech and addon.ClearSpeechQueue then addon.ClearSpeechQueue() end
+                addon.SpeechSettingChanged("queueQuestSpeech")
             end)
         root:CreateCheckbox("Lock position",
             function() return db.speechFrameLocked end,
@@ -652,6 +683,18 @@ end
 -- --------------------------------------------------------------------------
 -- Notices from the playback code
 -- --------------------------------------------------------------------------
+
+-- A speech-frame option changed (the gear menu, /ss, or the game's
+-- Options page): apply it to the frame now, not on the next clip.
+function addon.SpeechSettingChanged(key)
+    if key == "speechFitText" and frame then
+        frame.filledFor = nil
+    elseif (key == "speechSize" or key == "speechFramePos") and frame then
+        ApplyPosition()
+    elseif key == "queueQuestSpeech" and not DB().queueQuestSpeech and addon.ClearSpeechQueue then
+        addon.ClearSpeechQueue()
+    end
+end
 
 function addon.SpeechFrameNotify(event, sd)
     if event == "start" then

@@ -53,7 +53,7 @@ local function ExportHarvest()
     addon.ShowHarvestExport()
 end
 
-StaticPopupDialogs["QUESTREADER_CONFIRM_CLEAR_HARVEST"] = {
+StaticPopupDialogs["SPEAKSTONE_CONFIRM_CLEAR_HARVEST"] = {
     text = "Clear everything SpeakStone has captured -- quest text, greetings and books?\n\nThis cannot be undone, and anything not yet submitted is lost.",
     button1 = YES,
     button2 = NO,
@@ -118,6 +118,11 @@ local SETTINGS_SECTIONS = {
                 tooltip = "Narrate when a quest is selected in the world map's quest list, not just at the quest giver.",
             },
             {
+                option = "queueQuestSpeech",
+                label = "Queue quests instead of interrupting",
+                tooltip = "Talking to another quest giver while a quest is still being read adds the new quest to a queue instead of cutting the first one off. The speech frame shows where you are (1/2) and a Next button to skip ahead. Stop clears the queue.",
+            },
+            {
                 option = "muteGossip",
                 label = "Silence Blizzard's own voice lines",
                 tooltip = "Off by default: where Blizzard has voiced a line, that recording plays and SpeakStone waits its turn. Turn this on to mute the game's Dialog channel instead, so narration starts immediately and nothing plays over it.",
@@ -126,6 +131,11 @@ local SETTINGS_SECTIONS = {
                 option = "stopDialogueOnClose",
                 label = "Stop narration when the window closes",
                 tooltip = "Walking away mid-sentence stops the audio instead of leaving a disembodied voice following you.",
+            },
+            {
+                option = "autoAcceptQuests",
+                label = "Auto-accept quests (hold Shift to skip)",
+                tooltip = "Accept quests as soon as they are offered and hear them in the speech frame instead. Hold Shift while talking to the quest giver to skip it for that quest.",
             },
         },
     },
@@ -140,23 +150,17 @@ local SETTINGS_SECTIONS = {
             },
             {
                 option = "speechAutoScroll",
-                label = "Auto-scroll the speech frame text",
+                label = "Auto-scroll the text",
+                indent = true,
+                parent = "showSpeechFrame",
                 tooltip = "Scroll the text along with the voice so the line being spoken stays in view. Off: the text stays put and the mouse wheel scrolls it.",
             },
             {
                 option = "speechFitText",
-                label = "Grow the speech frame to show all the text",
+                label = "Grow to show all the text",
+                indent = true,
+                parent = "showSpeechFrame",
                 tooltip = "Make the frame taller so the whole passage shows without scrolling (very long text still scrolls). Pair with the Extra large size on the frame's gear menu.",
-            },
-            {
-                option = "queueQuestSpeech",
-                label = "Queue quests instead of interrupting",
-                tooltip = "Talking to another quest giver while a quest is still being read adds the new quest to a queue instead of cutting the first one off. The speech frame shows where you are (1/2) and a Next button to skip ahead. Stop clears the queue.",
-            },
-            {
-                option = "autoAcceptQuests",
-                label = "Auto-accept quests",
-                tooltip = "Accept quests as soon as they are offered and hear them in the speech frame instead. Hold Shift while talking to the quest giver to skip it for that quest.",
             },
         },
     },
@@ -175,24 +179,23 @@ local SETTINGS_SECTIONS = {
                 tooltip = "The button at the bottom of the quest window and in the quest log. Hide it if your quest UI already covers that spot -- narration still works.",
                 onChange = function() if addon.UpdateQuestButtonVisibility then addon.UpdateQuestButtonVisibility() end end,
             },
-        },
-    },
-    {
-        title = "Contribute",
-        options = {
             {
                 option = "harvestEnabled",
-                label = "Auto capture quest text to help voice missing quests",
+                label = "Capture quest text to help voice missing quests",
                 tooltip = "Records the text of quests, greetings and books you encounter, so unvoiced ones can be queued up. Your character's name is replaced with $n before anything is stored.",
                 onChange = function() if addon.RefreshSettingsStatus then addon.RefreshSettingsStatus() end end,
             },
-            {
-                option = "showDebugMessages",
-                label = "Show debug messages in chat",
-                tooltip = "Prints which clip was chosen, and says so when a quest has no audio installed. Useful when reporting a problem.",
-            },
         },
     },
+}
+
+-- A troubleshooting switch, not a preference: kept out of the sections and
+-- drawn small at the foot of the options.
+local DEBUG_OPTION = {
+    option = "showDebugMessages",
+    label = "Advanced: show debug messages in chat",
+    small = true,
+    tooltip = "Prints which clip was chosen, and says so when a quest has no audio installed. Useful when reporting a problem.",
 }
 
 -- --------------------------------------------------------------------------
@@ -217,7 +220,7 @@ end
 -- --------------------------------------------------------------------------
 
 local FRAME_WIDTH = 700
-local FRAME_HEIGHT = 740
+local FRAME_HEIGHT = 620
 local CARD_WIDTH = 226
 local CARD_HEIGHT = 92
 local CARD_GAP = 8
@@ -376,79 +379,86 @@ function SpeakStone:CreateWindow()
     -- ----------------------------------------------------------------------
     local cards = {}
 
-    local function PlaceCard(spec, index)
+    -- Stacked top to bottom; a card that holds buttons is taller.
+    local nextCardY = TOP_Y
+    local function PlaceCard(spec, height)
         local card = CreateCard(frame, spec)
-        card:SetPoint("TOPLEFT", frame, "TOPLEFT", LEFT_X, TOP_Y - (index - 1) * (CARD_HEIGHT + CARD_GAP))
+        height = height or CARD_HEIGHT
+        card:SetHeight(height)
+        card:SetPoint("TOPLEFT", frame, "TOPLEFT", LEFT_X, nextCardY)
+        nextCardY = nextCardY - height - CARD_GAP
         return card
     end
 
-    cards.packs = PlaceCard({ label = "VOICE PACKS", onClick = function() OpenAudioLibraryUI() end }, 1)
+    local function CardButton(card, text, width, onClick, tooltip)
+        local button = CreateFrame("Button", nil, card, "UIPanelButtonTemplate")
+        button:SetSize(width, 22)
+        button:SetText(text)
+        button:SetScript("OnClick", onClick)
+        AttachTooltip(button, text, tooltip)
+        return button
+    end
+
+    cards.packs = PlaceCard({ label = "VOICE PACKS", onClick = function() OpenAudioLibraryUI() end })
     AttachTooltip(cards.packs, "Voice packs", "How much audio is installed and where it came from. Click to browse and replay every voiced quest your packs provide.")
 
-    cards.captured = PlaceCard({ label = "YOUR CAPTURES", onClick = ExportHarvest }, 2)
+    cards.captured = PlaceCard({ label = "YOUR CAPTURES", onClick = ExportHarvest })
     AttachTooltip(cards.captured, "Your captures", "Greetings and book pages exist nowhere but a live client, so they are the part worth sending. Click to export everything recorded so far.")
 
-    cards.capture = PlaceCard({ label = "CAPTURE" }, 3)
+    -- The capture switch's state, with what to do about what it has caught.
+    cards.capture = PlaceCard({ label = "CAPTURE" }, CARD_HEIGHT + 30)
     AttachTooltip(cards.capture, "Capture", "Whether SpeakStone is recording the text it encounters. Your character's name is replaced with $n before anything is stored.")
+    local export = CardButton(cards.capture, "Export", 96, ExportHarvest,
+        "Everything recorded: NPC greetings, books and quest text, in one payload to paste at the site. Also /ssharvest export.")
+    export:SetPoint("BOTTOMLEFT", cards.capture, "BOTTOMLEFT", 10, 8)
+    local clear = CardButton(cards.capture, "Clear", 96,
+        function() StaticPopup_Show("SPEAKSTONE_CONFIRM_CLEAR_HARVEST") end,
+        "Throw away everything captured so far. Submit it first if you have not.")
+    clear:SetPoint("LEFT", export, "RIGHT", 8, 0)
 
-    -- A clickable link is not something an addon can offer, so the next best
-    -- thing is a box the player can select and copy without leaving the panel.
-    local linkCard = PlaceCard({ label = "CONTRIBUTE" }, 4)
-    linkCard.value:Hide()
-    linkCard.caption:ClearAllPoints()
-    linkCard.caption:SetPoint("TOPLEFT", linkCard.label, "BOTTOMLEFT", 0, -4)
-    linkCard.caption:SetText("Submit captured text, and get voice packs, at:")
-    linkCard.accent:SetColorTexture(ACCENT_NEUTRAL[1], ACCENT_NEUTRAL[2], ACCENT_NEUTRAL[3], 1)
-
-    local linkBox = CreateFrame("EditBox", nil, linkCard, "InputBoxTemplate")
+    -- One card for every link. An addon cannot open a browser, so each
+    -- button puts its address in the box below, selected, ready to copy.
+    local links = PlaceCard({ label = "LINKS" }, 150)
+    links.value:Hide()
+    links.caption:Hide()
+    links.accent:SetColorTexture(ACCENT_NEUTRAL[1], ACCENT_NEUTRAL[2], ACCENT_NEUTRAL[3], 1)
+    local linkBox = CreateFrame("EditBox", nil, links, "InputBoxTemplate")
     linkBox:SetSize(CARD_WIDTH - 30, 20)
-    linkBox:SetPoint("BOTTOMLEFT", linkCard, "BOTTOMLEFT", 16, 8)
+    linkBox:SetPoint("BOTTOMLEFT", links, "BOTTOMLEFT", 16, 8)
     linkBox:SetAutoFocus(false)
-    linkBox:SetText("https://" .. WEBSITE)
+    local linkURL = "https://" .. WEBSITE
+    linkBox:SetText(linkURL)
     linkBox:SetCursorPosition(0)
     -- Read-only in effect: typing into it would only mislead.
     linkBox:SetScript("OnTextChanged", function(self, userInput)
         if userInput then
-            self:SetText("https://" .. WEBSITE)
+            self:SetText(linkURL)
             self:HighlightText()
         end
     end)
     linkBox:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
     linkBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
 
-    -- Same copyable-box pattern as CONTRIBUTE above -- an addon cannot open a
-    -- browser, so a selectable link is the closest thing to a clickable one.
-    local function CreateLinkCard(index, label, caption, path)
-        local card = PlaceCard({ label = label }, index)
-        card.value:Hide()
-        card.caption:ClearAllPoints()
-        card.caption:SetPoint("TOPLEFT", card.label, "BOTTOMLEFT", 0, -4)
-        card.caption:SetText(caption)
-        card.accent:SetColorTexture(ACCENT_NEUTRAL[1], ACCENT_NEUTRAL[2], ACCENT_NEUTRAL[3], 1)
-
-        local box = CreateFrame("EditBox", nil, card, "InputBoxTemplate")
-        box:SetSize(CARD_WIDTH - 30, 20)
-        box:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 16, 8)
-        box:SetAutoFocus(false)
-        local url = "https://" .. WEBSITE .. path
-        box:SetText(url)
-        box:SetCursorPosition(0)
-        box:SetScript("OnTextChanged", function(self, userInput)
-            if userInput then
-                self:SetText(url)
-                self:HighlightText()
-            end
-        end)
-        box:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
-        box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
-        return card
+    local previousLink
+    for _, spec in ipairs({
+        { "Submit captured text", "", "Submit captured text, and get voice packs." },
+        { "Report an issue", "/report", "Wrong voice, broken audio, or anything else worth flagging." },
+        { "Lend your voice", "/voice", "Sign up to lend your voice to an NPC." },
+    }) do
+        local path = spec[2]
+        local button = CardButton(links, spec[1], CARD_WIDTH - 20, function()
+            linkURL = "https://" .. WEBSITE .. path
+            linkBox:SetText(linkURL)
+            linkBox:SetFocus()
+            linkBox:HighlightText()
+        end, spec[3] .. " Puts the address in the box below to copy (Ctrl+C).")
+        if previousLink then
+            button:SetPoint("TOPLEFT", previousLink, "BOTTOMLEFT", 0, -4)
+        else
+            button:SetPoint("TOPLEFT", links.label, "BOTTOMLEFT", 0, -8)
+        end
+        previousLink = button
     end
-
-    cards.reportIssue = CreateLinkCard(5, "REPORT ISSUE", "Wrong voice, broken audio, or anything else -- report it at:", "/report")
-    AttachTooltip(cards.reportIssue, "Report an issue", "Opens a copyable link to SpeakStone's issue-report page. Wrong-sex voices, mispronunciations, missing audio, and anything else worth flagging goes here.")
-
-    cards.addVoice = CreateLinkCard(6, "ADD YOUR VOICE", "Want to lend your voice to an NPC? Sign up at:", "/voice")
-    AttachTooltip(cards.addVoice, "Add your voice", "Opens a copyable link to SpeakStone's voice-donation page, where you can contribute your own voice as a reference for future NPCs.")
 
     -- ----------------------------------------------------------------------
     -- Right column: the options themselves, unchanged in content
@@ -460,10 +470,11 @@ function SpeakStone:CreateWindow()
     -- still hold their own value, but none of them does anything until the
     -- master switch is back on, and a live checkbox that changes nothing is a
     -- worse answer than a dimmed one.
+    -- The same goes for the speech frame's own options under its switch.
     local dependentButtons = {}
     local function RefreshOptionStates()
-        local master = SpeakStone_MainDB.autoPlayEnabled
         for _, button in ipairs(dependentButtons) do
+            local master = SpeakStone_MainDB[button.parentOption]
             if master then button:Enable() else button:Disable() end
             if button.text then
                 if master then
@@ -501,7 +512,7 @@ function SpeakStone:CreateWindow()
         -- shape of the list says which switch turns which off.
         local x = RIGHT_X + 2 + (info.indent and 18 or 0)
         checkButton:SetPoint("TOPLEFT", frame, "TOPLEFT", x, cursorY)
-        checkButton.text = checkButton:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+        checkButton.text = checkButton:CreateFontString(nil, "ARTWORK", info.small and "GameFontDisableSmall" or "GameFontNormal")
         checkButton.text:SetText(info.label)
         checkButton.text:SetPoint("LEFT", checkButton, "RIGHT", 4, 0)
         checkButton:SetSize(21, 20)
@@ -513,6 +524,7 @@ function SpeakStone:CreateWindow()
         checkButton:SetScript("OnClick", function(self)
             SpeakStone_MainDB[info.option] = self:GetChecked()
             if info.onChange then info.onChange(self:GetChecked()) end
+            if addon.SpeechSettingChanged then addon.SpeechSettingChanged(info.option) end
             RefreshOptionStates()
         end)
         checkButton:SetScript("OnShow", function(self)
@@ -520,6 +532,7 @@ function SpeakStone:CreateWindow()
         end)
 
         if info.indent then
+            checkButton.parentOption = info.parent or "autoPlayEnabled"
             table.insert(dependentButtons, checkButton)
         end
 
@@ -567,6 +580,10 @@ function SpeakStone:CreateWindow()
         end
     end
 
+    -- Pinned just above the button row rather than after the last section.
+    cursorY = -(FRAME_HEIGHT - 66)
+    makeCheckButton(DEBUG_OPTION)
+
     -- ----------------------------------------------------------------------
     -- Actions. The cards are shortcuts to two of these, not replacements.
     -- ----------------------------------------------------------------------
@@ -574,16 +591,16 @@ function SpeakStone:CreateWindow()
     -- in place of a single "Open Audio Library" button.
     local playLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     playLabel:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", LEFT_X, 19)
-    playLabel:SetText("Play")
+    playLabel:SetText("Library")
     local previous
     for _, spec in ipairs({
-        { "books", "Books", "Browse every voiced book and read it aloud, whole or page by page." },
+        { "quests", "Quests", "Browse and replay every voiced quest your installed packs provide. Also /sslibrary." },
         { "gossip", "Gossip", "Browse and replay voiced NPC greetings." },
-        { "quests", "Quests", "Browse and replay every voiced quest your installed packs provide. Also /qrlibrary." },
+        { "books", "Books", "Browse every voiced book and read it aloud, whole or page by page." },
     }) do
         local mode, label, tip = spec[1], spec[2], spec[3]
         local button = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-        button:SetSize(68, 24)
+        button:SetSize(80, 24)
         button:SetText(label)
         if previous then
             button:SetPoint("LEFT", previous, "RIGHT", 4, 0)
@@ -595,42 +612,13 @@ function SpeakStone:CreateWindow()
         previous = button
     end
 
-    local buttons = {
-        {
-            text = "Export Captured Text",
-            width = 150,
-            onClick = ExportHarvest,
-            tooltip = "Everything recorded: NPC greetings, books and quest text, in one payload to paste at the site. Also /ssharvest export.",
-        },
-        {
-            text = "Clear Captured Data",
-            width = 140,
-            onClick = function() StaticPopup_Show("QUESTREADER_CONFIRM_CLEAR_HARVEST") end,
-            tooltip = "Throw away everything captured so far. Submit it first if you have not.",
-        },
-        {
-            text = "Profiles",
-            width = 90,
-            onClick = function() if addon.ShowTutorial then addon.ShowTutorial(2) end end,
-            tooltip = "Switch to a premade profile, or rerun the first-start setup. Also /ss tutorial.",
-        },
-    }
-
-    local first = true
-    for _, spec in ipairs(buttons) do
-        local button = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-        button:SetSize(spec.width or 170, 24)
-        button:SetText(spec.text)
-        if previous then
-            button:SetPoint("LEFT", previous, "RIGHT", first and 14 or 8, 0)
-            first = false
-        else
-            button:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", LEFT_X, 14)
-        end
-        button:SetScript("OnClick", spec.onClick)
-        AttachTooltip(button, spec.text, spec.tooltip)
-        previous = button
-    end
+    -- Export and Clear live on the Capture card now, beside what they act on.
+    local profiles = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    profiles:SetSize(100, 24)
+    profiles:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -16, 14)
+    profiles:SetText("Profiles")
+    profiles:SetScript("OnClick", function() if addon.ShowTutorial then addon.ShowTutorial(2) end end)
+    AttachTooltip(profiles, "Profiles", "Switch to a premade profile, or rerun the first-start setup. Also /ss tutorial.")
 
     -- ----------------------------------------------------------------------
     -- Keeping the cards true
@@ -665,7 +653,7 @@ function SpeakStone:CreateWindow()
                 "Quest text, greetings and books are being recorded as you meet them.")
         else
             SetCardState(cards.capture, ACCENT_BAD, "Off",
-                "Nothing new is being recorded. Turn on capture under Contribute.")
+                "Nothing new is being recorded. Turn on capture under Interface.")
         end
 
         if addon.HarvestCounts then
@@ -673,8 +661,22 @@ function SpeakStone:CreateWindow()
             -- Greetings and books lead. Neither has a table in the client nor
             -- a scrapeable equivalent, so capture is the only way they can
             -- ever be obtained; quest text can be sourced other ways.
-            local summary = string.format("greeting(s) from %d NPC(s)\n%d page(s) in %d book(s) - %d quest(s), %d passage(s)",
-                npcs, pages, items, capturedQuests, passages)
+            -- Only what there is: a row of zeros wrapped across the card and
+            -- said nothing. The greeting count is the headline above.
+            local function Count(n, one, many)
+                return n .. " " .. (n == 1 and one or many)
+            end
+            local parts = {}
+            if npcs > 0 then
+                table.insert(parts, (glines == 1 and "greeting" or "greetings") .. " from " .. Count(npcs, "NPC", "NPCs"))
+            end
+            if items > 0 then
+                table.insert(parts, Count(pages, "page", "pages") .. " in " .. Count(items, "book", "books"))
+            end
+            if capturedQuests > 0 then
+                table.insert(parts, Count(passages, "passage", "passages") .. " from " .. Count(capturedQuests, "quest", "quests"))
+            end
+            local summary = #parts > 0 and table.concat(parts, "\n") or "Nothing captured yet."
             -- Once there is a real amount sitting here, the card stops being a
             -- statistic and starts asking for something. Capture that nobody
             -- submits helps nobody.
@@ -782,7 +784,10 @@ function SpeakStone:CreateSettings()
         text:SetText(label)
         check:SetHitRectInsets(0, -text:GetStringWidth() - 4, 0, 0)
         check:SetScript("OnShow", function(self) self:SetChecked(SpeakStone_MainDB[key]) end)
-        check:SetScript("OnClick", function(self) SpeakStone_MainDB[key] = self:GetChecked() and true or false end)
+        check:SetScript("OnClick", function(self)
+            SpeakStone_MainDB[key] = self:GetChecked() and true or false
+            if addon.SpeechSettingChanged then addon.SpeechSettingChanged(key) end
+        end)
         check:SetChecked(SpeakStone_MainDB[key])
         previous = check
     end
@@ -806,8 +811,8 @@ function addon:OpenSettings()
     end
 end
 
-SLASH_QUESTREADER1, SLASH_QUESTREADER2, SLASH_QUESTREADER3, SLASH_QUESTREADER4 = '/qr', '/questreader', '/ss', '/speakstone'
-SlashCmdList.QUESTREADER = function(msg)
+SLASH_SPEAKSTONE1, SLASH_SPEAKSTONE2, SLASH_SPEAKSTONE3, SLASH_SPEAKSTONE4 = '/qr', '/questreader', '/ss', '/speakstone'
+SlashCmdList.SPEAKSTONE = function(msg)
     msg = strlower(strtrim(msg or ""))
     if msg == "tutorial" or msg == "setup" then
         if addon.ShowTutorial then addon.ShowTutorial(1) end

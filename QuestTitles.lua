@@ -2,7 +2,7 @@
 -- scrape data. Quest ID -> title, for quests the client itself does not
 -- know yet (wrong faction, different expansion, or a quest never picked
 -- up). Regenerate with that script rather than hand-editing this file.
-QuestReaderAddon_QuestTitles = {
+SpeakStone_QuestTitles = {
 [1]="Kanrethad's Quest",
 [2]="Sharptalon's Claw",
 [5]="Jitters' Growling Gut",

@@ -530,10 +530,15 @@ frame:RegisterEvent("CHAT_MSG_MONSTER_YELL")
 frame:RegisterEvent("CHAT_MSG_MONSTER_WHISPER")
 frame:RegisterEvent("CHAT_MSG_MONSTER_PARTY")
 
+local CHAT_EVENTS = {
+    CHAT_MSG_MONSTER_SAY = true, CHAT_MSG_MONSTER_YELL = true,
+    CHAT_MSG_MONSTER_WHISPER = true, CHAT_MSG_MONSTER_PARTY = true,
+}
+
 frame:SetScript("OnEvent", function(_, event, ...)
     if not Enabled() then return end
 
-    if event:sub(1, 17) == "CHAT_MSG_MONSTER_" then
+    if CHAT_EVENTS[event] then
         local text, sender = ...
         RecordNPCChat(text, sender, (select(12, ...)))
         return
