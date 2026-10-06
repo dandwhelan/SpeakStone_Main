@@ -1945,16 +1945,29 @@ end
 -- Text hash shared with the build script and the harvester. Same arithmetic
 -- as line_hash in tools/build_voiced_lines.py: exact in a double, so it
 -- agrees across Lua 5.1 and Python byte for byte.
+local byte = string.byte
 local function HashText(text)
     local h = 0
     for i = 1, #text do
-        h = (h * 31 + string.byte(text, i)) % 4294967296
+        h = (h * 31 + byte(text, i)) % 4294967296
     end
     return h
 end
 addon.HashText = HashText
 
 local voicedNamePattern
+
+local function VoicedLineHash(text)
+    if voicedNamePattern then
+        text = text:gsub(voicedNamePattern, "$n")
+    end
+    text = text:gsub("[ \t\r\n]+", " "):gsub("^ ", ""):gsub(" $", "")
+    return HashText(text)
+end
+
+-- Every NPC chat line is checked twice (here and by the harvester) on the
+-- same frame, and city chatter is a firehose: remember the last answer.
+local lastVoicedText, lastVoicedResult
 
 -- Shaped the way the build script shapes BroadcastText: the player's name
 -- back to "$n", whitespace runs to one space, trimmed.
@@ -1970,15 +1983,13 @@ local function IsKnownVoicedLine(text)
             voicedNamePattern = name:gsub("(%W)", "%%%1")
         end
     end
-    local ok, hash = pcall(function()
-        local t = text
-        if voicedNamePattern then
-            t = t:gsub(voicedNamePattern, "$n")
-        end
-        t = t:gsub("[ \t\r\n]+", " "):gsub("^ ", ""):gsub(" $", "")
-        return HashText(t)
-    end)
-    return ok and SpeakStone_VoicedLines[hash] ~= nil
+    if text == lastVoicedText then
+        return lastVoicedResult
+    end
+    local ok, hash = pcall(VoicedLineHash, text)
+    local result = ok and SpeakStone_VoicedLines[hash] ~= nil
+    lastVoicedText, lastVoicedResult = text, result
+    return result
 end
 addon.IsKnownVoicedLine = IsKnownVoicedLine
 
@@ -2004,23 +2015,25 @@ end
 -- Whether a chat line came from the NPC being talked to or narrated for.
 -- Compared inside pcall: in restricted content these can be secret values,
 -- which refuse comparison outright.
+local function MatchesSender(value, sender, guid)
+    return value == guid or value == sender
+end
+
+local function IsCandidate(value, sender, guid)
+    if not value or IsSecret(value) then
+        return false
+    end
+    local ok, match = pcall(MatchesSender, value, sender, guid)
+    return ok and match
+end
+
+-- No table or closures per call: this runs for every NPC chat line.
 local function IsNarratedNPC(sender, guid)
     local current = GetCurrentSound()
-    local candidates = {
-        UnitGUID("npc"), UnitName("npc"),
-        current and current.npcGUID, current and current.npcName,
-    }
-    for _, value in pairs(candidates) do
-        if value and not IsSecret(value) then
-            local ok, match = pcall(function()
-                return value == guid or value == sender
-            end)
-            if ok and match then
-                return true
-            end
-        end
-    end
-    return false
+    return IsCandidate(UnitGUID("npc"), sender, guid)
+        or IsCandidate(UnitName("npc"), sender, guid)
+        or (current and (IsCandidate(current.npcGUID, sender, guid)
+            or IsCandidate(current.npcName, sender, guid))) or false
 end
 
 local npcVoiceFrame = CreateFrame("Frame")
@@ -2064,6 +2077,11 @@ npcVoiceFrame:SetScript("OnEvent", function(_, event, ...)
             ScheduleSound(current, 0)
         end
     else
+        -- Nothing below has any effect unless narration yields to NPC
+        -- voices, so skip the hashing for every chat line when it doesn't.
+        if not SpeakStone_MainDB or not YieldingToNPCVoice() then
+            return
+        end
         local text, sender = ...
         local guid = select(12, ...)
         if IsKnownVoicedLine(text) then
