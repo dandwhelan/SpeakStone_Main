@@ -220,7 +220,7 @@ end
 -- --------------------------------------------------------------------------
 
 local FRAME_WIDTH = 700
-local FRAME_HEIGHT = 740
+local FRAME_HEIGHT = 620
 local CARD_WIDTH = 226
 local CARD_HEIGHT = 92
 local CARD_GAP = 8
@@ -661,8 +661,22 @@ function SpeakStone:CreateWindow()
             -- Greetings and books lead. Neither has a table in the client nor
             -- a scrapeable equivalent, so capture is the only way they can
             -- ever be obtained; quest text can be sourced other ways.
-            local summary = string.format("greeting(s) from %d NPC(s)\n%d page(s) in %d book(s) - %d quest(s), %d passage(s)",
-                npcs, pages, items, capturedQuests, passages)
+            -- Only what there is: a row of zeros wrapped across the card and
+            -- said nothing. The greeting count is the headline above.
+            local function Count(n, one, many)
+                return n .. " " .. (n == 1 and one or many)
+            end
+            local parts = {}
+            if npcs > 0 then
+                table.insert(parts, (glines == 1 and "greeting" or "greetings") .. " from " .. Count(npcs, "NPC", "NPCs"))
+            end
+            if items > 0 then
+                table.insert(parts, Count(pages, "page", "pages") .. " in " .. Count(items, "book", "books"))
+            end
+            if capturedQuests > 0 then
+                table.insert(parts, Count(passages, "passage", "passages") .. " from " .. Count(capturedQuests, "quest", "quests"))
+            end
+            local summary = #parts > 0 and table.concat(parts, "\n") or "Nothing captured yet."
             -- Once there is a real amount sitting here, the card stops being a
             -- statistic and starts asking for something. Capture that nobody
             -- submits helps nobody.
