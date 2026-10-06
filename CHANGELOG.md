@@ -31,6 +31,10 @@
   instead of the whole thing, with a button for the full tutorial.
 - **Profiles** now set the speech bar options too (Story Only queues quests; Manual turns the bar off), and there's a
   new **Subtitles** profile: extra large bar, the whole passage shown, quests queued.
+- **Tidier settings window:** Queue quests and Auto-accept moved to Playback. Auto-scroll and Grow sit under "Show the
+  speech frame" and grey out while it's off. Capture moved to Interface, and debug messages became a small Advanced line
+  at the bottom. The three link cards are now one Links card with a button per address, Export and Clear moved onto
+  the Capture card, and the bottom row is just the Library buttons and Profiles.
 - All the new options are in `/ss` under "Speech frame", in the game's Options › AddOns page, and on the bar's gear
   menu.
 
