@@ -620,12 +620,15 @@ function OpenMenu(owner)
             function() db.speechAutoScroll = db.speechAutoScroll == false end)
         root:CreateCheckbox("Show all the text (grow the frame)",
             function() return db.speechFitText end,
-            function() db.speechFitText = not db.speechFitText; frame.filledFor = nil end)
+            function()
+                db.speechFitText = not db.speechFitText
+                addon.SpeechSettingChanged("speechFitText")
+            end)
         root:CreateCheckbox("Queue quests (don't interrupt)",
             function() return db.queueQuestSpeech end,
             function()
                 db.queueQuestSpeech = not db.queueQuestSpeech
-                if not db.queueQuestSpeech and addon.ClearSpeechQueue then addon.ClearSpeechQueue() end
+                addon.SpeechSettingChanged("queueQuestSpeech")
             end)
         root:CreateCheckbox("Lock position",
             function() return db.speechFrameLocked end,
@@ -652,6 +655,16 @@ end
 -- --------------------------------------------------------------------------
 -- Notices from the playback code
 -- --------------------------------------------------------------------------
+
+-- A speech-frame option changed (the gear menu, /ss, or the game's
+-- Options page): apply it to the frame now, not on the next clip.
+function addon.SpeechSettingChanged(key)
+    if key == "speechFitText" and frame then
+        frame.filledFor = nil
+    elseif key == "queueQuestSpeech" and not DB().queueQuestSpeech and addon.ClearSpeechQueue then
+        addon.ClearSpeechQueue()
+    end
+end
 
 function addon.SpeechFrameNotify(event, sd)
     if event == "start" then

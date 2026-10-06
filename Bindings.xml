@@ -1,5 +1,5 @@
 <Bindings>
-  <Binding name="PLAYACTIVEQUEST" default="F6">
+  <Binding name="PLAYACTIVEQUEST" default="F6" header="SPEAKSTONE">
     PlayQuestAudio(nil, true)
   </Binding>
   <Binding name="SPEAKSTONEPAUSE">

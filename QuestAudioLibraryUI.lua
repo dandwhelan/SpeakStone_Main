@@ -147,11 +147,8 @@ local function GetQuestTitle(questID)
     -- lookup built by tools/build_quest_titles.py that covers the rest;
     -- it is a fallback, not a delete step, since the client's own name is
     -- from the player's own locale where it exists.
-    -- QuestTitles.lua still ships under the pre-rename global name; reading
-    -- only the new one left the whole table unused.
-    local titles = SpeakStone_QuestTitles or QuestReaderAddon_QuestTitles
-    if not resolved and titles then
-        local title = titles[questID]
+    if not resolved and SpeakStone_QuestTitles then
+        local title = SpeakStone_QuestTitles[questID]
         if title and title ~= "" then
             resolved = title
         end
@@ -1357,7 +1354,7 @@ function addon.ToggleAudioLibrary()
 end
 
 -- Slash command
-SLASH_QRLIBRARY1, SLASH_QRLIBRARY2 = '/qrlibrary', '/sslibrary'
-SlashCmdList["QRLIBRARY"] = function()
+SLASH_SPEAKSTONELIBRARY1, SLASH_SPEAKSTONELIBRARY2 = '/qrlibrary', '/sslibrary'
+SlashCmdList["SPEAKSTONELIBRARY"] = function()
     addon.ToggleAudioLibrary()
 end

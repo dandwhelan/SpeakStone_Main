@@ -53,7 +53,7 @@ local function ExportHarvest()
     addon.ShowHarvestExport()
 end
 
-StaticPopupDialogs["QUESTREADER_CONFIRM_CLEAR_HARVEST"] = {
+StaticPopupDialogs["SPEAKSTONE_CONFIRM_CLEAR_HARVEST"] = {
     text = "Clear everything SpeakStone has captured -- quest text, greetings and books?\n\nThis cannot be undone, and anything not yet submitted is lost.",
     button1 = YES,
     button2 = NO,
@@ -513,6 +513,7 @@ function SpeakStone:CreateWindow()
         checkButton:SetScript("OnClick", function(self)
             SpeakStone_MainDB[info.option] = self:GetChecked()
             if info.onChange then info.onChange(self:GetChecked()) end
+            if addon.SpeechSettingChanged then addon.SpeechSettingChanged(info.option) end
             RefreshOptionStates()
         end)
         checkButton:SetScript("OnShow", function(self)
@@ -579,7 +580,7 @@ function SpeakStone:CreateWindow()
     for _, spec in ipairs({
         { "books", "Books", "Browse every voiced book and read it aloud, whole or page by page." },
         { "gossip", "Gossip", "Browse and replay voiced NPC greetings." },
-        { "quests", "Quests", "Browse and replay every voiced quest your installed packs provide. Also /qrlibrary." },
+        { "quests", "Quests", "Browse and replay every voiced quest your installed packs provide. Also /sslibrary." },
     }) do
         local mode, label, tip = spec[1], spec[2], spec[3]
         local button = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
@@ -605,7 +606,7 @@ function SpeakStone:CreateWindow()
         {
             text = "Clear Captured Data",
             width = 140,
-            onClick = function() StaticPopup_Show("QUESTREADER_CONFIRM_CLEAR_HARVEST") end,
+            onClick = function() StaticPopup_Show("SPEAKSTONE_CONFIRM_CLEAR_HARVEST") end,
             tooltip = "Throw away everything captured so far. Submit it first if you have not.",
         },
         {
@@ -782,7 +783,10 @@ function SpeakStone:CreateSettings()
         text:SetText(label)
         check:SetHitRectInsets(0, -text:GetStringWidth() - 4, 0, 0)
         check:SetScript("OnShow", function(self) self:SetChecked(SpeakStone_MainDB[key]) end)
-        check:SetScript("OnClick", function(self) SpeakStone_MainDB[key] = self:GetChecked() and true or false end)
+        check:SetScript("OnClick", function(self)
+            SpeakStone_MainDB[key] = self:GetChecked() and true or false
+            if addon.SpeechSettingChanged then addon.SpeechSettingChanged(key) end
+        end)
         check:SetChecked(SpeakStone_MainDB[key])
         previous = check
     end
@@ -806,8 +810,8 @@ function addon:OpenSettings()
     end
 end
 
-SLASH_QUESTREADER1, SLASH_QUESTREADER2, SLASH_QUESTREADER3, SLASH_QUESTREADER4 = '/qr', '/questreader', '/ss', '/speakstone'
-SlashCmdList.QUESTREADER = function(msg)
+SLASH_SPEAKSTONE1, SLASH_SPEAKSTONE2, SLASH_SPEAKSTONE3, SLASH_SPEAKSTONE4 = '/qr', '/questreader', '/ss', '/speakstone'
+SlashCmdList.SPEAKSTONE = function(msg)
     msg = strlower(strtrim(msg or ""))
     if msg == "tutorial" or msg == "setup" then
         if addon.ShowTutorial then addon.ShowTutorial(1) end

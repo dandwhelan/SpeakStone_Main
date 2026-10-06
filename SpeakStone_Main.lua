@@ -277,7 +277,7 @@ end
 addon.EnsureDB = InitializeAddonDB
 
 -- Create the LDB launcher
-local questReaderLauncher = LDB:NewDataObject("SpeakStone_Main", {
+local speakStoneLauncher = LDB:NewDataObject("SpeakStone_Main", {
     type = "launcher",
     -- Named with the extension on purpose. An extensionless texture path
     -- resolves to .blp first, and the old cs_icon.blp has been removed in
@@ -289,8 +289,8 @@ local questReaderLauncher = LDB:NewDataObject("SpeakStone_Main", {
             addon:OpenSettings()
         elseif button == "RightButton" then
             -- Capture is built in, so this always has somewhere to go.
-            if SlashCmdList["QUESTREADERHARVEST"] then
-                SlashCmdList["QUESTREADERHARVEST"]("export")
+            if SlashCmdList["SPEAKSTONEHARVEST"] then
+                SlashCmdList["SPEAKSTONEHARVEST"]("export")
             else
                 addon.ShowHarvestExport()
             end
@@ -348,8 +348,8 @@ loadingFrame:SetScript("OnEvent", function(self, event, loadedAddonName)
     if event == "ADDON_LOADED" and loadedAddonName == addonName then
         InitializeAddonDB()
         RestoreStrandedDialogVolume()
-        if questReaderLauncher then
-            icon:Register("SpeakStone_Main", questReaderLauncher, {
+        if speakStoneLauncher then
+            icon:Register("SpeakStone_Main", speakStoneLauncher, {
                 hide = not SpeakStone_MainDB.showMinimapButton,
                 position = SpeakStone_MainDB.minimapIconPosition
             })
@@ -369,7 +369,7 @@ loadingFrame:SetScript("OnEvent", function(self, event, loadedAddonName)
                 end
             end)
         else
-            print("Error: questReaderLauncher is nil")
+            print("Error: speakStoneLauncher is nil")
         end
         loadingFrame:UnregisterEvent("ADDON_LOADED")
     elseif event == "PLAYER_LOGIN" then
@@ -448,8 +448,8 @@ questButtonFrame:SetScript("OnEvent", function(self, event, loadedAddonName)
 end)
 
 -- Slash command to toggle minimap button
-SLASH_QRTOGGLE1, SLASH_QRTOGGLE2 = '/qrtoggle', '/sstoggle'
-SlashCmdList["QRTOGGLE"] = function()
+SLASH_SPEAKSTONETOGGLE1, SLASH_SPEAKSTONETOGGLE2 = '/qrtoggle', '/sstoggle'
+SlashCmdList["SPEAKSTONETOGGLE"] = function()
     SpeakStone_MainDB.showMinimapButton = not SpeakStone_MainDB.showMinimapButton
     UpdateMinimapButtonVisibility()
     print("SpeakStone minimap button: " .. (SpeakStone_MainDB.showMinimapButton and "|cff00ff00shown|r" or "|cffff0000hidden|r"))
@@ -1049,7 +1049,7 @@ end
 
 -- Capture for a passage that had no audio. The recording itself lives in
 -- Harvester.lua, which captures every quest encountered; this only marks
--- the ones that were gaps, so /qrmissing can export just those without
+-- the ones that were gaps, so /ssmissing can export just those without
 -- keeping a second copy of the same text.
 local MISSING_QUEST_TEXT_GETTERS = {
     description = GetQuestText,
@@ -1810,7 +1810,7 @@ local function OnPlayerLogout()
 end
 
 -- Keybindings
-BINDING_HEADER_QUESTREADERADDON = "SpeakStone"
+BINDING_HEADER_SPEAKSTONE = "SpeakStone"
 BINDING_NAME_PLAYACTIVEQUEST = "Play active quest voiceover"
 BINDING_NAME_SPEAKSTONEPAUSE = "Pause / resume narration"
 
@@ -1993,6 +1993,29 @@ local function IsKnownVoicedLine(text)
 end
 addon.IsKnownVoicedLine = IsKnownVoicedLine
 
+-- A talking head cut a queued quest line off: the rest of the queue waits
+-- for the NPC to finish (and the usual gap), then carries on. Re-checks on
+-- firing, since another line may have pushed the voice back or the player
+-- may have started something else meanwhile.
+local queueResumeTimer
+local function ResumeQueueAfterNPCVoice()
+    if queueResumeTimer then
+        queueResumeTimer:Cancel()
+    end
+    local wait = math.max(0, npcVoiceEndsAt - GetTime() + NPCVoiceGap())
+    queueResumeTimer = C_Timer.NewTimer(wait, function()
+        queueResumeTimer = nil
+        if GetCurrentSound() or #addon.speechQueue == 0 then
+            return
+        end
+        if npcVoiceEndsAt + NPCVoiceGap() > GetTime() then
+            ResumeQueueAfterNPCVoice()
+            return
+        end
+        addon.PlayNextQueued()
+    end)
+end
+
 local function NoteNPCVoice(seconds, interruptPlaying)
     if not SpeakStone_MainDB or not YieldingToNPCVoice() then
         return
@@ -2005,7 +2028,13 @@ local function NoteNPCVoice(seconds, interruptPlaying)
     if current.isPlaying then
         if interruptPlaying then
             DebugPrint("SpeakStone: an NPC started speaking -- stopping narration")
-            StopCurrentSound()
+            -- Queued quests are paused, not dropped, by a voiced NPC line.
+            local holdQueue = current.questID and #addon.speechQueue > 0
+                and SpeakStone_MainDB.queueQuestSpeech
+            StopCurrentSound(holdQueue)
+            if holdQueue then
+                ResumeQueueAfterNPCVoice()
+            end
         end
     elseif current.nextSoundTimer then
         ScheduleSound(current, 0)
@@ -2097,8 +2126,8 @@ logoutFrame:RegisterEvent("PLAYER_LOGOUT")
 logoutFrame:SetScript("OnEvent", OnPlayerLogout)
 
 -- Slash command to toggle auto-play
-SLASH_QUESTREADERAUTO1, SLASH_QUESTREADERAUTO2, SLASH_QUESTREADERAUTO3 = '/qrauto', '/ssauto', '/speakstoneauto'
-SlashCmdList["QUESTREADERAUTO"] = function(msg)
+SLASH_SPEAKSTONEAUTO1, SLASH_SPEAKSTONEAUTO2, SLASH_SPEAKSTONEAUTO3 = '/qrauto', '/ssauto', '/speakstoneauto'
+SlashCmdList["SPEAKSTONEAUTO"] = function(msg)
     if msg == "on" then
         SpeakStone_MainDB.autoPlayEnabled = true
     elseif msg == "off" then
@@ -2110,8 +2139,8 @@ SlashCmdList["QUESTREADERAUTO"] = function(msg)
 end
 
 -- Slash command to toggle debug messages
-SLASH_QUESTREADERDEBUG1, SLASH_QUESTREADERDEBUG2, SLASH_QUESTREADERDEBUG3 = '/qrdebug', '/ssdebug', '/speakstonedebug'
-SlashCmdList["QUESTREADERDEBUG"] = function(msg)
+SLASH_SPEAKSTONEDEBUG1, SLASH_SPEAKSTONEDEBUG2, SLASH_SPEAKSTONEDEBUG3 = '/qrdebug', '/ssdebug', '/speakstonedebug'
+SlashCmdList["SPEAKSTONEDEBUG"] = function(msg)
     if msg == "on" then
         SpeakStone_MainDB.showDebugMessages = true
     elseif msg == "off" then
@@ -2339,15 +2368,15 @@ end
 -- There is one export now, and this is an alias for it. The command used to
 -- produce a quests-only subset; keeping the name working matters more than
 -- retiring it, since it is the one printed in the README and in chat.
-SLASH_QUESTREADERMISSING1, SLASH_QUESTREADERMISSING2, SLASH_QUESTREADERMISSING3 = '/qrmissing', '/ssmissing', '/speakstonemissing'
-SlashCmdList["QUESTREADERMISSING"] = function()
+SLASH_SPEAKSTONEMISSING1, SLASH_SPEAKSTONEMISSING2, SLASH_SPEAKSTONEMISSING3 = '/qrmissing', '/ssmissing', '/speakstonemissing'
+SlashCmdList["SPEAKSTONEMISSING"] = function()
     addon.ShowHarvestExport()
 end
 
 -- Everything captured: quests, gossip and book text, voiced or not.
 do
-    SLASH_QUESTREADERHARVEST1, SLASH_QUESTREADERHARVEST2, SLASH_QUESTREADERHARVEST3 = '/qrharvest', '/ssharvest', '/speakstoneharvest'
-    SlashCmdList["QUESTREADERHARVEST"] = function(msg)
+    SLASH_SPEAKSTONEHARVEST1, SLASH_SPEAKSTONEHARVEST2, SLASH_SPEAKSTONEHARVEST3 = '/qrharvest', '/ssharvest', '/speakstoneharvest'
+    SlashCmdList["SPEAKSTONEHARVEST"] = function(msg)
         if msg == "export" or msg == "copy" then
             addon.ShowHarvestExport()
             return

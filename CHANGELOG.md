@@ -16,9 +16,12 @@
   don't interrupt them and closing a gossip window doesn't stop them.
   Anything else that cuts the current quest off (a talking head, a book, a gossip line, the library) clears the queue
   too, so stale quests never start later out of nowhere, and a quest whose clip fails to play moves on to the next.
+  A talking head only pauses the queue: the rest carries on once the NPC has finished speaking.
+- Turning "Show all the text" on or off from `/ss` or the Options page now resizes the bar straight away.
 - The NPC name and quest title now sit on their own line, so the buttons no longer cover the quest name.
 - **Audio Library quest titles:** the built-in title list (for quests your character has never seen) was loaded but
   never read, because of a leftover name from the rename. Far fewer quests now show as "Unknown quest".
+- Leftover QuestReader names inside the addon renamed to SpeakStone. The old `/qr...` commands still work.
 - **Lighter on busy cities:** NPC chat lines are no longer hashed when narration isn't set to wait for NPC voices, and
   a line is checked once rather than twice when harvesting is on.
 - All the new options are in `/ss` under "Speech frame", in the game's Options › AddOns page, and on the bar's gear
