@@ -485,7 +485,7 @@ function Pause()
     paused = true
     if not sd.preview then
         pausing = true
-        addon.StopCurrentSound()
+        addon.StopCurrentSound(true)
         pausing = false
     end
     Tick()

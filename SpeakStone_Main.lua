@@ -827,8 +827,9 @@ local function FinishPlayback(soundData)
     if soundData.onFinished and soundData.soundHandle then
         soundData.onFinished(soundData)
     end
-    -- Queued quest lines: the next one starts when this one ends by itself.
-    if soundData.soundHandle and not addon.activeSound and addon.PlayNextQueued then
+    -- Queued quest lines: the next one starts when this one ends by itself,
+    -- or failed to start at all (no handle), so the queue never stalls.
+    if soundData.questID and not addon.activeSound and addon.PlayNextQueued then
         addon.PlayNextQueued()
     end
 end
@@ -898,7 +899,13 @@ local function IsPlaying()
 end
 addon.IsPlaying = IsPlaying
 
-local function StopCurrentSound()
+-- keepQueue: the quest queue survives (Next, Pause/Resume/Replay, a new
+-- quest line). Any other stop is an interruption and the queue goes too,
+-- or it would sit there blocking gossip and later start out of nowhere.
+local function StopCurrentSound(keepQueue)
+    if not keepQueue and addon.ClearSpeechQueue then
+        addon.ClearSpeechQueue()
+    end
     local currentSound = GetCurrentSound()
 
     if not currentSound then
@@ -934,7 +941,7 @@ function addon.ReplaySound(soundData)
     if not soundData or not soundData.soundPath then
         return
     end
-    StopCurrentSound()
+    StopCurrentSound(true)
     soundData.isPlaying = false
     soundData.soundHandle = nil
     soundData.endTimer = nil
@@ -954,6 +961,10 @@ function addon.ClearSpeechQueue()
 end
 
 local function EnqueueSpeech(soundData)
+    local cur = addon.activeSound
+    if cur and cur.questID == soundData.questID and cur.textType == soundData.textType then
+        return
+    end
     for _, queued in ipairs(addon.speechQueue) do
         if queued.questID == soundData.questID and queued.textType == soundData.textType then
             return
@@ -970,12 +981,17 @@ end
 -- Start the next queued line now (the frame's Next button, or the end of
 -- the current one). Returns false when nothing is waiting.
 function addon.PlayNextQueued()
+    -- Turned off with lines still waiting: drop them.
+    if not SpeakStone_MainDB.queueQuestSpeech then
+        addon.ClearSpeechQueue()
+        return false
+    end
     local nextSound = table.remove(addon.speechQueue, 1)
     if not nextSound then
         addon.queuePos, addon.queueTotal = 0, 0
         return false
     end
-    StopCurrentSound()
+    StopCurrentSound(true)
     addon.queuePos = addon.queuePos + 1
     nextSound.isPlaying = false
     nextSound.soundHandle = nil
@@ -1111,7 +1127,7 @@ function PlayQuestAudio(textType, skipDelay)
         -- waiting out the autoplay delay is not "playing", so gating on that
         -- left its timer running to fire over whatever came next.
         if not queueing then
-            StopCurrentSound()
+            StopCurrentSound(true)
             if #addon.speechQueue == 0 then
                 addon.queuePos, addon.queueTotal = 0, 0
             end

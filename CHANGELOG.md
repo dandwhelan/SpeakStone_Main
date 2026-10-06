@@ -14,6 +14,8 @@
   is still being read and the new quest waits its turn instead of cutting the first one off. The bar shows where you
   are (1/2, 2/2...) and a **Next** button skips ahead. Stop clears the queue. While quests are queued, NPC greetings
   don't interrupt them and closing a gossip window doesn't stop them.
+  Anything else that cuts the current quest off (a talking head, a book, a gossip line, the library) clears the queue
+  too, so stale quests never start later out of nowhere, and a quest whose clip fails to play moves on to the next.
 - The NPC name and quest title now sit on their own line, so the buttons no longer cover the quest name.
 - All the new options are in `/ss` under "Speech frame", in the game's Options › AddOns page, and on the bar's gear
   menu.
