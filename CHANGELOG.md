@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.1.2 (October 2026)
+
+### Books
+
+- **Book text stays on screen:** when a book is being read aloud and you walk away (or close it), the speech bar now
+  keeps showing the text of the page being read instead of "No text for this line".
+
+### Behind the scenes
+
+- The addon now also notes which character model an NPC uses when you talk to them, so a new NPC's voice can be
+  matched to the right race and sex without guessing. Nothing about you is recorded.
+
 ## 3.1.1 (October 2026)
 
 ### Speech bar

@@ -1608,6 +1608,17 @@ local function PlayItemAudioDirect(itemLink, page, immediate)
     if IsSecret(soundData.title) or soundData.title == "" then
         soundData.title = nil
     end
+    -- Book closed (the reading carries on after the player walks away): the
+    -- window has no text to read, so use the page text shipped in BookTexts.lua,
+    -- keyed by the clip's own name.
+    if not soundData.text and type(SpeakStone_BookTexts) == "table" and type(soundFile) == "string" then
+        local base = soundFile:match("^(.-)_page%d+%.")
+        local pageTexts = base and SpeakStone_BookTexts[base]
+        local t = type(pageTexts) == "table" and pageTexts[page]
+        if type(t) == "string" and t ~= "" then
+            soundData.text = t
+        end
+    end
     addon.activeSound = soundData
     DebugPrint("SpeakStone: playing " .. (itemID and ("item " .. itemID) or ("'" .. itemLink .. "'")) .. " (page " .. page .. ")")
 

@@ -112,6 +112,22 @@ end
 -- Attributing a line to the wrong NPC is worse than not attributing it: it
 -- gets voiced in a stranger's voice and nothing downstream can tell. So each
 -- of these checks fails closed, to "unknown speaker", rather than guessing.
+-- UnitRace does not answer for NPCs (0 of 1,066 NPC records on the site ever had a race), but the model
+-- does: a humanoid NPC wearing a playable race's model reports that model's file ID, which
+-- tools/npc_model_race_map.json turns into race and sex (night elf female = 921844, male = 974343).
+-- Owner tested the idea in game 2026-10-07. Left nil whenever the client will not say.
+local modelFrame
+local function NPCModelFileID()
+    local ok, id = pcall(function()
+        modelFrame = modelFrame or CreateFrame("PlayerModel")
+        modelFrame:SetUnit("npc")
+        return modelFrame:GetModelFileID()
+    end)
+    if ok and type(id) == "number" and not IsSecret(id) and id > 0 then
+        return id
+    end
+end
+
 local function CurrentSpeaker()
     if not UnitExists("npc") then
         return {}
@@ -168,6 +184,7 @@ local function CurrentSpeaker()
         race = raceName,
         raceToken = raceToken,
         creatureType = creatureType,
+        modelFileID = NPCModelFileID(),
     }
 end
 
@@ -289,7 +306,7 @@ end
 -- bytes of saved variables each -- although the same quest giver hands out
 -- every passage of a quest chain. Passages keep only the npcID now; the
 -- export carries this table and the site reads a passage's speaker from it.
-local NPC_TRAITS = { "npcName", "npcSex", "npcRace", "npcRaceToken", "npcCreatureType" }
+local NPC_TRAITS = { "npcName", "npcSex", "npcRace", "npcRaceToken", "npcCreatureType", "npcModelFileID" }
 
 local function NoteNPC(h, npcID, traits)
     local npc = h.npcs[npcID] or {}
@@ -348,6 +365,7 @@ local function RecordPassage(questID, passage, text, wasMissing)
         npcSex = speaker.sex,
         npcRace = speaker.race,
         npcRaceToken = speaker.raceToken,
+        npcModelFileID = speaker.modelFileID,
         npcCreatureType = speaker.creatureType,
     }
     local captured = { text = text, npcID = speaker.id, char = CurrentCharIndex() }
@@ -421,6 +439,7 @@ local function RecordGossip(speaker, text)
     entry.npcSex = speaker.sex or entry.npcSex
     entry.npcRace = speaker.race or entry.npcRace
     entry.npcRaceToken = speaker.raceToken or entry.npcRaceToken
+    entry.npcModelFileID = speaker.modelFileID or entry.npcModelFileID
     entry.npcCreatureType = speaker.creatureType or entry.npcCreatureType
     -- Per variant, parallel to texts: which character first captured it,
     -- and how often and when it has been seen since. A greeting that stops
