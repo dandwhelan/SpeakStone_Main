@@ -934,6 +934,21 @@ local function StopCurrentSound(keepQueue)
 end
 addon.StopCurrentSound = StopCurrentSound
 
+-- A window opened that has no clip of its own. Each play path used to stop
+-- the current clip before looking its own up, so talking to any NPC, opening
+-- any plaque or quest with no audio cut off a book or quest line still being
+-- read after its window closed -- keepReadingBooks / keepReadingQuests --
+-- and left silence in its place. Now a clip still waiting out its delay goes
+-- (it belongs to a window the player has moved past), and so does gossip
+-- (its text is no longer on screen), but a quest line or book already being
+-- heard carries on.
+local function YieldToSilentWindow(keepQueue)
+    local cur = GetCurrentSound()
+    if cur and (not cur.isPlaying or cur.textType == "gossip") then
+        StopCurrentSound(keepQueue)
+    end
+end
+
 -- Play a clip again from the top: the speech frame's Resume and Replay.
 -- PlaySoundFile cannot start part-way into a file, so resuming a paused
 -- clip means starting it over; the frame rewinds the text to match.
@@ -1067,6 +1082,14 @@ local function CaptureMissingQuestAudio(questID, textType)
     if not (addon.HarvestEnabled and addon.HarvestEnabled()) then
         return
     end
+    -- The getters (and the harvester's title and speaker) read the quest
+    -- GIVER's window. The quest log's Read Quest button arrives here with the
+    -- log's selected quest, which need not be the quest that window last
+    -- showed, and recording then filed one quest's text under another's ID.
+    -- Only capture when the giver window is on this very quest.
+    if GetQuestID() ~= questID then
+        return
+    end
     local ok, text = pcall(getter)
     if ok and text and text ~= "" then
         addon.HarvestRecordPassage(questID, textType, text, true)
@@ -1123,15 +1146,6 @@ function PlayQuestAudio(textType, skipDelay)
         -- one waits behind it. Manual plays (skipDelay) still mean "now".
         local queueing = SpeakStone_MainDB.queueQuestSpeech and not skipDelay and cur
             and cur.questID and (cur.isPlaying or cur.nextSoundTimer)
-        -- Unconditionally, not only when something is audible. A clip still
-        -- waiting out the autoplay delay is not "playing", so gating on that
-        -- left its timer running to fire over whatever came next.
-        if not queueing then
-            StopCurrentSound(true)
-            if #addon.speechQueue == 0 then
-                addon.queuePos, addon.queueTotal = 0, 0
-            end
-        end
 
         -- Newer audio ships as Ogg Vorbis, which is a fraction of the
         -- size of the original PCM library and is what the game itself uses.
@@ -1152,9 +1166,19 @@ function PlayQuestAudio(textType, skipDelay)
             -- the separate Harvester addon.
             CaptureMissingQuestAudio(questID, textType)
             if not queueing then
-                addon.activeSound = nil
+                YieldToSilentWindow(true)
             end
             return
+        end
+
+        -- Unconditionally, not only when something is audible. A clip still
+        -- waiting out the autoplay delay is not "playing", so gating on that
+        -- left its timer running to fire over whatever came next.
+        if not queueing then
+            StopCurrentSound(true)
+            if #addon.speechQueue == 0 then
+                addon.queuePos, addon.queueTotal = 0, 0
+            end
         end
 
         local soundData = {
@@ -1213,7 +1237,11 @@ end
 -- has no progress or completion text).
 function addon.CaptureQuestText(questID, textType)
     local text, title
-    if QuestFrame and QuestFrame:IsVisible() or GetQuestID() == questID then
+    -- The giver's getters, only when the giver data is this quest. "QuestFrame
+    -- is shown" alone would hand another quest's text to a caller asking about
+    -- a different one; requiring QuestFrame at all would starve replacement
+    -- quest UIs (DialogueUI, Immersion), which hide it.
+    if GetQuestID() == questID then
         text = ReadText(MISSING_QUEST_TEXT_GETTERS[textType])
         title = ReadText(GetTitleText)
     end
@@ -1285,6 +1313,10 @@ end
 local function NormalizeGossipText(text)
     if type(text) ~= "string" then return nil end
     text = DetokenizePlayerName(text)
+    -- Double quotes count as single: in-game text and the emulator data
+    -- quote titles differently ("Expert Cookbook" / 'Expert Cookbook'), and
+    -- tools/build_gossip_texts.py folds them the same way (2026-10-08).
+    text = text:gsub('"', "'")
     text = text:gsub("%s+", " "):gsub("^ ", ""):gsub(" $", "")
     return text
 end
@@ -1400,10 +1432,6 @@ local function PlayGossipAudio()
         return
     end
 
-    -- Also clears a clip still waiting out the autoplay delay; see the quest
-    -- path above.
-    StopCurrentSound()
-
     -- Which variant? Three tiers, strongest evidence first.
     --
     -- 1. Text match. If GossipTexts.lua knows this NPC, read the text the
@@ -1431,7 +1459,7 @@ local function PlayGossipAudio()
                 addon.reportedMissing[key] = true
                 DebugPrint("SpeakStone: NPC " .. npcID .. " is showing gossip text that was never captured -- not autoplaying")
             end
-            addon.activeSound = nil
+            YieldToSilentWindow()
             return
         end
     elseif SpeakStone_DynamicGossipNPCs and SpeakStone_DynamicGossipNPCs[npcID] then
@@ -1440,7 +1468,7 @@ local function PlayGossipAudio()
             DebugPrint("SpeakStone: gossip autoplay suppressed for NPC " .. npcID
                 .. " (" .. SpeakStone_DynamicGossipNPCs[npcID] .. ") -- no captured text to match against")
         end
-        addon.activeSound = nil
+        YieldToSilentWindow()
         return
     else
         -- Blind tier: nothing proves gossip1 matches what is on screen. Picking
@@ -1448,7 +1476,7 @@ local function PlayGossipAudio()
         -- replay the greeting over it. So it plays once per open window; the
         -- latch is cleared on GOSSIP_CLOSED.
         if addon.blindGossipPlayedGUID == guid then
-            addon.activeSound = nil
+            YieldToSilentWindow()
             return
         end
         addon.blindGossipPlayedGUID = guid
@@ -1465,9 +1493,13 @@ local function PlayGossipAudio()
             addon.reportedMissing[baseName] = true
             DebugPrint("SpeakStone: no gossip audio for NPC " .. npcID)
         end
-        addon.activeSound = nil
+        YieldToSilentWindow()
         return
     end
+
+    -- Also clears a clip still waiting out the autoplay delay; see the quest
+    -- path above.
+    StopCurrentSound()
 
     local soundData = {
         questID = "npc" .. npcID,
@@ -1512,13 +1544,17 @@ local UpdateBookButton
 -- Must match book_slug() in tools/: lowercase, keep a-z0-9 and spaces, first
 -- six words joined by "_".
 local BOOK_SLUG_WORDS = 6
+-- book_slug()/clean() in tools/ use Python's \s, which counts a non-breaking
+-- space as a space, and clean() trims "_" from both ends; Lua's %s does
+-- neither, so such titles missed their clip (2026-10-08).
+local NBSP = "\194\160"
 local bookSlugs = {}
 
 local function BookSlug(text)
     local slug
     pcall(function()
         local words = {}
-        for w in text:lower():gsub("[^%w%s]", ""):gmatch("%S+") do
+        for w in text:gsub(NBSP, " "):lower():gsub("[^%w%s]", ""):gmatch("%S+") do
             words[#words + 1] = w
             if #words >= BOOK_SLUG_WORDS then break end
         end
@@ -1537,10 +1573,6 @@ end
 -- Returns true when a clip was found and started (or scheduled).
 -- `immediate` skips the autoplay delay: used when the next page follows on.
 local function PlayItemAudioDirect(itemLink, page, immediate)
-    -- Also clears a clip still waiting out the autoplay delay; see the quest
-    -- path above.
-    StopCurrentSound()
-
     page = page or 1
     local itemID
     if itemLink then
@@ -1555,7 +1587,8 @@ local function PlayItemAudioDirect(itemLink, page, immediate)
     elseif itemLink then
         local clean
         local ok = pcall(function()
-            clean = itemLink:lower():gsub("[^%w%s]", ""):gsub("%s+", "_")
+            clean = itemLink:gsub(NBSP, " "):lower():gsub("[^%w%s]", ""):gsub("%s+", "_")
+                :gsub("^_+", ""):gsub("_+$", "")
         end)
         if ok and clean and clean ~= "" then
             -- Title + first-page words first: the only name that tells apart
@@ -1569,22 +1602,34 @@ local function PlayItemAudioDirect(itemLink, page, immediate)
         end
     end
 
-    if #baseNames == 0 then
-        return false
+    local soundFile, soundPath, duration
+    if #baseNames > 0 then
+        soundFile, soundPath, duration = FindSound(baseNames)
     end
-
-    local soundFile, soundPath, duration = FindSound(baseNames)
 
     if not soundPath then
-        local displayName = itemID and ("item " .. itemID) or ("'" .. itemLink .. "'")
-        local reportKey = baseNames[1]
-        if not addon.reportedMissing[reportKey] then
-            addon.reportedMissing[reportKey] = true
-            DebugPrint("SpeakStone: no audio for " .. displayName .. " (page " .. page .. ")")
+        if #baseNames > 0 then
+            local displayName = itemID and ("item " .. itemID) or ("'" .. itemLink .. "'")
+            local reportKey = baseNames[1]
+            if not addon.reportedMissing[reportKey] then
+                addon.reportedMissing[reportKey] = true
+                DebugPrint("SpeakStone: no audio for " .. displayName .. " (page " .. page .. ")")
+            end
         end
-        addon.activeSound = nil
+        -- Turning to a silent page of the book being read moves the reading
+        -- there, so it stops; any other silent book or plaque leaves a quest
+        -- line or another book still being heard alone.
+        if bookReading and bookReading.link == itemLink then
+            StopCurrentSound()
+        else
+            YieldToSilentWindow()
+        end
         return false
     end
+
+    -- Also clears a clip still waiting out the autoplay delay; see the quest
+    -- path above.
+    StopCurrentSound()
 
     local soundData = {
         questID = baseNames[1],
@@ -1857,7 +1902,11 @@ questEventFrame:SetScript("OnEvent", function(self, event, ...)
         return
     elseif event == "GOSSIP_CLOSED" then
         addon.blindGossipPlayedGUID = nil
-        if SpeakStone_MainDB.stopDialogueOnClose and not QuestQueueHolds() then
+        -- Closing the gossip window ends the gossip, not a book or quest line
+        -- still being read from a window closed earlier (keepReading*).
+        local cur = GetCurrentSound()
+        if SpeakStone_MainDB.stopDialogueOnClose and not QuestQueueHolds()
+            and cur and cur.textType == "gossip" then
             StopCurrentSound()
         end
         return

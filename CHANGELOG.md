@@ -1,5 +1,29 @@
 # Changelog
 
+## 3.1.3 (October 2026)
+
+### Narration
+
+- **Books and quest lines keep reading:** talking to an NPC who has nothing to say, or opening a plaque or a quest
+  that has no audio yet, no longer cuts off a book or quest line that is still being read after you closed its
+  window. An NPC who does have something to say still takes over, and turning to a page with no audio still stops
+  the book.
+- **"Stop narration when the window closes":** closing a gossip window now only stops that NPC's gossip, not a book
+  or quest line that is still being read.
+- **Book titles:** a few books whose titles contain an unusual space character now find their audio.
+- **NPC greetings with quotation marks** (book names and the like) now match their audio whichever quote marks the
+  game uses.
+- The speech bar's text for a quest now always comes from that quest.
+
+### Captured text
+
+- **Read Quest in the quest log:** pressing it on a quest that has no audio no longer saves the text of a different
+  quest (the one a quest giver last showed you) under that quest's name.
+
+### Data
+
+- Quest titles, NPC names, NPC greetings and book pages refreshed to match the latest audio packs.
+
 ## 3.1.2 (October 2026)
 
 ### Books
