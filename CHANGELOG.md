@@ -1,5 +1,30 @@
 # Changelog
 
+## 3.1.4 (October 2026)
+
+### Retail
+
+- **New pack: SpeakStone Narration - Misc.** About 2,800 quest lines whose expansion is not known yet now have a
+  pack of their own. The settings page lists it among the packs a complete install has, so it tells you when it is
+  missing.
+
+### WoW Forever
+
+- **Quest titles in the Audio Library now use WoW Forever's own names.** Classic quests that later versions of the
+  game removed no longer show as "[DEPRECATED] ..." (for example Kobold Camp Cleanup, Journey to Tarren Mill),
+  quests renamed in later versions show their Classic name (Raptor Horns, Supplying the Sepulcher), and quests
+  with only a placeholder title now take their name from the game.
+- **NPC names** no longer carry a "[Deprecated for 4.x]" tag.
+
+### Packs released alongside this version
+
+- Retail packs 3.1.3; WoW Forever Audio Pack 1, Audio Pack 2 and Chatter: every character keeps one voice in all
+  of their lines, and three books (Civil War in the Plaguelands, Aftermath of the Second War, Beyond the Dark
+  Portal) now read through every page. Install all four Forever addons: Main, Audio Pack 1, Audio Pack 2 and
+  Chatter.
+
+Unofficial; not affiliated with Blizzard Entertainment.
+
 ## 3.1.3 (October 2026)
 
 ### Narration

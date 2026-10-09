@@ -308,6 +308,8 @@ local EXPECTED_PACK_FAMILIES = {
             "WrathoftheLichKing", "Cataclysm_Part1", "Cataclysm_Part2", "MistsofPandaria",
             "WarlordsofDraenor", "Legion", "BattleforAzeroth", "Shadowlands",
             "Dragonflight", "TheWarWithin", "Midnight", "Chatter_Part1", "Chatter_Part2",
+            -- Lines with no known expansion; first released 2026-10-09.
+            "Misc",
         },
     },
     {
