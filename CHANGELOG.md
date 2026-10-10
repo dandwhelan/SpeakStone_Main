@@ -1,5 +1,16 @@
 # Changelog
 
+### Retail
+
+- **The Misc voice pack is retired.** Every line in it turned out to belong only to WoW Forever, where it is already
+  voiced, so it could never play in retail. The settings page no longer lists it as missing; you can delete
+  SpeakStone_Pack_Misc from your AddOns folder.
+- Voice packs 3.1.4: every line at the same volume as the game's own voices (the narrator is no longer quieter),
+  about 1,700 lines re-recorded, about 80 more characters voiced, and greetings that were read by the narrator by
+  mistake now use the character's own voice.
+
+Unofficial; not affiliated with Blizzard Entertainment.
+
 ## 3.1.4 (October 2026)
 
 ### Retail
