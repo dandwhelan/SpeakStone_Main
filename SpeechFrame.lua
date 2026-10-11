@@ -217,6 +217,7 @@ local function Build()
         "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
     mask:SetAllPoints(frame.portrait)
     frame.portrait:AddMaskTexture(mask)
+    frame.portraitMask = mask
 
     frame.close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
     frame.close:SetSize(22, 22)
@@ -315,7 +316,56 @@ local function Build()
     ApplyPosition()
 end
 
+-- A queued quest line starts after the player may have walked away, when
+-- "npc" no longer exists. Its portrait is rendered into a texture of its own
+-- at queue time (the NPC is still there) and swapped in when it plays.
+local function HideCapturedPortraits()
+    for _, tex in ipairs(frame.captured or {}) do
+        tex:Hide()
+    end
+end
+
+function addon.SpeechFrameCapturePortrait(sd)
+    if not sd or not sd.npcGUID or sd.portraitTex or not UnitExists("npc") then
+        return
+    end
+    Build()
+    local ok, same = pcall(function() return UnitGUID("npc") == sd.npcGUID end)
+    if not ok or not same then
+        return
+    end
+    frame.captured = frame.captured or {}
+    local tex
+    for _, t in ipairs(frame.captured) do
+        if not t.owner or (t.owner ~= addon.activeSound and not tContains(addon.speechQueue, t.owner)) then
+            tex = t
+            break
+        end
+    end
+    if not tex then
+        tex = frame:CreateTexture(nil, "ARTWORK")
+        tex:SetAllPoints(frame.portrait)
+        tex:AddMaskTexture(frame.portraitMask)
+        table.insert(frame.captured, tex)
+    end
+    if tex.owner then
+        tex.owner.portraitTex = nil
+    end
+    tex:Hide()
+    if pcall(SetPortraitTexture, tex, "npc") then
+        tex.owner = sd
+        sd.portraitTex = tex
+    end
+end
+
 local function SetPortrait(sd)
+    HideCapturedPortraits()
+    frame.portrait:Show()
+    if sd.portraitTex and sd.portraitTex.owner == sd then
+        frame.portrait:Hide()
+        sd.portraitTex:Show()
+        return
+    end
     local done = false
     if sd.npcGUID and UnitExists("npc") then
         pcall(function()

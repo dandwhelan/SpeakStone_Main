@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.1.6 (October 2026)
+
+- **Quest queue: gossip no longer holds up a quest.** With "Queue quests instead of interrupting" on, a quest
+  accepted while an NPC's greeting was playing waited behind the greeting. Greetings are never queued now; a new
+  quest starts straight away.
+- **Quest queue: queued lines keep their NPC's portrait.** A queued quest that started after you walked away from
+  the quest giver showed a blank note icon instead of the NPC's face.
+
+Unofficial; not affiliated with Blizzard Entertainment.
+
 ### Retail
 
 - **The Misc voice pack is retired.** Every line in it turned out to belong only to WoW Forever, where it is already

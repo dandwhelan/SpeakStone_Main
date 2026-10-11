@@ -990,6 +990,9 @@ local function EnqueueSpeech(soundData)
     end
     table.insert(addon.speechQueue, soundData)
     addon.queueTotal = addon.queueTotal + 1
+    if addon.SpeechFrameCapturePortrait then
+        addon.SpeechFrameCapturePortrait(soundData)
+    end
     NotifySpeechFrame("queue", addon.activeSound)
 end
 
@@ -1145,7 +1148,7 @@ function PlayQuestAudio(textType, skipDelay)
         -- Queue mode: a quest line already being read keeps going and this
         -- one waits behind it. Manual plays (skipDelay) still mean "now".
         local queueing = SpeakStone_MainDB.queueQuestSpeech and not skipDelay and cur
-            and cur.questID and (cur.isPlaying or cur.nextSoundTimer)
+            and cur.questID and cur.textType ~= "gossip" and (cur.isPlaying or cur.nextSoundTimer)
 
         -- Newer audio ships as Ogg Vorbis, which is a fraction of the
         -- size of the original PCM library and is what the game itself uses.
@@ -1417,7 +1420,7 @@ local function QuestQueueHolds()
         return false
     end
     local cur = GetCurrentSound()
-    return (cur and cur.questID and (cur.isPlaying or cur.nextSoundTimer))
+    return (cur and cur.questID and cur.textType ~= "gossip" and (cur.isPlaying or cur.nextSoundTimer))
         or #addon.speechQueue > 0
 end
 
@@ -2089,7 +2092,7 @@ local function NoteNPCVoice(seconds, interruptPlaying)
         if interruptPlaying then
             DebugPrint("SpeakStone: an NPC started speaking -- stopping narration")
             -- Queued quests are paused, not dropped, by a voiced NPC line.
-            local holdQueue = current.questID and #addon.speechQueue > 0
+            local holdQueue = current.questID and current.textType ~= "gossip" and #addon.speechQueue > 0
                 and SpeakStone_MainDB.queueQuestSpeech
             StopCurrentSound(holdQueue)
             if holdQueue then
