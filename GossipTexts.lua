@@ -2115,6 +2115,7 @@ SpeakStone_GossipTexts = {
   ["Inside the great tent at the northwest corner of the village is where Chaw Stronghide resides. He will teach you what you must know of Leatherworking for now."]=38,
   ["Hmmm, I think you will need to go up to Thunder Bluff to learn that. Head north on the road out of Bloodhoof Village. It will take you to the base of Thunder Bluff. Ride the elevator to the top and you should be able to ask any of the Bluffwatchers there for further assistance."]=39,
   ["Yonn Deepcut can be found inside the great tent at the northwest corner of Bloodhoof Village."]=40,
+  ["There is a wise one in the village who goes by the name Narm Skychaser. He can continue your learning along the path of the $c."]=7,
 },
 [3215]={ -- Brave Strongbash
   ["We have no such place in the village. The soaring heights of Thunder Bluff does though. Head north up the road out of Bloodhoof Village until you come to the base of the bluffs. There ride the elevator to the top and speak with a Bluffwatcher. May your ancestors watch over you."]=1,
@@ -2157,6 +2158,7 @@ SpeakStone_GossipTexts = {
   ["Inside the great tent at the northwest corner of the village is where Chaw Stronghide resides. He will teach you what you must know of Leatherworking for now."]=38,
   ["Hmmm, I think you will need to go up to Thunder Bluff to learn that. Head north on the road out of Bloodhoof Village. It will take you to the base of Thunder Bluff. Ride the elevator to the top and you should be able to ask any of the Bluffwatchers there for further assistance."]=39,
   ["Yonn Deepcut can be found inside the great tent at the northwest corner of Bloodhoof Village."]=40,
+  ["There is a wise one in the village who goes by the name Narm Skychaser. He can continue your learning along the path of the $c."]=7,
 },
 [3216]={ -- Neeru Fireblade
   ["Listen closely to what you are told and do not quickly trust, or distrust. For even friends serve their own ends, $c. Our great Warchief knows this, and to prove that there are warlocks within the Horde who do not wish to destroy it from within or gain control over it, I have volunteered to aid our young leader in anyway I can."]=1,
@@ -2206,6 +2208,7 @@ SpeakStone_GossipTexts = {
   ["Inside the great tent at the northwest corner of the village is where Chaw Stronghide resides. He will teach you what you must know of Leatherworking for now."]=38,
   ["Hmmm, I think you will need to go up to Thunder Bluff to learn that. Head north on the road out of Bloodhoof Village. It will take you to the base of Thunder Bluff. Ride the elevator to the top and you should be able to ask any of the Bluffwatchers there for further assistance."]=39,
   ["Yonn Deepcut can be found inside the great tent at the northwest corner of Bloodhoof Village."]=40,
+  ["There is a wise one in the village who goes by the name Narm Skychaser. He can continue your learning along the path of the $c."]=7,
 },
 [3218]={ -- Brave Swiftwind
   ["We have no such place in the village. The soaring heights of Thunder Bluff does though. Head north up the road out of Bloodhoof Village until you come to the base of the bluffs. There ride the elevator to the top and speak with a Bluffwatcher. May your ancestors watch over you."]=1,
@@ -2248,6 +2251,7 @@ SpeakStone_GossipTexts = {
   ["Inside the great tent at the northwest corner of the village is where Chaw Stronghide resides. He will teach you what you must know of Leatherworking for now."]=38,
   ["Hmmm, I think you will need to go up to Thunder Bluff to learn that. Head north on the road out of Bloodhoof Village. It will take you to the base of Thunder Bluff. Ride the elevator to the top and you should be able to ask any of the Bluffwatchers there for further assistance."]=39,
   ["Yonn Deepcut can be found inside the great tent at the northwest corner of Bloodhoof Village."]=40,
+  ["There is a wise one in the village who goes by the name Narm Skychaser. He can continue your learning along the path of the $c."]=7,
 },
 [3219]={ -- Brave Leaping Deer
   ["We have no such place in the village. The soaring heights of Thunder Bluff does though. Head north up the road out of Bloodhoof Village until you come to the base of the bluffs. There ride the elevator to the top and speak with a Bluffwatcher. May your ancestors watch over you."]=1,
@@ -2290,6 +2294,7 @@ SpeakStone_GossipTexts = {
   ["Inside the great tent at the northwest corner of the village is where Chaw Stronghide resides. He will teach you what you must know of Leatherworking for now."]=38,
   ["Hmmm, I think you will need to go up to Thunder Bluff to learn that. Head north on the road out of Bloodhoof Village. It will take you to the base of Thunder Bluff. Ride the elevator to the top and you should be able to ask any of the Bluffwatchers there for further assistance."]=39,
   ["Yonn Deepcut can be found inside the great tent at the northwest corner of Bloodhoof Village."]=40,
+  ["There is a wise one in the village who goes by the name Narm Skychaser. He can continue your learning along the path of the $c."]=7,
 },
 [3220]={ -- Brave Darksky
   ["We have no such place in the village. The soaring heights of Thunder Bluff does though. Head north up the road out of Bloodhoof Village until you come to the base of the bluffs. There ride the elevator to the top and speak with a Bluffwatcher. May your ancestors watch over you."]=1,
@@ -2332,6 +2337,7 @@ SpeakStone_GossipTexts = {
   ["Inside the great tent at the northwest corner of the village is where Chaw Stronghide resides. He will teach you what you must know of Leatherworking for now."]=38,
   ["Hmmm, I think you will need to go up to Thunder Bluff to learn that. Head north on the road out of Bloodhoof Village. It will take you to the base of Thunder Bluff. Ride the elevator to the top and you should be able to ask any of the Bluffwatchers there for further assistance."]=39,
   ["Yonn Deepcut can be found inside the great tent at the northwest corner of Bloodhoof Village."]=40,
+  ["There is a wise one in the village who goes by the name Narm Skychaser. He can continue your learning along the path of the $c."]=7,
 },
 [3221]={ -- Brave Rockhorn
   ["We have no such place in the village. The soaring heights of Thunder Bluff does though. Head north up the road out of Bloodhoof Village until you come to the base of the bluffs. There ride the elevator to the top and speak with a Bluffwatcher. May your ancestors watch over you."]=1,
@@ -2374,6 +2380,7 @@ SpeakStone_GossipTexts = {
   ["Inside the great tent at the northwest corner of the village is where Chaw Stronghide resides. He will teach you what you must know of Leatherworking for now."]=38,
   ["Hmmm, I think you will need to go up to Thunder Bluff to learn that. Head north on the road out of Bloodhoof Village. It will take you to the base of Thunder Bluff. Ride the elevator to the top and you should be able to ask any of the Bluffwatchers there for further assistance."]=39,
   ["Yonn Deepcut can be found inside the great tent at the northwest corner of Bloodhoof Village."]=40,
+  ["There is a wise one in the village who goes by the name Narm Skychaser. He can continue your learning along the path of the $c."]=7,
 },
 [3222]={ -- Brave Wildrunner
   ["We have no such place in the village. The soaring heights of Thunder Bluff does though. Head north up the road out of Bloodhoof Village until you come to the base of the bluffs. There ride the elevator to the top and speak with a Bluffwatcher. May your ancestors watch over you."]=1,
@@ -2416,6 +2423,7 @@ SpeakStone_GossipTexts = {
   ["Inside the great tent at the northwest corner of the village is where Chaw Stronghide resides. He will teach you what you must know of Leatherworking for now."]=38,
   ["Hmmm, I think you will need to go up to Thunder Bluff to learn that. Head north on the road out of Bloodhoof Village. It will take you to the base of Thunder Bluff. Ride the elevator to the top and you should be able to ask any of the Bluffwatchers there for further assistance."]=39,
   ["Yonn Deepcut can be found inside the great tent at the northwest corner of Bloodhoof Village."]=40,
+  ["There is a wise one in the village who goes by the name Narm Skychaser. He can continue your learning along the path of the $c."]=7,
 },
 [3223]={ -- Brave Rainchaser
   ["We have no such place in the village. The soaring heights of Thunder Bluff does though. Head north up the road out of Bloodhoof Village until you come to the base of the bluffs. There ride the elevator to the top and speak with a Bluffwatcher. May your ancestors watch over you."]=1,
@@ -2458,6 +2466,7 @@ SpeakStone_GossipTexts = {
   ["Inside the great tent at the northwest corner of the village is where Chaw Stronghide resides. He will teach you what you must know of Leatherworking for now."]=38,
   ["Hmmm, I think you will need to go up to Thunder Bluff to learn that. Head north on the road out of Bloodhoof Village. It will take you to the base of Thunder Bluff. Ride the elevator to the top and you should be able to ask any of the Bluffwatchers there for further assistance."]=39,
   ["Yonn Deepcut can be found inside the great tent at the northwest corner of Bloodhoof Village."]=40,
+  ["There is a wise one in the village who goes by the name Narm Skychaser. He can continue your learning along the path of the $c."]=7,
 },
 [3224]={ -- Brave Cloudmane
   ["We have no such place in the village. The soaring heights of Thunder Bluff does though. Head north up the road out of Bloodhoof Village until you come to the base of the bluffs. There ride the elevator to the top and speak with a Bluffwatcher. May your ancestors watch over you."]=1,
@@ -2500,6 +2509,7 @@ SpeakStone_GossipTexts = {
   ["Inside the great tent at the northwest corner of the village is where Chaw Stronghide resides. He will teach you what you must know of Leatherworking for now."]=38,
   ["Hmmm, I think you will need to go up to Thunder Bluff to learn that. Head north on the road out of Bloodhoof Village. It will take you to the base of Thunder Bluff. Ride the elevator to the top and you should be able to ask any of the Bluffwatchers there for further assistance."]=39,
   ["Yonn Deepcut can be found inside the great tent at the northwest corner of Bloodhoof Village."]=40,
+  ["There is a wise one in the village who goes by the name Narm Skychaser. He can continue your learning along the path of the $c."]=7,
 },
 [3230]={ -- Nazgrel
   ["So you've recently arrived from Azeroth, eh? You'd best steel yourself, $c - there are perils in this land unlike anything the Horde has faced before. I am Nazgrel - right hand to our mighty warchief, Thrall. He honored me with the task of safeguarding this brave expedition and - by all the spirits - I shall!"]=1,
@@ -2771,6 +2781,7 @@ SpeakStone_GossipTexts = {
   ["You! $r! Come here. <snort> Time is short, and my end <snort> is near. Mangletooth shall win; you will see. <snort> My capture can still aid <snort> my people. The Razormane tribe is more powerful than the Bristlebacks! The Horde looks to find out who leads the raids on their people. You <snort> shall aid Mangletooth in return for the information only I know. Mangletooth can help you! <snort> But you must help Mangletooth."]=1,
   ["My hatred is strong snort, but the time is right to tell you a tale, skyborne. Long ago a battle took place between gods. Agamaggan, our great boar god, fell to the earth after being defeated in the War of the Ancients, his blood raining down and his bones torn asunder. snort Great thorns reached up out of the earth where his blood touched the ground, and his skull adorns one of the caverns to the south."]=2,
   ["You have snort aided Mangletooth more than I would have dreamed, skyborne. Thank you. As long as I remain a captive here, you may bring me blood shards from the Bristleback quilboar and I will bless you with Agamaggan's power."]=3,
+  ["You! $r! Come here. snort Time is short, and my end snort is near. Mangletooth shall win; you will see. snort My capture can still aid snort my people. The Razormane tribe is more powerful than the Bristlebacks! The Horde looks to find out who leads the raids on their people. You snort shall aid Mangletooth in return for the information only I know. Mangletooth can help you! snort But you must help Mangletooth."]=1,
 },
 [3432]={ -- Mankrik
   ["I came to the Crossroads from the south seeking help, $c, but I find only cowards who turn their backs on me--even the mighty Thork insults me so. He is a good leader, but his dismissal of my plea causes me greater anger. He claims my rage makes me hasty--that it clouds my judgement--but I will not rest until I have vengeance!"]=1,
@@ -2791,6 +2802,7 @@ SpeakStone_GossipTexts = {
 [3448]={ -- Tonga Runetotem
   ["The times we live in are as fickle as the shifting winds, $c. It is important to remember what is true and lasting in this world, and to preserve that. Everything else is a waste."]=1,
   ["The times we live in are as fickle as the shifting winds, druid. The ground itself quakes and cries out in anguish. We must remain resolute or we ourselves will be engulfed by the turmoil."]=1,
+  ["The times we live in are as fickle as the shifting winds, $c. The ground itself quakes and cries out in anguish. We must remain resolute or we ourselves will be engulfed by the turmoil."]=1,
 },
 [3467]={ -- Baron Longshore
   ["What're ye starin' at, $r? Come ta torment the condemned?"]=1,
@@ -2976,6 +2988,7 @@ SpeakStone_GossipTexts = {
 [3690]={ -- Kar Stormsinger
   ["I can teach you the finer points of Kodo Riding, provided you have enough gold to cover the lesson!"]=1,
   ["You need to be exalted with the tauren of Thunder Bluff before I will teach you a riding skill, warlock."]=1,
+  ["You need to be exalted with the tauren of Thunder Bluff before I will teach you a riding skill, $c."]=1,
 },
 [3691]={ -- Raene Wolfrunner
   ["I know these forests as if they were a part of me... but know that there is still much to be learned from them, and much danger still hidden."]=1,
@@ -3523,6 +3536,7 @@ SpeakStone_GossipTexts = {
 [4730]={ -- Lelanai
   ["By the grace of Elune, I am pleased to offer you the finest steed found anywhere in Teldrassil, and perhaps the world - the nightsaber. For years, the Sentinel Army has relied on the value of these companions. Take your time friend and examine each one to your satisfaction. I am sure you will not be disappointed."]=1,
   ["Alas druid, you are not considered to be exalted to Darnassus and the night elves of Teldrassil. Only when you prove yourself to us through deeds - not just mere words - will I then make available my selection of mounts for your perusal."]=1,
+  ["Alas $c, you are not considered to be exalted to Darnassus and the night elves of Teldrassil. Only when you prove yourself to us through deeds - not just mere words - will I then make available my selection of mounts for your perusal."]=1,
 },
 [4731]={ -- Zachariah Post
   ["On behalf of the Royal Apothecary Society, I am pleased to offer you the finest steeds available for the Forsaken. These beasts have endured trials and tribulations as we all have, and now they too have emerged stronger and more resilient than mere mortal flesh would have had them destined to be! Please, inspect them for yourself and see."]=1,
@@ -3537,6 +3551,7 @@ SpeakStone_GossipTexts = {
 [4753]={ -- Jartsam
   ["I can teach you the finer points of Tiger Riding, provided you have enough gold to cover the lesson!"]=1,
   ["You need to be exalted with the night elves of Darnassus before I will teach you a riding skill, druid."]=1,
+  ["You need to be exalted with the night elves of Darnassus before I will teach you a riding skill, $c."]=1,
 },
 [4772]={ -- Ultham Ironhorn
   ["I can teach you the finer points of Ram Riding, provided you have enough gold to cover the lesson!"]=1,
@@ -5608,6 +5623,7 @@ SpeakStone_GossipTexts = {
   ["I can teach you the finer points of Mechanostrider Piloting, provided you have enough gold to cover the lesson!"]=1,
   ["You need to be exalted with the gnomes of the Gnomeregan Exiles before I will teach you how to pilot a Mechanostrider, shaman."]=1,
   ["I'd be wasting both your gold and my time if I were to teach you how to pilot a Mechanostrider, $c. You're just too large!"]=2,
+  ["You need to be exalted with the gnomes of the Gnomeregan Exiles before I will teach you how to pilot a Mechanostrider, $c."]=1,
 },
 [7955]={ -- Milli Featherwhistle
   ["Um... I think you're a little too big to ride a Mechano-strider there, mister. You'd likely crush the finely tuned servo-balancers!"]=1,
@@ -6130,6 +6146,7 @@ SpeakStone_GossipTexts = {
 },
 [9981]={ -- Sikwa
   ["Greetings, druid. I can assist you in recovering lost companions."]=1,
+  ["Greetings, $c. I can assist you in recovering lost companions."]=1,
 },
 [9984]={ -- Ulbrek Firehand
   ["Greetings, $c. I can help stable your pets or assist you in recovering lost companions."]=1,
@@ -7023,6 +7040,7 @@ SpeakStone_GossipTexts = {
 [11608]={ -- Bardu Sharpeye
   ["Hello, mage. I've set up camp here at the Bulwark to make my preparations for my journey into the Plaguelands. I've heard rumor that a great human wizard took up residency in Hearthglen not terribly long ago. He was commissioned by the Scarlet Crusade to fashion their warriors and hunters new bows and guns. It's said that he completed a remarkable weapon before the Crusade killed him. I guess their mistrust of the arcane has grown."]=1,
   ["Hello, $c. I've set up camp here at the Bulwark to make my preparations for my journey into the Plaguelands. I've heard rumor that a great human wizard took up residency in Hearthglen not terribly long ago. He was commissioned by the Scarlet Crusade to fashion their warriors and hunters new bows and guns. It's said that he was working on a remarkable weapon before the Crusade killed him.$B$BI guess their mistrust of the arcane has grown."]=1,
+  ["Hello, $c. I've set up camp here at the Bulwark to make my preparations for my journey into the Plaguelands. I've heard rumor that a great human wizard took up residency in Hearthglen not terribly long ago. He was commissioned by the Scarlet Crusade to fashion their warriors and hunters new bows and guns. It's said that he completed a remarkable weapon before the Crusade killed him. I guess their mistrust of the arcane has grown."]=1,
 },
 [11609]={ -- Alexia Ironknife
   ["Greetings, $c. Don't have too much time to talk--I'm just using Chillwind as a camp to get some rest before heading to Hearthglen. I've heard word that before they went crazy, the Scarlet Crusade had a mage working for them who was trying to create powerful bows and guns for their soldiers. I'm not sure if he succeeded or not... the Crusade killed him before any of his finished product made it out. Maybe they killed him to keep it a secret... or maybe they distrust the arcane that much."]=1,
@@ -8009,6 +8027,7 @@ SpeakStone_GossipTexts = {
 },
 [15012]={ -- Javnir Nashak
   ["Greetings, warlock. It is the time of the Harvest Festival - a time of great bounties and a time of remembrance. We partake of feasts to celebrate all we have to be thankful of, and we remember our ancestors and past heroes to give thanks to the legacy they gave us. Please feel free to partake of the feast being offered here. Also, I am offering some fireworks to help celebrate this joyous time of year."]=1,
+  ["Greetings, $c. It is the time of the Harvest Festival - a time of great bounties and a time of remembrance. We partake of feasts to celebrate all we have to be thankful of, and we remember our ancestors and past heroes to give thanks to the legacy they gave us. Please feel free to partake of the feast being offered here. Also, I am offering some fireworks to help celebrate this joyous time of year."]=1,
 },
 [15021]={ -- Deathmaster Dwire
   ["We must not allow the Alliance to expand their power base in Arathi! Even their miniscule Refuge Pointe may one day grow to threaten us."]=1,
@@ -17134,6 +17153,9 @@ SpeakStone_GossipTexts = {
   ["We grunts were ordered to charge once more - into a wall of pikes - I could not do it, druid. My weapon slid from my hands and my legs did not move. I am dishonored."]=2,
   ["My commander was butchered before my eyes - my brothers dead all around me - I could not fight on. I am so ashamed, druid. I did not avenge them."]=3,
   ["No orc should ever flee from battle as I did. Leave me to my disgrace. Would that I would die in this tower, but I dread learning what my ancestors think of my cowardice."]=4,
+  ["Do not look at me, $r. I have disgraced the Horde. I am done."]=1,
+  ["We grunts were ordered to charge once more - into a wall of pikes - I could not do it, $c. My weapon slid from my hands and my legs did not move. I am dishonored."]=2,
+  ["My commander was butchered before my eyes - my brothers dead all around me - I could not fight on. I am so ashamed, $c. I did not avenge them."]=3,
 },
 [37172]={ -- Detective Snap Snagglebolt
   ["Something stinks around here, and I'm telling ya, it ain't love."]=1,
@@ -19824,9 +19846,11 @@ SpeakStone_GossipTexts = {
 },
 [50027]={ -- Dargad
   ["I don't train your kind druid."]=1,
+  ["I don't train your kind $c."]=1,
 },
 [50028]={ -- Chintoka
   ["Your will is not strong enough to manipulate the forces we control druid."]=1,
+  ["Your will is not strong enough to manipulate the forces we control $c."]=1,
 },
 [50029]={ -- Egnom
   ["For too long we have ignored the secrets of the Arcane. Sadly, they will remain a secret to you."]=1,
@@ -19839,6 +19863,7 @@ SpeakStone_GossipTexts = {
 },
 [50033]={ -- Ging
   ["I don't train your kind, druid. Find your own trainer before you anger me."]=1,
+  ["I don't train your kind, $c. Find your own trainer before you anger me."]=1,
 },
 [50034]={ -- Musu Gentlemoon
   ["adventurer, how may I further your training in the eyes of the Earth Mother?"]=1,
@@ -24764,6 +24789,7 @@ SpeakStone_GossipTexts = {
 },
 [188054]={ -- Azure Guardian
   ["Are you lost, dracthyr?"]=1,
+  ["Are you lost, $r?"]=1,
 },
 [188377]={ -- So'turu
   ["<So'turu gazes intensely at the coin in your hand.> Maw Walker! Have you come to trade? Allow us to show you the finest wares in all the Shadowlands."]=1,
@@ -24807,6 +24833,7 @@ SpeakStone_GossipTexts = {
 },
 [189869]={ -- Valdrakken Citizen
   ["Welcome to Valdrakken, dracthyr!"]=1,
+  ["Welcome to Valdrakken, $r!"]=1,
 },
 [189895]={ -- Valdrakken Citizen
   ["Who maintained these isles over the eons? We did! And what do we get for it? Nothing!"]=1,
@@ -24915,6 +24942,7 @@ SpeakStone_GossipTexts = {
 },
 [196154]={ -- Rok
   ["Keep moving, void elf."]=1,
+  ["Keep moving, $r."]=1,
 },
 [196449]={ -- Elder Odgerel
   ["Clan Teerai are the proud protectors of tradition and good values. This meeting at Maruukai is also our tradition."]=1,
@@ -25573,6 +25601,7 @@ SpeakStone_GossipTexts = {
 },
 [241703]={ -- Silvermoon Guard
   ["What do you seek, priest?"]=1,
+  ["What do you seek, $c?"]=1,
 },
 [241748]={ -- Eternus
   ["Time is as varied as it is infinite."]=1,
@@ -25969,6 +25998,7 @@ SpeakStone_GossipTexts = {
 },
 [253183]={ -- Chatty Contender
   ["Oh, greetings rogue. Didn't see you there. Not that it matters but how long have you been listening?"]=1,
+  ["Oh, greetings $c. Didn't see you there. Not that it matters but how long have you been listening?"]=1,
 },
 [253372]={ -- Dead Cultist
   ["<This cultist is dead. Upon close inspection, you notice that he seems to be clutching something to his chest, almost as if he was protecting it.>"]=1,
@@ -26067,10 +26097,12 @@ SpeakStone_GossipTexts = {
   ["Oh don't tell me you're also here to side with Lady Darkglen, Priest ?"]=1,
   ["On her approach to... everything! Studying historical sites, investigating strange magic, and even preserving relics of power! 'Lady' Darkglen isn't so much keen to preserve our history as she is to understand the darkness that threatens it. Even if that means taking a more destructive approach."]=2,
   ["Of course we should but at what cost? There must be a way to both preserve what is ours and defeat the enemies at our doorstep. We can do both, despite what Lady Darkglen thinks. Her obsession with dark powers has shattered her once-delicate approach to such things."]=3,
+  ["Oh don't tell me you're also here to side with Lady Darkglen, $c ?"]=1,
 },
 [255495]={ -- Rae'ana
   ["Greetings, human."]=1,
   ["The Ranger Captain acknowledges that my experience in relic study will be invaluable against the host of threats in the days ahead. Before this, I was cataloging relics for the Dragonscale Expedition. When our camp heard of the attack on the Sunwell, I joined those who raced to return home to Silvermoon. I have not forgotten when the people of Quel'Thalas rallied to defend Suramar years ago. I will help in any way I can."]=2,
+  ["Greetings, $r."]=1,
 },
 [255499]={ -- Ji-eun
   ["Oh, hello there!"]=1,
@@ -26185,11 +26217,13 @@ SpeakStone_GossipTexts = {
   ["I hope you're not wasting my time, human."]=1,
   ["My guards, ha. They are more accurately your guards. It is nice though dat they think three of dem are enough to stop me if I did want to do harm. Mibaza could take them alone. <Mibaza lets out a low growl.>"]=2,
   ["How many times must I repeat myself... De factions attacking your perfect elf allies are also attacking us in Zul'Aman. A few of you have proven worthy fighters and honorable enough we hope to work together to combat de new threats. Does dat satisfy your inquiry?"]=3,
+  ["I hope you're not wasting my time, $r."]=1,
 },
 [257416]={ -- Lady Darkglen
   ["<Lady Darkglen tilts her head as she looks you over.> Now, what can an important priest like yourself do for me?"]=1,
   ["<Lady Darkglen sighs.> Due to the current climate of Silvermoon, it was unwise to have my usual... entourage here in the city. While dear Blocciniux is away, I have an alternate. Do try to behave in front of him, hmm? He's quite dedicated to his job."]=2,
   ["A part of the Reliquary? Me? I'm afraid not. I've always found their work to be rather fascinating--I've even contributed to Tae'thelan's lavish fundraisers that finance his expeditions. But sadly, the High Examiner has never granted me membership. I must have offended him at some point. <Lady Darkglen offers a coy smirk.> And yet, when the need arose for someone with an intrigue for both dark magic and history alike, none were as suited to the task as I was. He couldn't deny my credentials, so in turn he sent Andoren here to lecture me on... well, I've stopped listening to his prattle if I'm being honest."]=3,
+  ["<Lady Darkglen tilts her head as she looks you over.> Now, what can an important $c like yourself do for me?"]=1,
 },
 [257443]={ -- Darvan Darkdust
   ["These domanaar make for unlikely allies. Most were wronged by Xal'atath in some way, or have ambitions beyond what she has to offer. The enemy of my enemy, I suppose."]=1,
@@ -26256,6 +26290,7 @@ SpeakStone_GossipTexts = {
 },
 [260638]={ -- Silvermoon Guard
   ["What do you seek, priest?"]=1,
+  ["What do you seek, $c?"]=1,
 },
 [261472]={ -- Shadowguard Turncloak
   ["The ethereal says nothing as she stares out over the Voidstorm."]=1,
@@ -26513,5 +26548,20 @@ SpeakStone_GossipTexts = {
 },
 [277024]={ -- Jelinek Sharpshear
   ["Welcome, friend, to the barbershop! Come for a cut? A coloring? Something else, perhaps? We can groom facial hair, perform piercings, ink night elf tattoos, anything you might need! Have a seat and we'll get right to work. You're only moments away from a new, more attractive you..."]=1,
+},
+[8582]={ -- Kadrak
+  ["What is it, $c?"]=1,
+},
+[160598]={ -- Klystere
+  ["Greetings, $c. I can assist you in recovering lost companions."]=1,
+},
+[239676]={ -- Vaskarn
+  ["How can I help you, $c?"]=1,
+},
+[253181]={ -- Babbling Brawler
+  ["Greetings $r I have never met nor given any advice whatsoever."]=1,
+},
+[43278]={ -- Ashley Blank
+  ["I cannot help you with your training. Seek out a $c trainer."]=1,
 },
 }
