@@ -1,5 +1,24 @@
 # Changelog
 
+## 3.2.1 (October 2026)
+
+Update SpeakStone together with the Chatter voice packs (retail Chatter Part 1 and Part 2, and SpeakStone Forever Chatter).
+
+### New lines
+- Retail: lines sent in by players through the website for Ellandrieth, Saelienne, Gazix Fusegrease, Lonalo, Raz'taka, First Mate Nama, a Sin'dorei Child, Medic La'una and the Hunt Table.
+- WoW Forever: 10 new lines, among them Bezza Shearshave (Darnassus barber), Radnaal Maneweaver, Lylandris, Donal Osgood and the Darkspear Islands gatekeepers James Battlewing and Sean Guardoff.
+
+### Greetings
+- Four more WoW Forever characters who called every player a druid now address everyone as "hero", and their greetings are recognised for every class.
+
+### Books
+- A Bloodstained Envelope, A Careworn Note, A Torn Letter and The Lay of Ametharan are re-recorded and play at the same volume as the books around them.
+
+### Audio Library
+- Titles for 755 more quests and names for 81 more characters.
+
+Unofficial; not affiliated with Blizzard Entertainment.
+
 # 3.2.0 (October 2026)
 
 This release starts a new phase for SpeakStone: polishing the voices and making sure names are pronounced the way you hear them in the game. Thank you to everyone who reported a line that sounded wrong. Keep the reports coming.
