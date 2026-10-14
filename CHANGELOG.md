@@ -1,5 +1,30 @@
 # Changelog
 
+## 3.2.2 (October 2026)
+
+Update SpeakStone together with all the voice packs: most retail packs and all three SpeakStone Forever packs have new or re-recorded lines.
+
+### Quests
+- Retail: about 2,300 quest lines re-recorded. Over 1,200 of them were missing their progress or completion text, or had no quest giver, and were read by the narrator. Their quest givers now speak them.
+- WoW Forever: 89 new quest lines whose text we did not have before.
+- WoW Forever: quest lines have moved from Chatter to Audio Pack 2, and lines for quests that are not in WoW Forever have been removed. Update all three Forever packs together.
+
+### Characters
+- Every child, boy or girl, now has the same child voice, in both games.
+- Brokers and several other characters now have voices that match what they are.
+- Eris Havenfire's greetings now all use the same voice.
+
+### Greetings
+- Lines that addressed every player by one class (for example "druid") now say "hero", and the greeting is recognised whatever your class.
+- 142 more characters' greetings are recognised when the greeting changes during a quest.
+
+### Audio Library
+- Titles for 42 more quests and names for 6 more characters.
+
+Thanks to Fiz for sending in new lines through the website.
+
+Unofficial; not affiliated with Blizzard Entertainment.
+
 ## 3.2.1 (October 2026)
 
 Update SpeakStone together with the Chatter voice packs (retail Chatter Part 1 and Part 2, and SpeakStone Forever Chatter).
