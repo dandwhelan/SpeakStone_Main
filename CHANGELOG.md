@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.2.4
+
+- Updated for World of Warcraft 12.1.5 (Interface 120105). No other changes.
+
+Unofficial; not affiliated with Blizzard Entertainment.
+
 ## 3.2.3 (October 2026)
 
 Update SpeakStone together with the Chatter Part 2 voice pack (3.2.4).
