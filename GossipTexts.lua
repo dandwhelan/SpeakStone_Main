@@ -17314,6 +17314,9 @@ SpeakStone_GossipTexts = {
 [37904]={ -- Brazie Getz
   ["Whatever you need, Brazie Getz! Get it?$B$BAnd I'm not just talkin' about the 'legal' stuff, either. WHATEVER YOU NEED, PAL! Anything..."]=1,
 },
+[37915]={ -- Timothy Cunningham
+  ["Going somewhere?"]=1,
+},
 [37987]={ -- Tegashi
   ["People tink raptors wild and vicious, but little else. In truth, they be loyal and cunnin' in ways ya hardly know."]=1,
 },
@@ -17575,6 +17578,8 @@ SpeakStone_GossipTexts = {
 },
 [38999]={ -- Lilian Voss
   ["First of all, I don't need to be rescued. Second of all, I'd never allow myself to be rescued by an abomination like you!"]=1,
+  ["I'm NOT undead! Not for long, anyway. My father will rescue me, I know it..."]=2,
+  ["What are you doing here? Get out of here!"]=3,
 },
 [39034]={ -- Dr. Dealwell
   ["Get out of my way, $r. Can't you see that we're in the middle of a battle!"]=1,
@@ -24855,6 +24860,7 @@ SpeakStone_GossipTexts = {
 [189895]={ -- Valdrakken Citizen
   ["Who maintained these isles over the eons? We did! And what do we get for it? Nothing!"]=1,
   ["Hello, friend. Did you also get turned out of your home by the return of the 'masters'?"]=2,
+  ["What?"]=3,
 },
 [189952]={ -- Custodian Cynegos
   ["We have been spread thin these past ten thousand years. Ruins crumble. Books disintegrate. All of the recent developments in the isles have made our task more important than ever! These Kirin Tor mages have been particularly helpful in securing our ancient spaces, even if their apprentices are somewhat... excitable."]=1,
@@ -24871,6 +24877,9 @@ SpeakStone_GossipTexts = {
 },
 [191263]={ -- Salukan
   ["Where would you like to fly?"]=1,
+},
+[192091]={ -- Archmage Khadgar
+  ["Well-met, adventurer."]=1,
 },
 [192926]={ -- Trainer Frodrum
   ["Have you come to prove your prowess to the Shikaar?"]=1,
@@ -25657,6 +25666,9 @@ SpeakStone_GossipTexts = {
 },
 [243280]={ -- Theremis
   ["Which Midnight Specialization would you like to relearn?"]=1,
+},
+[243282]={ -- Mahra Treebender
+  ["Hello!"]=1,
 },
 [243349]={ -- Dolothos
   ["Greetings. Are you seeking instruction in enchanting?"]=1,

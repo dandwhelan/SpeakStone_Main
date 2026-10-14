@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.2.3 (October 2026)
+
+Update SpeakStone together with the Chatter Part 2 voice pack (3.2.4).
+
+### Greetings
+- New lines sent in through the website: Lilian Voss ("I'm NOT undead!" and "What are you doing here?") and Timothy Cunningham.
+- Lilian Voss's greetings each play their own line instead of sharing one.
+
+Thanks to Fiz for sending these in.
+
+Unofficial; not affiliated with Blizzard Entertainment.
+
 ## 3.2.2 (October 2026)
 
 Update SpeakStone together with all the voice packs: most retail packs and all three SpeakStone Forever packs have new or re-recorded lines.
