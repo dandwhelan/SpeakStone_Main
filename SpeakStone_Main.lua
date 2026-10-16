@@ -168,6 +168,22 @@ local defaultSettings = {
     -- Off by default: accepting a quest is the player's decision. Shift held
     -- while the quest opens skips it for that quest.
     autoAcceptQuests = false,
+    -- Autoplay stays quiet in combat and/or inside instances. Off by default
+    -- so nothing changes for anyone who has not asked for it. Manual plays
+    -- (the button, the keybind) still work.
+    pauseAutoPlayInCombat = false,
+    pauseAutoPlayInInstances = false,
+    -- Autoplay skips quest text already heard once (any character on the
+    -- account). Off by default. Read Quest still plays it.
+    skipHeardQuests = false,
+    -- Lower music and ambience while narration plays, by duckAmount (0-1).
+    -- WoW has no per-sound volume, so this is the way to make narration
+    -- stand out without touching the player's master volume.
+    duckOtherSounds = false,
+    duckAmount = 0.7,
+    -- A small muted-speaker icon on the quest window when the passage on
+    -- screen has no voice yet.
+    showMissingVoiceIcon = true,
 }
 
 -- Autoplay for one kind of text. The master switch gates all three, so
@@ -176,6 +192,13 @@ local defaultSettings = {
 -- existed reads as "on" rather than silently disabling narration.
 local function AutoPlayAllowed(kind)
     if not SpeakStone_MainDB or not SpeakStone_MainDB.autoPlayEnabled then
+        return false
+    end
+    if SpeakStone_MainDB.pauseAutoPlayInCombat
+        and ((InCombatLockdown and InCombatLockdown()) or UnitAffectingCombat("player")) then
+        return false
+    end
+    if SpeakStone_MainDB.pauseAutoPlayInInstances and IsInInstance and IsInInstance() then
         return false
     end
     return SpeakStone_MainDB[kind] ~= false
@@ -242,6 +265,12 @@ local function InitializeAddonDB()
 
     SpeakStone_MainDB.IsPaused = false
     SpeakStone_MainDB.IsSoundPaused = false
+
+    -- Lists, so not in defaultSettings (a shared default table would be
+    -- written into by every change). See the favourites block further down.
+    SpeakStone_MainDB.favourites = SpeakStone_MainDB.favourites or {}
+    SpeakStone_MainDB.recentClips = SpeakStone_MainDB.recentClips or {}
+    SpeakStone_MainDB.heardQuests = SpeakStone_MainDB.heardQuests or {}
 
     -- Fold in anything from the older stores (the standalone Harvester addon,
     -- and the missingCaptures table this addon used before capture was built
@@ -348,6 +377,7 @@ loadingFrame:SetScript("OnEvent", function(self, event, loadedAddonName)
     if event == "ADDON_LOADED" and loadedAddonName == addonName then
         InitializeAddonDB()
         RestoreStrandedDialogVolume()
+        if addon.RestoreStrandedDuckVolumes then addon.RestoreStrandedDuckVolumes() end
         if speakStoneLauncher then
             icon:Register("SpeakStone_Main", speakStoneLauncher, {
                 hide = not SpeakStone_MainDB.showMinimapButton,
@@ -435,9 +465,92 @@ local function InitializeQuestFrameButtons()
             PlayQuestAudio("description", true)
         end)
         table.insert(addon.questButtons, questLogButton)
+        addon.questLogButton = questLogButton
     end
+    addon.questFrameButton = questFrameButton
 
     UpdateQuestButtonVisibility()
+    if addon.InitMissingVoiceIcons then addon.InitMissingVoiceIcons() end
+end
+
+-- --------------------------------------------------------------------------
+-- Missing-voice icon (showMissingVoiceIcon): a muted speaker beside Read
+-- Quest when the passage on screen has no clip in any installed pack.
+-- --------------------------------------------------------------------------
+local MISSING_ICON = "Interface\\Common\\VoiceChat-Muted"
+local missingIcons = {}
+
+local function MakeMissingIcon(parent)
+    local b = CreateFrame("Button", nil, parent)
+    b:SetSize(20, 20)
+    b:SetNormalTexture(MISSING_ICON)
+    b:GetNormalTexture():SetVertexColor(0.75, 0.75, 0.75)
+    b:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("No voice yet", 1, 0.82, 0)
+        GameTooltip:AddLine("SpeakStone has no recording of this text. With capture on, it has been "
+            .. "saved for you: export it from /ss and send it in at speakstone.beanw.co.uk "
+            .. "so it can be voiced.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    b:Hide()
+    return b
+end
+
+-- The quest giver window's passage, from whichever panel is up.
+local function QuestFramePassage()
+    if QuestFrameDetailPanel and QuestFrameDetailPanel:IsVisible() then return "description" end
+    if QuestFrameProgressPanel and QuestFrameProgressPanel:IsVisible() then return "progress" end
+    if QuestFrameRewardPanel and QuestFrameRewardPanel:IsVisible() then return "completion" end
+    return nil
+end
+
+local function ShowIfMissing(icon, questID, textType)
+    if not icon then return end
+    local show = SpeakStone_MainDB and SpeakStone_MainDB.showMissingVoiceIcon ~= false
+        and type(questID) == "number" and questID > 0 and textType
+        and not addon.FindSound({ questID .. "_" .. textType })
+    icon:SetShown(show and true or false)
+end
+
+function addon.UpdateMissingVoiceIcons()
+    if QuestFrame and QuestFrame:IsVisible() then
+        ShowIfMissing(missingIcons.quest, GetQuestID(), QuestFramePassage())
+    elseif missingIcons.quest then
+        missingIcons.quest:Hide()
+    end
+    if missingIcons.log then
+        local questID = QuestMapFrame and QuestMapFrame.DetailsFrame and QuestMapFrame.DetailsFrame:IsVisible()
+            and C_QuestLog and C_QuestLog.GetSelectedQuest and C_QuestLog.GetSelectedQuest()
+        ShowIfMissing(missingIcons.log, questID, questID and "description")
+    end
+end
+
+-- Panels are shown by Blizzard's own event handlers, which may run after
+-- ours, so the check waits a frame.
+local function QueueMissingVoiceUpdate()
+    C_Timer.After(0, addon.UpdateMissingVoiceIcons)
+end
+
+function addon.InitMissingVoiceIcons()
+    if missingIcons.quest then return end
+    if addon.questFrameButton then
+        missingIcons.quest = MakeMissingIcon(QuestFrame)
+        missingIcons.quest:SetPoint("RIGHT", addon.questFrameButton, "LEFT", -4, 0)
+        for _, panel in ipairs({ QuestFrameDetailPanel, QuestFrameProgressPanel, QuestFrameRewardPanel }) do
+            if panel then panel:HookScript("OnShow", QueueMissingVoiceUpdate) end
+        end
+        QuestFrame:HookScript("OnShow", QueueMissingVoiceUpdate)
+    end
+    if addon.questLogButton then
+        missingIcons.log = MakeMissingIcon(QuestMapFrame.DetailsFrame)
+        missingIcons.log:SetPoint("LEFT", addon.questLogButton, "RIGHT", 4, 0)
+        QuestMapFrame.DetailsFrame:HookScript("OnShow", QueueMissingVoiceUpdate)
+        if QuestMapFrame_ShowQuestDetails then
+            hooksecurefunc("QuestMapFrame_ShowQuestDetails", QueueMissingVoiceUpdate)
+        end
+    end
 end
 
 questButtonFrame:SetScript("OnEvent", function(self, event, loadedAddonName)
@@ -767,6 +880,142 @@ end
 
 -- Tell the speech frame (SpeechFrame.lua) about a clip. An error in there
 -- is reported but never stops playback itself.
+-- --------------------------------------------------------------------------
+-- Lowering other sounds while narration plays (duckOtherSounds)
+--
+-- Same rescue as the Dialog mute: the volumes are written to disk while they
+-- are lowered, so a crash mid-line doesn't leave the player's music quiet.
+-- --------------------------------------------------------------------------
+local DUCK_CVARS = { "Sound_MusicVolume", "Sound_AmbienceVolume" }
+local duckedVolumes -- cvar -> { original = n, lowered = n }
+
+local function DuckOtherSounds()
+    if duckedVolumes or not SpeakStone_MainDB or not SpeakStone_MainDB.duckOtherSounds then
+        return
+    end
+    local amount = tonumber(SpeakStone_MainDB.duckAmount) or 0.7
+    amount = math.max(0, math.min(1, amount))
+    duckedVolumes = {}
+    local saved = {}
+    for _, cvar in ipairs(DUCK_CVARS) do
+        local original = tonumber(GetCVar(cvar))
+        if original and original > 0 then
+            local lowered = original * (1 - amount)
+            duckedVolumes[cvar] = { original = original, lowered = lowered }
+            saved[cvar] = original
+            SetCVar(cvar, lowered)
+        end
+    end
+    SpeakStone_MainDB.savedDuckVolumes = saved
+end
+
+-- Unconditional, like UnmuteDialogChannel: the option can be switched off
+-- while a line is playing.
+local function RestoreDuckedSounds()
+    if duckedVolumes then
+        for cvar, v in pairs(duckedVolumes) do
+            -- The player moved the slider themselves while it was lowered:
+            -- their new value wins.
+            local now = tonumber(GetCVar(cvar))
+            if not now or math.abs(now - v.lowered) < 0.01 then
+                SetCVar(cvar, v.original)
+            end
+        end
+        duckedVolumes = nil
+    end
+    if SpeakStone_MainDB then
+        SpeakStone_MainDB.savedDuckVolumes = nil
+    end
+end
+
+function addon.RestoreStrandedDuckVolumes()
+    if not SpeakStone_MainDB then return end
+    local saved = SpeakStone_MainDB.savedDuckVolumes
+    SpeakStone_MainDB.savedDuckVolumes = nil
+    if type(saved) ~= "table" then return end
+    for _, cvar in ipairs(DUCK_CVARS) do
+        local level = tonumber(saved[cvar])
+        if level and level > 0 then
+            SetCVar(cvar, level)
+        end
+    end
+end
+
+-- --------------------------------------------------------------------------
+-- Favourites, recently played and already-heard quests
+--
+-- An "item key" names what the Audio Library shows as one row:
+--   "q:<questID>"            a quest (all three of its clips)
+--   "g:<npcID>:<variant>"    one gossip clip
+--   "b:<book base>"          a book (all its pages)
+-- --------------------------------------------------------------------------
+local RECENT_MAX = 50
+
+function addon.ClipItemKey(soundFile)
+    if type(soundFile) ~= "string" then return nil end
+    local base = soundFile:gsub("%.%a+$", "")
+    local questID = base:match("^(%d+)_%a+$")
+    if questID then return "q:" .. questID end
+    local npcID, variant = base:match("^npc(%d+)_gossip(%d+)$")
+    if npcID then return "g:" .. npcID .. ":" .. variant end
+    local book = base:match("^(.-)_page%d+$")
+    if book and book ~= "" then return "b:" .. book end
+    return nil
+end
+
+local function IndexOf(list, value)
+    for i, v in ipairs(list) do
+        if v == value then return i end
+    end
+    return nil
+end
+
+function addon.IsFavourite(key)
+    local list = SpeakStone_MainDB and SpeakStone_MainDB.favourites
+    return key and list and IndexOf(list, key) ~= nil or false
+end
+
+-- Returns the new state.
+function addon.ToggleFavourite(key)
+    if not key or not SpeakStone_MainDB then return false end
+    local list = SpeakStone_MainDB.favourites
+    local i = IndexOf(list, key)
+    if i then
+        table.remove(list, i)
+    else
+        table.insert(list, 1, key)
+    end
+    if addon.FavouritesChanged then addon.FavouritesChanged() end
+    return i == nil
+end
+
+-- Newest first, no repeats.
+function addon.NoteRecent(key)
+    if not key or not SpeakStone_MainDB then return end
+    local list = SpeakStone_MainDB.recentClips
+    local i = IndexOf(list, key)
+    if i then table.remove(list, i) end
+    table.insert(list, 1, key)
+    while #list > RECENT_MAX do
+        table.remove(list)
+    end
+end
+
+local QUEST_PASSAGES = { description = true, progress = true, completion = true }
+
+local function NoteHeard(soundData)
+    if not SpeakStone_MainDB or type(soundData.questID) ~= "number"
+        or not QUEST_PASSAGES[soundData.textType] then
+        return
+    end
+    SpeakStone_MainDB.heardQuests[soundData.questID .. "_" .. soundData.textType] = true
+end
+
+local function AlreadyHeard(questID, textType)
+    local heard = SpeakStone_MainDB and SpeakStone_MainDB.heardQuests
+    return heard and heard[questID .. "_" .. textType] or false
+end
+
 local function NotifySpeechFrame(event, soundData)
     if not addon.SpeechFrameNotify then
         return
@@ -819,6 +1068,7 @@ local function FinishPlayback(soundData)
     soundData.endTimer = nil
     addon.activeSound = nil
     UnmuteDialogChannel()
+    RestoreDuckedSounds()
     -- Before onFinished, so a book's next page arrives as a fresh "start"
     -- after this "finish" rather than the other way round.
     NotifySpeechFrame("finish", soundData)
@@ -887,6 +1137,10 @@ local function DoPlaySound(soundData)
         FinishPlayback(soundData)
     end)
 
+    DuckOtherSounds()
+    NoteHeard(soundData)
+    addon.NoteRecent(addon.ClipItemKey(soundData.soundFile))
+
     -- Nothing reports a clip's position either, so the speech frame works
     -- it out from when it started.
     soundData.startedAt = GetTime()
@@ -927,6 +1181,7 @@ local function StopCurrentSound(keepQueue)
     -- playing, and gating on it left the Dialog channel muted for the rest
     -- of the session.
     UnmuteDialogChannel()
+    RestoreDuckedSounds()
 
     addon.activeSound = nil
     currentSound.isPlaying = false
@@ -1143,6 +1398,11 @@ function PlayQuestAudio(textType, skipDelay)
         if not skipDelay and SpeakStone_MainDB.keepReadingQuests ~= false and cur
             and cur.questID == questID and cur.textType == textType
             and (cur.isPlaying or cur.nextSoundTimer) then
+            return
+        end
+        -- Heard this passage before (skipHeardQuests): autoplay leaves it
+        -- alone. Read Quest (skipDelay) still plays it.
+        if not skipDelay and SpeakStone_MainDB.skipHeardQuests and AlreadyHeard(questID, textType) then
             return
         end
         -- Queue mode: a quest line already being read keeps going and this
@@ -1866,6 +2126,7 @@ local function OnPlayerLogout()
         end
     end
     UnmuteDialogChannel()
+    RestoreDuckedSounds()
 end
 
 -- Keybindings
