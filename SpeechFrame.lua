@@ -245,8 +245,25 @@ local function Build()
     controls.time = controls:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     controls.time:SetPoint("RIGHT", controls.gear, "LEFT", -8, 0)
     controls.time:SetTextColor(0.75, 0.72, 0.65)
+    -- Favourite: adds what is being read to the Audio Library's Favourites.
+    controls.star = CreateFrame("Button", nil, controls)
+    controls.star:SetSize(16, 16)
+    controls.star:SetPoint("RIGHT", controls.time, "LEFT", -8, 0)
+    controls.star:SetNormalTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcon_1")
+    controls.star:SetScript("OnClick", function()
+        local key = current and addon.ClipItemKey and addon.ClipItemKey(current.soundFile)
+        if key and addon.ToggleFavourite then addon.ToggleFavourite(key) end
+        addon.SpeechFrameRefreshStar()
+    end)
+    controls.star:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:AddLine("Favourite", 1, 1, 1)
+        GameTooltip:AddLine("Keep this in the Audio Library's Favourites tab.", 0.7, 0.7, 0.7)
+        GameTooltip:Show()
+    end)
+    controls.star:SetScript("OnLeave", function() GameTooltip:Hide() end)
     controls.replay = MakeButton(controls, "Replay", 56, function() Replay() end, "Hear the line again from the start.")
-    controls.replay:SetPoint("RIGHT", controls.time, "LEFT", -8, 0)
+    controls.replay:SetPoint("RIGHT", controls.star, "LEFT", -6, 0)
     controls.stop = MakeButton(controls, "Stop", 46, function() StopNarration() end, "Stop the narration and close.")
     controls.stop:SetPoint("RIGHT", controls.replay, "LEFT", -4, 0)
     controls.pause = MakeButton(controls, "Pause", 60, function()
@@ -394,6 +411,25 @@ local function HeaderText(sd)
     return name
 end
 
+-- The star shows whether the clip on show is a favourite. Hidden for the
+-- preview and anything the library cannot list.
+function addon.SpeechFrameRefreshStar()
+    if not frame or not frame.controls.star then return end
+    local star = frame.controls.star
+    local key = current and not current.preview and addon.ClipItemKey and addon.ClipItemKey(current.soundFile)
+    if not key then
+        star:Hide()
+        return
+    end
+    star:Show()
+    local on = addon.IsFavourite and addon.IsFavourite(key)
+    local tex = star:GetNormalTexture()
+    if tex then
+        tex:SetDesaturated(not on)
+        tex:SetAlpha(on and 1 or 0.35)
+    end
+end
+
 -- Text and header, once per clip.
 local function Fill(sd)
     frame.name:SetText(HeaderText(sd))
@@ -421,6 +457,7 @@ local function Fill(sd)
     frame:SetHeight(HEIGHT + scrollHeight - frame.lineHeight * TEXT_LINES)
     frame.scroll:SetVerticalScroll(0)
     frame.filledFor = sd
+    addon.SpeechFrameRefreshStar()
 end
 
 local function Refresh()

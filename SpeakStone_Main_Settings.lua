@@ -82,108 +82,187 @@ StaticPopupDialogs["SPEAKSTONE_CONFIRM_CLEAR_HARVEST"] = {
 }
 
 -- Every option, with the one-line explanation that used to live only in the
--- README. Grouped, because a flat list of seven checkboxes gave no clue which
--- of them mattered when quest audio was not playing.
-local SETTINGS_SECTIONS = {
+-- README. Grouped into tabs (owner, 2026-10-16: design 1 of the menu
+-- mock-ups), because one column of options no longer fitted the window.
+local DELAY_SLIDER = {
+    name = "AutoPlayDelaySlider", option = "autoPlayDelay", default = 1.0,
+    min = 0, max = 6, step = 0.5, low = "0s", high = "6s",
+    describe = function(v) return string.format("Wait before speaking: %.1fs", v) end,
+    title = "Wait before speaking",
+    tooltip = "How long to hold back so Blizzard's own voice line can finish before SpeakStone speaks. Ignored when those lines are silenced above, because then there is nothing to wait for.",
+}
+local DUCK_SLIDER = {
+    name = "DuckAmountSlider", option = "duckAmount", default = 0.7, parent = "duckOtherSounds",
+    min = 0.1, max = 1, step = 0.1, low = "10%", high = "100%",
+    describe = function(v) return string.format("Lower them by: %d%%", math.floor(v * 100 + 0.5)) end,
+    title = "Lower them by",
+    tooltip = "How far music and ambience drop while a line is read. 100% silences them. They go back to where they were when the line ends.",
+}
+
+local SETTINGS_TABS = {
     {
         title = "Playback",
-        options = {
+        sections = {
             {
-                option = "autoPlayEnabled",
-                label = "Read automatically",
-                tooltip = "Start narrating as soon as text appears, rather than waiting for the Read Quest button. The three below choose what that covers; with this off, none of them apply. Turn this on if you use Immersion or DialogueUI -- their windows bypass the Read Quest button.",
+                title = "Reading",
+                options = {
+                    {
+                        option = "autoPlayEnabled",
+                        label = "Read automatically",
+                        tooltip = "Start narrating as soon as text appears, rather than waiting for the Read Quest button. The options below choose what that covers; with this off, none of them apply. Turn this on if you use Immersion or DialogueUI -- their windows bypass the Read Quest button.",
+                    },
+                    {
+                        option = "autoPlayQuests",
+                        label = "Quests",
+                        indent = true,
+                        tooltip = "Quest descriptions, progress and completion text, read at the quest giver.",
+                    },
+                    {
+                        option = "autoPlayGossip",
+                        label = "NPC greetings",
+                        indent = true,
+                        tooltip = "The lines an NPC says when you first talk to them. Turn this off if you pass a lot of NPCs and only want quest text read.",
+                    },
+                    {
+                        option = "autoPlayItemText",
+                        label = "Books, letters and plaques",
+                        indent = true,
+                        tooltip = "Anything read through the book window -- tomes, scrolls, letters and the plaques in dungeons.",
+                    },
+                    {
+                        option = "autoPlayInQuestMap",
+                        label = "Also read from the quest log map",
+                        indent = true,
+                        tooltip = "Narrate when a quest is selected in the world map's quest list, not just at the quest giver.",
+                    },
+                    {
+                        option = "skipHeardQuests",
+                        label = "Skip quests I've already heard",
+                        indent = true,
+                        tooltip = "Autoplay leaves a quest passage alone once you have heard it, on any character. Read Quest still plays it. /ss forget clears the list.",
+                    },
+                    {
+                        option = "queueQuestSpeech",
+                        label = "Queue quests instead of interrupting",
+                        tooltip = "Talking to another quest giver while a quest is still being read adds the new quest to a queue instead of cutting the first one off. The speech frame shows where you are (1/2) and a Next button to skip ahead. Stop clears the queue.",
+                    },
+                    {
+                        option = "autoAcceptQuests",
+                        label = "Auto-accept quests (hold Shift to skip)",
+                        tooltip = "Accept quests as soon as they are offered and hear them in the speech frame instead. Hold Shift while talking to the quest giver to skip it for that quest.",
+                    },
+                },
             },
             {
-                option = "autoPlayQuests",
-                label = "Quests",
-                indent = true,
-                tooltip = "Quest descriptions, progress and completion text, read at the quest giver.",
+                title = "Stay quiet",
+                options = {
+                    {
+                        option = "pauseAutoPlayInCombat",
+                        label = "Not in combat",
+                        tooltip = "Nothing starts reading by itself while you are in combat. Read Quest and the keybind still work.",
+                    },
+                    {
+                        option = "pauseAutoPlayInInstances",
+                        label = "Not in dungeons, raids or battlegrounds",
+                        tooltip = "Nothing starts reading by itself inside an instance. Read Quest and the keybind still work.",
+                    },
+                    {
+                        option = "stopDialogueOnClose",
+                        label = "Stop narration when the window closes",
+                        tooltip = "Walking away mid-sentence stops the audio instead of leaving a disembodied voice following you.",
+                    },
+                },
+            },
+        },
+    },
+    {
+        title = "Sound",
+        sections = {
+            {
+                title = "Blizzard's voice lines",
+                options = {
+                    {
+                        option = "muteGossip",
+                        label = "Silence Blizzard's own voice lines",
+                        tooltip = "Off: where Blizzard has voiced a line, that recording plays and SpeakStone waits its turn. On: the game's Dialog channel is muted instead, so narration starts immediately and nothing plays over it.",
+                    },
+                },
+                slider = DELAY_SLIDER,
             },
             {
-                option = "autoPlayGossip",
-                label = "NPC greetings",
-                indent = true,
-                tooltip = "The lines an NPC says when you first talk to them. Turn this off if you pass a lot of NPCs and only want quest text read.",
-            },
-            {
-                option = "autoPlayItemText",
-                label = "Books, letters and plaques",
-                indent = true,
-                tooltip = "Anything read through the book window -- tomes, scrolls, letters and the plaques in dungeons.",
-            },
-            {
-                option = "autoPlayInQuestMap",
-                label = "Also read from the quest log map",
-                indent = true,
-                tooltip = "Narrate when a quest is selected in the world map's quest list, not just at the quest giver.",
-            },
-            {
-                option = "queueQuestSpeech",
-                label = "Queue quests instead of interrupting",
-                tooltip = "Talking to another quest giver while a quest is still being read adds the new quest to a queue instead of cutting the first one off. The speech frame shows where you are (1/2) and a Next button to skip ahead. Stop clears the queue.",
-            },
-            {
-                option = "muteGossip",
-                label = "Silence Blizzard's own voice lines",
-                tooltip = "Off by default: where Blizzard has voiced a line, that recording plays and SpeakStone waits its turn. Turn this on to mute the game's Dialog channel instead, so narration starts immediately and nothing plays over it.",
-            },
-            {
-                option = "stopDialogueOnClose",
-                label = "Stop narration when the window closes",
-                tooltip = "Walking away mid-sentence stops the audio instead of leaving a disembodied voice following you.",
-            },
-            {
-                option = "autoAcceptQuests",
-                label = "Auto-accept quests (hold Shift to skip)",
-                tooltip = "Accept quests as soon as they are offered and hear them in the speech frame instead. Hold Shift while talking to the quest giver to skip it for that quest.",
+                title = "Other sounds",
+                options = {
+                    {
+                        option = "duckOtherSounds",
+                        label = "Lower music and ambience while speaking",
+                        tooltip = "WoW cannot set a volume for one sound, so this turns music and ambience down while a line is read instead, and back up when it ends.",
+                    },
+                },
+                slider = DUCK_SLIDER,
             },
         },
     },
     {
         title = "Speech frame",
-        info = SPEECH_FRAME_INFO,
-        options = {
+        sections = {
             {
-                option = "showSpeechFrame",
-                label = "Show the speech frame when you walk away",
-                tooltip = "When you close the quest window while it is still being read, a bar shows who is speaking and what they are saying, with Pause, Stop and Replay. Right-click it to change its size or lock it. /ss frame shows a sample to place it with.",
-            },
-            {
-                option = "speechAutoScroll",
-                label = "Auto-scroll the text",
-                indent = true,
-                parent = "showSpeechFrame",
-                tooltip = "Scroll the text along with the voice so the line being spoken stays in view. Off: the text stays put and the mouse wheel scrolls it.",
-            },
-            {
-                option = "speechFitText",
-                label = "Grow to show all the text",
-                indent = true,
-                parent = "showSpeechFrame",
-                tooltip = "Make the frame taller so the whole passage shows without scrolling (very long text still scrolls). Pair with the Extra large size on the frame's gear menu.",
+                title = "Speech frame",
+                info = SPEECH_FRAME_INFO,
+                options = {
+                    {
+                        option = "showSpeechFrame",
+                        label = "Show the speech frame when you walk away",
+                        tooltip = "When you close the quest window while it is still being read, a bar shows who is speaking and what they are saying, with Pause, Stop, Replay and a favourite star. Right-click it to change its size or lock it. /ss frame shows a sample to place it with.",
+                    },
+                    {
+                        option = "speechAutoScroll",
+                        label = "Auto-scroll the text",
+                        indent = true,
+                        parent = "showSpeechFrame",
+                        tooltip = "Scroll the text along with the voice so the line being spoken stays in view. Off: the text stays put and the mouse wheel scrolls it.",
+                    },
+                    {
+                        option = "speechFitText",
+                        label = "Grow to show all the text",
+                        indent = true,
+                        parent = "showSpeechFrame",
+                        tooltip = "Make the frame taller so the whole passage shows without scrolling (very long text still scrolls). Pair with the Extra large size on the frame's gear menu.",
+                    },
+                },
             },
         },
     },
     {
         title = "Interface",
-        options = {
+        sections = {
             {
-                option = "showMinimapButton",
-                label = "Show the minimap button",
-                tooltip = "Left-click opens these settings, right-click exports captured text, middle-click toggles debug messages.",
-                onChange = function() if addon.UpdateMinimapButtonVisibility then addon.UpdateMinimapButtonVisibility() end end,
-            },
-            {
-                option = "showQuestButton",
-                label = "Show the Read Quest button",
-                tooltip = "The button at the bottom of the quest window and in the quest log. Hide it if your quest UI already covers that spot -- narration still works.",
-                onChange = function() if addon.UpdateQuestButtonVisibility then addon.UpdateQuestButtonVisibility() end end,
-            },
-            {
-                option = "harvestEnabled",
-                label = "Capture quest text to help voice missing quests",
-                tooltip = "Records the text of quests, greetings and books you encounter, so unvoiced ones can be queued up. Your character's name is replaced with $n before anything is stored.",
-                onChange = function() if addon.RefreshSettingsStatus then addon.RefreshSettingsStatus() end end,
+                title = "Interface",
+                options = {
+                    {
+                        option = "showMinimapButton",
+                        label = "Show the minimap button",
+                        tooltip = "Left-click opens these settings, right-click exports captured text, middle-click toggles debug messages.",
+                        onChange = function() if addon.UpdateMinimapButtonVisibility then addon.UpdateMinimapButtonVisibility() end end,
+                    },
+                    {
+                        option = "showQuestButton",
+                        label = "Show the Read Quest button",
+                        tooltip = "The button at the bottom of the quest window and in the quest log. Hide it if your quest UI already covers that spot -- narration still works.",
+                        onChange = function() if addon.UpdateQuestButtonVisibility then addon.UpdateQuestButtonVisibility() end end,
+                    },
+                    {
+                        option = "showMissingVoiceIcon",
+                        label = "Show the missing-voice icon",
+                        tooltip = "A small muted speaker beside Read Quest when the text on screen has no voice yet.",
+                        onChange = function() if addon.UpdateMissingVoiceIcons then addon.UpdateMissingVoiceIcons() end end,
+                    },
+                    {
+                        option = "harvestEnabled",
+                        label = "Capture quest text to help voice missing quests",
+                        tooltip = "Records the text of quests, greetings and books you encounter, so unvoiced ones can be queued up. Your character's name is replaced with $n before anything is stored.",
+                        onChange = function() if addon.RefreshSettingsStatus then addon.RefreshSettingsStatus() end end,
+                    },
+                },
             },
         },
     },
@@ -462,16 +541,21 @@ function SpeakStone:CreateWindow()
     end
 
     -- ----------------------------------------------------------------------
-    -- Right column: the options themselves, unchanged in content
+    -- Right column: the options, one tab at a time
     -- ----------------------------------------------------------------------
     local optionsWidth = FRAME_WIDTH - RIGHT_X - 22
+    local TAB_HEIGHT = 22
     local cursorY = TOP_Y
+    -- What the controls being made now belong to: one panel per tab, or the
+    -- window itself for the debug switch that every tab shares.
+    local panel = frame
 
     -- The options under "Read automatically", greyed while it is off: they
     -- still hold their own value, but none of them does anything until the
     -- master switch is back on, and a live checkbox that changes nothing is a
     -- worse answer than a dimmed one.
-    -- The same goes for the speech frame's own options under its switch.
+    -- The same goes for the speech frame's own options under its switch, and
+    -- the "lower by" slider under its own.
     local dependentButtons = {}
     local function RefreshOptionStates()
         for _, button in ipairs(dependentButtons) do
@@ -492,15 +576,15 @@ function SpeakStone:CreateWindow()
     end
 
     local function makeSectionHeader(title, info)
-        local text = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+        local text = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
         text:SetPoint("TOPLEFT", frame, "TOPLEFT", RIGHT_X, cursorY)
         text:SetText(title)
         if info then
-            CreateInfoIcon(frame, title, info):SetPoint("LEFT", text, "RIGHT", 6, 0)
+            CreateInfoIcon(panel, title, info):SetPoint("LEFT", text, "RIGHT", 6, 0)
         end
         Advance(20)
 
-        local divider = frame:CreateTexture(nil, "ARTWORK")
+        local divider = panel:CreateTexture(nil, "ARTWORK")
         divider:SetPoint("TOPLEFT", frame, "TOPLEFT", RIGHT_X, cursorY)
         divider:SetSize(optionsWidth, 1)
         divider:SetColorTexture(0.35, 0.31, 0.24, 0.9)
@@ -508,7 +592,7 @@ function SpeakStone:CreateWindow()
     end
 
     local function makeCheckButton(info)
-        local checkButton = CreateFrame("CheckButton", addonName .. "CheckBox_" .. info.option, frame, "SettingsCheckBoxTemplate")
+        local checkButton = CreateFrame("CheckButton", addonName .. "CheckBox_" .. info.option, panel, "SettingsCheckBoxTemplate")
         -- Indented options are the ones the option above them governs, so the
         -- shape of the list says which switch turns which off.
         local x = RIGHT_X + 2 + (info.indent and 18 or 0)
@@ -542,44 +626,92 @@ function SpeakStone:CreateWindow()
         return checkButton
     end
 
-    for index, section in ipairs(SETTINGS_SECTIONS) do
-        if index > 1 then Advance(12) end
-        makeSectionHeader(section.title, section.info)
-        for _, info in ipairs(section.options) do
-            makeCheckButton(info)
+    -- A slider under its section's options: DELAY_SLIDER, DUCK_SLIDER.
+    local function makeSlider(spec)
+        Advance(14)
+        local name = addonName .. spec.name
+        local slider = CreateFrame("Slider", name, panel, "OptionsSliderTemplate")
+        slider:SetPoint("TOPLEFT", frame, "TOPLEFT", RIGHT_X + 8, cursorY)
+        slider:SetWidth(220)
+        slider:SetMinMaxValues(spec.min, spec.max)
+        slider:SetValueStep(spec.step)
+        slider:SetObeyStepOnDrag(true)
+        _G[name .. "Low"]:SetText(spec.low)
+        _G[name .. "High"]:SetText(spec.high)
+
+        local function Snap(value)
+            return math.floor(value / spec.step + 0.5) * spec.step
+        end
+        local function Describe(value)
+            _G[name .. "Text"]:SetText(spec.describe(value))
         end
 
-        -- The delay only means anything while Blizzard's own greeting is
-        -- audible, so it sits with the option that controls that.
-        if section.title == "Playback" then
-            Advance(14)
-            local slider = CreateFrame("Slider", addonName .. "AutoPlayDelaySlider", frame, "OptionsSliderTemplate")
-            slider:SetPoint("TOPLEFT", frame, "TOPLEFT", RIGHT_X + 8, cursorY)
-            slider:SetWidth(220)
-            slider:SetMinMaxValues(0, 6)
-            slider:SetValueStep(0.5)
-            slider:SetObeyStepOnDrag(true)
-            _G[slider:GetName() .. "Low"]:SetText("0s")
-            _G[slider:GetName() .. "High"]:SetText("6s")
+        slider:SetScript("OnValueChanged", function(self, value)
+            value = Snap(value)
+            SpeakStone_MainDB[spec.option] = value
+            Describe(value)
+        end)
+        slider:SetScript("OnShow", function(self)
+            local value = tonumber(SpeakStone_MainDB[spec.option]) or spec.default
+            self:SetValue(value)
+            Describe(value)
+        end)
+        AttachTooltip(slider, spec.title, spec.tooltip)
+        if spec.parent then
+            slider.parentOption = spec.parent
+            slider.text = _G[name .. "Text"]
+            table.insert(dependentButtons, slider)
+        end
+        Advance(34)
+    end
 
-            local function Describe(value)
-                _G[slider:GetName() .. "Text"]:SetText(string.format("Wait before speaking: %.1fs", value))
+    -- Tabs across the top of the column (owner, 2026-10-16: design 1).
+    local tabButtons, panels = {}, {}
+    local function SelectTab(index)
+        if not panels[index] then index = 1 end
+        SpeakStone_MainDB.settingsTab = index
+        for i, p in ipairs(panels) do
+            p:SetShown(i == index)
+            if i == index then
+                tabButtons[i]:Disable()
+                tabButtons[i]:LockHighlight()
+            else
+                tabButtons[i]:Enable()
+                tabButtons[i]:UnlockHighlight()
             end
-
-            slider:SetScript("OnValueChanged", function(self, value)
-                value = math.floor(value * 2 + 0.5) / 2
-                SpeakStone_MainDB.autoPlayDelay = value
-                Describe(value)
-            end)
-            slider:SetScript("OnShow", function(self)
-                local value = tonumber(SpeakStone_MainDB.autoPlayDelay) or 0.5
-                self:SetValue(value)
-                Describe(value)
-            end)
-            AttachTooltip(slider, "Wait before speaking", "How long to hold back so Blizzard's own voice line can finish before SpeakStone speaks. Ignored when those lines are silenced above, because then there is nothing to wait for.")
-            Advance(34)
         end
     end
+
+    local tabWidth = math.floor((optionsWidth - 4 * (#SETTINGS_TABS - 1)) / #SETTINGS_TABS)
+    for tabIndex, tab in ipairs(SETTINGS_TABS) do
+        local button = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+        button:SetSize(tabWidth, TAB_HEIGHT)
+        button:SetPoint("TOPLEFT", frame, "TOPLEFT", RIGHT_X + (tabIndex - 1) * (tabWidth + 4), TOP_Y)
+        button:SetText(tab.title)
+        button:SetScript("OnClick", function() SelectTab(tabIndex) end)
+        tabButtons[tabIndex] = button
+
+        -- Same size as the window, so every control below keeps its offsets
+        -- from the window's corner.
+        panel = CreateFrame("Frame", nil, frame)
+        panel:SetAllPoints(frame)
+        panel:Hide()
+        panels[tabIndex] = panel
+
+        cursorY = TOP_Y - TAB_HEIGHT - 12
+        for index, section in ipairs(tab.sections) do
+            if index > 1 then Advance(12) end
+            makeSectionHeader(section.title, section.info)
+            for _, info in ipairs(section.options) do
+                makeCheckButton(info)
+            end
+            if section.slider then
+                makeSlider(section.slider)
+            end
+        end
+    end
+    panel = frame
+    SelectTab(tonumber(SpeakStone_MainDB.settingsTab) or 1)
 
     -- Pinned just above the button row rather than after the last section.
     cursorY = -(FRAME_HEIGHT - 66)
@@ -598,6 +730,7 @@ function SpeakStone:CreateWindow()
         { "quests", "Quests", "Browse and replay every voiced quest your installed packs provide. Also /sslibrary." },
         { "gossip", "Gossip", "Browse and replay voiced NPC greetings." },
         { "books", "Books", "Browse every voiced book and read it aloud, whole or page by page." },
+        { "favourites", "Favourites", "Everything you starred, in the library or on the speech frame. The library's Recent tab lists what you played lately." },
     }) do
         local mode, label, tip = spec[1], spec[2], spec[3]
         local button = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
@@ -820,6 +953,12 @@ SlashCmdList.SPEAKSTONE = function(msg)
         return
     elseif msg == "profile" or msg == "profiles" then
         if addon.ShowTutorial then addon.ShowTutorial(2) end
+        return
+    elseif msg == "forget" then
+        if SpeakStone_MainDB and SpeakStone_MainDB.heardQuests then
+            wipe(SpeakStone_MainDB.heardQuests)
+        end
+        print("SpeakStone: forgot which quests you have heard. They will autoplay again.")
         return
     elseif msg == "frame" then
         if addon.SpeechFramePreview then addon.SpeechFramePreview() end

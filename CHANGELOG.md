@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Settings
+- The settings window has tabs: Playback, Sound, Speech frame and Interface. The status cards stay on the left.
+
+### Playback
+- New: Skip quests I've already heard. Autoplay leaves a quest passage alone once you have heard it, on any character. Read Quest still plays it, and /ss forget clears the list. Off by default.
+- New: Stay quiet in combat, and in dungeons, raids and battlegrounds. Two separate options, both off by default. Read Quest and the keybind still work.
+
+### Sound
+- New: Lower music and ambience while speaking, with a slider for how far. WoW cannot set a volume for one sound, so this turns the others down instead and puts them back when the line ends. Off by default.
+
+### Missing voices
+- A small muted-speaker icon beside Read Quest shows when the quest text on screen has no voice yet. Hover it for how to send the text in. Can be turned off under Interface.
+
+### Audio Library
+- New Favourites and Recent tabs. Click the star on any row, or on the speech frame while a line plays, to keep it in Favourites. Recent lists the last 50 things played.
+
 ## 3.2.4
 
 - Updated for World of Warcraft 12.1.5 (Interface 120105). No other changes.

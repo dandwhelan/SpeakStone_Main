@@ -233,6 +233,34 @@ local function BookName(base)
 end
 
 -- --------------------------------------------------------------------------
+-- Rows of every kind share one list in the Favourites and Recent tabs, so a
+-- row says what it is by its shape rather than by the tab it is in.
+-- Keys match addon.ClipItemKey in SpeakStone_Main.lua.
+-- --------------------------------------------------------------------------
+local function EntryKind(entry)
+    if entry.kind == "book" then return "book" end
+    if entry.npcID then return "gossip" end
+    return "quest"
+end
+
+local function EntryKey(entry)
+    local kind = EntryKind(entry)
+    if kind == "book" then return "b:" .. entry.book.base end
+    if kind == "gossip" then return "g:" .. entry.npcID .. ":" .. entry.variant end
+    return "q:" .. entry.id
+end
+
+local STAR_TEXTURE = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_1"
+
+local function PaintStar(button, on)
+    local tex = button:GetNormalTexture()
+    if not tex then return end
+    tex:SetDesaturated(not on)
+    tex:SetAlpha(on and 1 or 0.35)
+end
+addon.PaintFavouriteStar = PaintStar
+
+-- --------------------------------------------------------------------------
 -- Building the window
 -- --------------------------------------------------------------------------
 local function BuildUI()
@@ -264,11 +292,14 @@ local function BuildUI()
     -- Tabs across the top: Quests, Gossip, Books (owner, 2026-09-28). This
     -- replaced a single Quests <-> Gossip toggle when books became a third list.
     frame.tabs = {}
-    local TAB_ORDER = { { "quests", "Quests" }, { "gossip", "Gossip" }, { "books", "Books" } }
+    local TAB_ORDER = {
+        { "quests", "Quests" }, { "gossip", "Gossip" }, { "books", "Books" },
+        { "favourites", "Favourites" }, { "recent", "Recent" },
+    }
     for i, t in ipairs(TAB_ORDER) do
         local tab = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-        tab:SetSize(118, 22)
-        tab:SetPoint("TOPLEFT", frame, "TOPLEFT", 14 + (i - 1) * 122, -28)
+        tab:SetSize(72, 22)
+        tab:SetPoint("TOPLEFT", frame, "TOPLEFT", 14 + (i - 1) * 74, -28)
         tab:SetText(t[2])
         frame.tabs[t[1]] = tab
     end
@@ -354,11 +385,31 @@ local function BuildUI()
             bg:SetColorTexture(1, 1, 1, 0.025)
         end
 
+        -- Favourite star, at the left of every row.
+        local star = CreateFrame("Button", nil, row)
+        star:SetSize(16, 16)
+        star:SetPoint("LEFT", row, "LEFT", 2, 0)
+        star:SetNormalTexture(STAR_TEXTURE)
+        star:SetScript("OnClick", function()
+            local data = row.questData or row.gossipData or row.bookData
+            if not data or not addon.ToggleFavourite then return end
+            -- FavouritesChanged redraws every row, this one included.
+            addon.ToggleFavourite(EntryKey(data))
+        end)
+        star:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:AddLine("Favourite", 1, 0.82, 0)
+            GameTooltip:AddLine("Keep this in the Favourites tab.", 1, 1, 1)
+            GameTooltip:Show()
+        end)
+        star:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        row.star = star
+
         -- Two lines: the quest's name on top, its ID beneath, so a row reads
         -- as the quest it is and still carries the number the files are
         -- named after.
         local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        text:SetPoint("TOPLEFT", row, "TOPLEFT", 4, -3)
+        text:SetPoint("TOPLEFT", row, "TOPLEFT", 22, -3)
         text:SetPoint("RIGHT", row, "RIGHT", -144, 0)
         text:SetJustifyH("LEFT")
         text:SetWordWrap(false)
@@ -598,6 +649,13 @@ local function BuildUI()
         self.allQuests = quests
         self.allGossip = gossip
         self.allBooks = books
+        -- Lookups for the Favourites and Recent tabs, which hold keys.
+        local byKey = {}
+        for _, e in ipairs(quests) do byKey[EntryKey(e)] = e end
+        for _, e in ipairs(gossip) do byKey[EntryKey(e)] = e end
+        for _, e in ipairs(books) do byKey[EntryKey(e)] = e end
+        self.entryByKey = byKey
+        self.keyedList = nil
         self.isIndexed = true
         self.filteredList = nil
         -- A rebuilt index invalidates the narrowing below, which assumes the
@@ -606,11 +664,28 @@ local function BuildUI()
         self.lastResult = nil
     end
 
+    -- A key list from the saved variables, as rows. Keys whose clips are
+    -- not installed (a pack removed since) are left out.
+    local function KeyedList(keys)
+        local out = {}
+        for _, key in ipairs(keys or {}) do
+            local e = frame.entryByKey and frame.entryByKey[key]
+            if e then out[#out + 1] = e end
+        end
+        return out
+    end
+
     -- The list BuildIndex/FilterList/UpdateList operate on for the current
     -- mode. A method rather than a field lookup at each call site, so
     -- switching modes can't leave one of them reading the other's list.
     function frame:ActiveList()
-        if self.mode == "gossip" then
+        if self.mode == "favourites" then
+            self.keyedList = self.keyedList or KeyedList(SpeakStone_MainDB and SpeakStone_MainDB.favourites)
+            return self.keyedList
+        elseif self.mode == "recent" then
+            self.keyedList = self.keyedList or KeyedList(SpeakStone_MainDB and SpeakStone_MainDB.recentClips)
+            return self.keyedList
+        elseif self.mode == "gossip" then
             return self.allGossip
         elseif self.mode == "books" then
             return self.allBooks
@@ -680,16 +755,15 @@ local function BuildUI()
             local startedAt = debugprofilestop and debugprofilestop() or nil
             local processed = 0
 
-            local isGossip = frame.mode == "gossip"
-            local isBooks = frame.mode == "books"
             while i <= total do
                 local entry = source[i]
-                if isBooks then
+                local entryKind = EntryKind(entry)
+                if entryKind == "book" then
                     -- A book matches by name; its page rows come with it.
                     if BookName(entry.book.base):lower():find(needle, 1, true) then
                         results[#results + 1] = entry
                     end
-                elseif isGossip then
+                elseif entryKind == "gossip" then
                     local idStr = entry.npcIDStr or tostring(entry.npcID)
                     local name = SpeakStone_NPCNames and SpeakStone_NPCNames[entry.npcID]
                     if idStr:find(needle, 1, true)
@@ -772,8 +846,10 @@ local function BuildUI()
             if index <= numItems then
                 local data = list[index]
                 row:Show()
+                local kind = EntryKind(data)
+                PaintStar(row.star, addon.IsFavourite and addon.IsFavourite(EntryKey(data)))
 
-                if isBooks then
+                if kind == "book" then
                     row.questData = nil
                     row.gossipData = nil
                     row.bookData = data
@@ -786,7 +862,7 @@ local function BuildUI()
                     row.descBtn:SetText("Open")
                     local on = activeBook == data.book and activeBookWhole
                     row.progBtn:SetText(on and "|cff00ff00Read|r" or "Read")
-                elseif isGossip then
+                elseif kind == "gossip" then
                     row.questData = nil
                     row.bookData = nil
                     row.gossipData = data
@@ -885,12 +961,21 @@ local function BuildUI()
         end
 
         local noun = isBooks and "books" or (isGossip and "gossip clips" or "quests")
+        if self.mode == "favourites" then
+            noun = "favourites"
+        elseif self.mode == "recent" then
+            noun = "recently played"
+        end
         if self.filtering then
             -- A pass still running has not found everything yet, and "no
             -- matching quests" while it is still looking is simply wrong --
             -- which is what the empty result reads as for the first frame of
             -- every name search.
             self.countText:SetText(string.format("Searching... %d so far", numItems))
+        elseif numItems == 0 and totalItems == 0 and self.mode == "favourites" then
+            self.countText:SetText("No favourites yet: click the star on any row.")
+        elseif numItems == 0 and totalItems == 0 and self.mode == "recent" then
+            self.countText:SetText("Nothing played yet.")
         elseif numItems == 0 then
             self.countText:SetText("No matching " .. noun .. " found.")
         elseif self.filteredList and numItems ~= totalItems then
@@ -1095,6 +1180,7 @@ local function BuildUI()
         end
         local willPlay, handle = PlaySoundFile(soundPath, "Dialog")
         if not (willPlay and handle) then return false end
+        if addon.NoteRecent then addon.NoteRecent("b:" .. book.base) end
         activeDebugSound = handle
         activeBook, activeBookPage, activeBookWhole = book, page, whole
         if view.book == book then
@@ -1161,6 +1247,7 @@ local function BuildUI()
         local willPlay, handle = PlaySoundFile(soundPath, "Dialog")
         if willPlay and handle then
             activeDebugSound = handle
+            if addon.NoteRecent then addon.NoteRecent("q:" .. questID) end
             activePlayingQuestID = questID
             activePlayingType = audioType
             self:UpdateList()
@@ -1192,6 +1279,7 @@ local function BuildUI()
         local willPlay, handle = PlaySoundFile(soundPath, "Dialog")
         if willPlay and handle then
             activeDebugSound = handle
+            if addon.NoteRecent then addon.NoteRecent("g:" .. npcID .. ":" .. variant) end
             activePlayingNPCID = npcID
             activePlayingVariant = variant
             self:UpdateList()
@@ -1210,6 +1298,7 @@ local function BuildUI()
         -- scrollbar in FilterList redraws at once, and it used to draw the old
         -- tab's rows under the new mode (gossip rows as books, etc.).
         self.filteredList = nil
+        self.keyedList = nil
         if self.CloseBook then self:CloseBook() end
         self:StopAudio()
         self.mode = mode
@@ -1217,6 +1306,8 @@ local function BuildUI()
             quests = "Search quest ID, name, race or sex...",
             gossip = "Search NPC ID, name, race or sex...",
             books = "Search book name...",
+            favourites = "Search favourites...",
+            recent = "Search recently played...",
         }
         if searchBox.Instructions then
             searchBox.Instructions:SetText(hints[mode] or hints.quests)
@@ -1288,6 +1379,7 @@ local function BuildUI()
         -- narrowed result from the previous open, computed while those were
         -- still misses, cannot be reused either.
         wipe(titleMisses)
+        self.keyedList = nil
         self.lastQuery = nil
         self.lastResult = nil
         self:PopulateList()
@@ -1312,6 +1404,7 @@ local function BuildUI()
         -- memory. Rebuilding it on the next open costs a moment; keeping it
         -- costs every player the memory all session.
         self.allQuests, self.allGossip, self.allBooks = nil, nil, nil
+        self.entryByKey, self.keyedList = nil, nil
         self.filteredList, self.lastQuery, self.lastResult = nil, nil, nil
         self.isIndexed = false
         if addon.ReleaseAudioIndex then addon.ReleaseAudioIndex() end
@@ -1338,7 +1431,22 @@ function addon.AudioLibraryInvalidate()
     end
 end
 
--- `mode` ("quests", "gossip" or "books") opens straight onto that tab: the
+-- A star clicked anywhere (a row here, or the speech frame). Rows elsewhere
+-- repaint on their own; the Favourites tab's list itself has to be rebuilt.
+function addon.FavouritesChanged()
+    if UI and UI:IsShown() then
+        if UI.mode == "favourites" then
+            UI.keyedList = nil
+            UI.lastQuery, UI.lastResult = nil, nil
+            UI:FilterList(UI.searchBox:GetText())
+        else
+            UI:UpdateList()
+        end
+    end
+    if addon.SpeechFrameRefreshStar then addon.SpeechFrameRefreshStar() end
+end
+
+-- `mode` ("quests", "gossip", "books", "favourites" or "recent") opens straight onto that tab: the
 -- settings window's Play section has one button per tab.
 function addon.OpenAudioLibrary(mode)
     local frame = EnsureUI()
