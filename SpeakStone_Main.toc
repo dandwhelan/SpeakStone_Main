@@ -25,6 +25,8 @@ GossipTexts.lua
 VoicedLines.lua
 SpeakStone_Main.lua
 SpeechFrame.lua
+GreetingSounds.lua
+GreetingMute.lua
 Harvester.lua
 SpeakStone_Main_Settings.lua
 BookTexts.lua

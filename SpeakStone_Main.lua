@@ -181,6 +181,12 @@ local defaultSettings = {
     -- stand out without touching the player's master volume.
     duckOtherSounds = false,
     duckAmount = 0.7,
+    -- Mute the game's own NPC greeting and farewell clips (GreetingMute.lua).
+    muteGreetingClips = false,
+    -- The speech frame shows the NPC's 3D head, talking, instead of a flat
+    -- portrait; and shows the text a page at a time, following the voice.
+    speechModel = false,
+    speechPages = false,
     -- A small muted-speaker icon on the quest window when the passage on
     -- screen has no voice yet.
     showMissingVoiceIcon = true,

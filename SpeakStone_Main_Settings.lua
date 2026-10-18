@@ -190,6 +190,17 @@ local SETTINGS_TABS = {
                 slider = DELAY_SLIDER,
             },
             {
+                title = "Greeting clips",
+                options = {
+                    {
+                        option = "muteGreetingClips",
+                        label = "Silence Blizzard's greeting clips",
+                        tooltip = "Mutes the game's \"Greetings, traveller\" and farewell recordings, which play the moment an NPC window opens and before SpeakStone's line can start. Only worth it if you use gossip narration: an NPC with no SpeakStone line will be silent too.",
+                        onChange = function() if addon.ApplyGreetingMute then addon.ApplyGreetingMute() end end,
+                    },
+                },
+            },
+            {
                 title = "Other sounds",
                 options = {
                     {
@@ -227,6 +238,22 @@ local SETTINGS_TABS = {
                         indent = true,
                         parent = "showSpeechFrame",
                         tooltip = "Make the frame taller so the whole passage shows without scrolling (very long text still scrolls). Pair with the Extra large size on the frame's gear menu.",
+                    },
+                    {
+                        option = "speechModel",
+                        label = "Show the NPC's talking head",
+                        indent = true,
+                        parent = "showSpeechFrame",
+                        tooltip = "Replace the flat portrait with the NPC's 3D head, talking while the line plays. Falls back to the portrait if the model cannot be shown.",
+                        onChange = function() if addon.SpeechSettingChanged then addon.SpeechSettingChanged("speechModel") end end,
+                    },
+                    {
+                        option = "speechPages",
+                        label = "Subtitles a page at a time",
+                        indent = true,
+                        parent = "showSpeechFrame",
+                        tooltip = "Show the text in short pages that turn as the voice reaches them, instead of one block that scrolls. Needs the clip's length, so a clip without one falls back to scrolling.",
+                        onChange = function() if addon.SpeechSettingChanged then addon.SpeechSettingChanged("speechPages") end end,
                     },
                 },
             },
