@@ -1,7 +1,6 @@
 # Changelog
 
-## Unreleased
-
+## 3.2.5
 ### Settings
 - The settings window has tabs: Playback, Sound, Speech frame and Interface. The status cards stay on the left.
 
