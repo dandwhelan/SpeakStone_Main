@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+### Sound
+- New: Silence Blizzard's greeting clips. Mutes the game's own "Greetings, traveller" and farewell recordings, which play the moment an NPC window opens. Off by default.
+
+### Speech frame
+- New: Show the NPC's talking head. A 3D head that talks while the line plays, instead of the flat portrait. Off by default.
+- New: Subtitles a page at a time. The text turns in short pages as the voice reaches them. Off by default.
+
 ## 3.2.5
 ### Settings
 - The settings window has tabs: Playback, Sound, Speech frame and Interface. The status cards stay on the left.

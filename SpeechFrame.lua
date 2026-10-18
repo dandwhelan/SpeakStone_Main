@@ -32,6 +32,10 @@ local MAX_FIT_LINES = 24
 -- How long the frame stays up after a line ends on its own.
 local LINGER_SECONDS = 2
 local UPDATE_INTERVAL = 0.1
+-- "Subtitles a page at a time": about four lines of the frame's text.
+local PAGE_CHARS = 250
+-- The "talk" emote animation, looped while a line plays.
+local TALK_ANIMATION = 60
 local DEFAULT_POINT = { "BOTTOM", "BOTTOM", 0, 190 }
 
 local PREVIEW_TEXT = "This is the SpeakStone speech frame. It appears when you walk away from a quest giver while "
@@ -73,6 +77,44 @@ local function SizeScale()
         end
     end
     return 1
+end
+
+-- Text cut into pages at sentence ends (a sentence longer than a page is
+-- split between words). Each page records the share of the text before it,
+-- which is when in the clip it should come up.
+local function Paginate(text)
+    local pieces = {}
+    for sentence in text:gmatch("[^%.!%?]+[%.!%?]*[\"']?%s*") do
+        if #sentence <= PAGE_CHARS then
+            pieces[#pieces + 1] = sentence
+        else
+            local part = ""
+            for word in sentence:gmatch("%S+%s*") do
+                if #part + #word > PAGE_CHARS and part ~= "" then
+                    pieces[#pieces + 1] = part
+                    part = ""
+                end
+                part = part .. word
+            end
+            if part ~= "" then pieces[#pieces + 1] = part end
+        end
+    end
+    if #pieces == 0 then pieces[1] = text end
+    local pages, page, before = {}, "", 0
+    local function push()
+        local trimmed = page:gsub("%s+$", "")
+        if trimmed ~= "" then
+            pages[#pages + 1] = { text = trimmed, at = before / math.max(1, #text) }
+        end
+        before = before + #page
+        page = ""
+    end
+    for _, piece in ipairs(pieces) do
+        if #page + #piece > PAGE_CHARS and page ~= "" then push() end
+        page = page .. piece
+    end
+    push()
+    return pages
 end
 
 local function Duration(sd)
@@ -218,6 +260,18 @@ local function Build()
     mask:SetAllPoints(frame.portrait)
     frame.portrait:AddMaskTexture(mask)
     frame.portraitMask = mask
+
+    -- The NPC's 3D head, over the portrait, when "Show the NPC's talking
+    -- head" is on. The talk emote runs again each time it ends, for as long
+    -- as a line is playing.
+    frame.model = CreateFrame("PlayerModel", nil, frame)
+    frame.model:SetAllPoints(frame.portrait)
+    frame.model:SetScript("OnAnimFinished", function(self)
+        if self.talking then
+            pcall(self.SetAnimation, self, TALK_ANIMATION)
+        end
+    end)
+    frame.model:Hide()
 
     frame.close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
     frame.close:SetSize(22, 22)
@@ -375,9 +429,68 @@ function addon.SpeechFrameCapturePortrait(sd)
     end
 end
 
+-- The creature id inside a GUID, nil for a player or a GUID the client will
+-- not let an addon read.
+local function CreatureID(guid)
+    local ok, id = pcall(function()
+        local kind, _, _, _, _, npcID = strsplit("-", guid)
+        return kind == "Creature" and tonumber(npcID) or nil
+    end)
+    return ok and id or nil
+end
+
+-- True when the 3D head is up (and the flat portrait is not).
+local function ShowModel(sd)
+    local model = frame.model
+    model.talking = false
+    if not DB().speechModel or sd.preview or not sd.npcGUID then
+        model:Hide()
+        return false
+    end
+    pcall(model.ClearModel, model)
+    local ok = false
+    if UnitExists("npc") then
+        local read, same = pcall(function() return UnitGUID("npc") == sd.npcGUID end)
+        if read and same then
+            ok = pcall(model.SetUnit, model, "npc")
+        end
+    end
+    if not ok then
+        -- Walked away, or a queued line: the NPC is no longer "npc".
+        local id = CreatureID(sd.npcGUID)
+        ok = id and pcall(model.SetCreature, model, id) or false
+    end
+    if not ok then
+        model:Hide()
+        return false
+    end
+    pcall(model.SetPortraitZoom, model, 0.9)
+    pcall(model.SetCamDistanceScale, model, 1)
+    model:Show()
+    frame.portrait:Hide()
+    HideCapturedPortraits()
+    return true
+end
+
+-- The head talks while a line plays and is still while paused or finished.
+local function UpdateTalking(sd)
+    local model = frame.model
+    if not model:IsShown() then
+        return
+    end
+    local talk = not paused and (sd.preview or sd.isPlaying) and true or false
+    if talk ~= model.talking then
+        model.talking = talk
+        pcall(model.SetAnimation, model, talk and TALK_ANIMATION or 0)
+    end
+end
+
 local function SetPortrait(sd)
     HideCapturedPortraits()
     frame.portrait:Show()
+    if ShowModel(sd) then
+        return
+    end
     if sd.portraitTex and sd.portraitTex.owner == sd then
         frame.portrait:Hide()
         sd.portraitTex:Show()
@@ -443,13 +556,16 @@ local function Fill(sd)
     if not width or width <= 0 then
         width = WIDTH - PORTRAIT - 12 - 14 - 16
     end
+    -- Pages need the clip's length to know when to turn.
+    frame.pages = DB().speechPages and Duration(sd) and Paginate(text) or nil
+    frame.pageShown = frame.pages and 1 or nil
     frame.text:SetWidth(width)
-    frame.text:SetText(text)
+    frame.text:SetText(frame.pages and frame.pages[1].text or text)
     local textHeight = math.max(1, frame.text:GetStringHeight())
     frame.scrollChild:SetSize(width, textHeight)
     -- Fixed four lines, or grown to fit the whole text (capped).
     local lines = TEXT_LINES
-    if DB().speechFitText then
+    if DB().speechFitText and not frame.pages then
         lines = math.max(TEXT_LINES, math.min(MAX_FIT_LINES, math.ceil(textHeight / frame.lineHeight)))
     end
     local scrollHeight = frame.lineHeight * lines
@@ -473,7 +589,18 @@ local function Refresh()
         -- Auto-scroll: keep the line being spoken (estimated from how far
         -- through the clip we are) in the middle of the text area.
         local range = frame.scroll:GetVerticalScrollRange()
-        if range > 0 and not paused and DB().speechAutoScroll ~= false and GetTime() >= (frame.manualScrollUntil or 0) then
+        if frame.pages then
+            local index = 1
+            for i, page in ipairs(frame.pages) do
+                if fraction >= page.at then index = i end
+            end
+            if index ~= frame.pageShown then
+                frame.pageShown = index
+                frame.text:SetText(frame.pages[index].text)
+                frame.scrollChild:SetSize(frame.text:GetWidth(), math.max(1, frame.text:GetStringHeight()))
+                frame.scroll:SetVerticalScroll(0)
+            end
+        elseif range > 0 and not paused and DB().speechAutoScroll ~= false and GetTime() >= (frame.manualScrollUntil or 0) then
             local target = fraction * frame.scrollChild:GetHeight() - frame.scroll:GetHeight() / 2
             frame.scroll:SetVerticalScroll(math.max(0, math.min(target, range)))
         end
@@ -483,6 +610,7 @@ local function Refresh()
         frame.controls.time:SetText(Clock(elapsed))
     end
     frame.controls.pause:SetText(paused and "Resume" or "Pause")
+    UpdateTalking(sd)
     -- Queue position ("1/2") and Next, only while something is queued.
     local total = addon.queueTotal or 0
     if total > 1 and not sd.preview then
@@ -774,8 +902,10 @@ end
 -- A speech-frame option changed (the gear menu, /ss, or the game's
 -- Options page): apply it to the frame now, not on the next clip.
 function addon.SpeechSettingChanged(key)
-    if key == "speechFitText" and frame then
+    if (key == "speechFitText" or key == "speechPages") and frame then
         frame.filledFor = nil
+    elseif key == "speechModel" and frame and current then
+        SetPortrait(current)
     elseif (key == "speechSize" or key == "speechFramePos") and frame then
         ApplyPosition()
     elseif key == "queueQuestSpeech" and not DB().queueQuestSpeech and addon.ClearSpeechQueue then
