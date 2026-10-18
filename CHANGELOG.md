@@ -1,5 +1,19 @@
 # Changelog
 
+## 3.2.6 (October 2026)
+
+### Greetings
+- NPC greetings play even when the game's text differs slightly from ours: dashes, quotation marks and capital letters no longer stop a line from playing.
+- Greetings for about 250 more lines are recognised, among them all nine of Orweyna's.
+
+### What's new
+- A new What's new button in the settings window (beside Profiles, or /ss whatsnew) lists the changes in each release, newest first, with dates.
+
+### Fixes
+- Fixed a rare error in the speech frame on WoW 12.x.
+
+Unofficial; not affiliated with Blizzard Entertainment.
+
 ## 3.2.5
 ### Settings
 - The settings window has tabs: Playback, Sound, Speech frame and Interface. The status cards stay on the left.

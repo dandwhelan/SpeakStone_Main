@@ -422,6 +422,111 @@ local ACCENT_GOOD = { 0.25, 0.82, 0.48 }
 local ACCENT_BAD = { 1, 0.42, 0.37 }
 local ACCENT_NEUTRAL = { 0.85, 0.75, 0.45 }
 
+-- What's new (owner, 2026-10-18: "Add a What's new button ... up to 20 items with the dates"). Newest first; keep
+-- at most 20 and drop the oldest when adding a release. Player wording only (CLAUDE.md public wording rules).
+local WHATS_NEW = {
+    { "3.2.6", "2026-10-18", {
+        "NPC greetings play even when the game's text differs slightly from ours (dashes, quote marks, capitals).",
+        "Greetings for about 250 more lines are recognised, among them all nine of Orweyna's.",
+        "This What's new window." } },
+    { "3.2.5", "2026-10-18", {
+        "Settings window with tabs: Playback, Sound, Speech frame and Interface.",
+        "New options: skip quests you've already heard, stay quiet in combat or in instances, and lower music and ambience while speaking.",
+        "A muted-speaker icon beside Read Quest shows when a quest has no voice yet.",
+        "Audio Library: Favourites and Recent tabs." } },
+    { "3.2.4", "2026-10-14", { "Updated for World of Warcraft 12.1.5." } },
+    { "3.2.3", "2026-10-14", {
+        "New greetings sent in through the website, among them Lilian Voss and Timothy Cunningham." } },
+    { "3.2.2", "2026-10-14", {
+        "About 2,300 retail quest lines re-recorded; over 1,200 now spoken by their quest giver instead of the narrator.",
+        "Every child, boy or girl, has the same child voice in both games.",
+        "WoW Forever: 89 new quest lines." } },
+    { "3.2.1", "2026-10-13", {
+        "New lines sent in by players for both games, and four re-recorded books.",
+        "Titles for 755 more quests and names for 81 more characters in the Audio Library." } },
+    { "3.2.0", "2026-10-12", {
+        "Place names said properly: the Deadmines, Darkshire, the Burning Steppes, Auchindoun and more.",
+        "Greetings that called every player by one class now say \"hero\" or \"traveller\".",
+        "About 1,600 lines re-recorded in the same voices." } },
+    { "3.1.6", "2026-10-11", {
+        "Quest queue: a greeting no longer holds up a quest, and queued lines keep the character's portrait." } },
+    { "3.1.5", "2026-10-10", {
+        "The Misc voice pack is retired: its lines belong to WoW Forever, where they are already voiced.",
+        "Every line plays at the same volume as the game's own voices." } },
+    { "3.1.4", "2026-10-09", {
+        "WoW Forever: quest titles and character names use Forever's own names, without \"[DEPRECATED]\" tags." } },
+    { "3.1.3", "2026-10-08", {
+        "Books and quest lines keep reading when you talk to an NPC who has nothing to say.",
+        "Greetings with quotation marks find their audio." } },
+    { "3.1.2", "2026-10-07", {
+        "A book's text stays on the speech bar after you walk away." } },
+    { "3.1.1", "2026-10-06", {
+        "Tidier settings window, quest queue fixes and a new Subtitles profile.",
+        "Far fewer quests show as \"Unknown quest\" in the Audio Library." } },
+    { "3.1.0", "2026-10-05", {
+        "Speech bar: the text scrolls along with the voice, can grow to show the whole passage, and has an Extra large size.",
+        "Quest queue: a second quest waits its turn instead of cutting the first one off." } },
+    { "3.0.1", "2026-10-04", {
+        "Captured text never includes your character's name.",
+        "Gossip reply pages no longer replay the greeting." } },
+    { "3.0.0", "2026-10-04", {
+        "The big voice update: over 103,000 voiced lines, more than 55,000 of them re-voiced.",
+        "Voices checked for every NPC's race and sex; new voices for Earthen, Vulpera, Tuskarr, Centaur and more." } },
+    { "2.0.5", "2026-09-29", { "Book text for more voiced pages." } },
+    { "2.0.3", "2026-09-29", { "The settings page knows the Cataclysm and Forever Chatter packs." } },
+    { "2.0.2", "2026-09-29", { "Every voiced book shows its text." } },
+    { "2.0.1", "2026-09-28", {
+        "Library buttons for Quests, Gossip and Books, and a book view that shows each page's text." } },
+}
+
+local whatsNewFrame
+function addon.ShowWhatsNew()
+    if whatsNewFrame then
+        whatsNewFrame:SetShown(not whatsNewFrame:IsShown())
+        return
+    end
+    local f = CreateFrame("Frame", "SpeakStoneWhatsNewFrame", UIParent, "BasicFrameTemplateWithInset")
+    f:SetSize(500, 460)
+    f:SetPoint("CENTER")
+    f:SetFrameStrata("DIALOG")
+    f:SetToplevel(true)
+    f:SetMovable(true)
+    f:EnableMouse(true)
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", f.StartMoving)
+    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    f:SetClampedToScreen(true)
+    tinsert(UISpecialFrames, "SpeakStoneWhatsNewFrame")
+    if f.TitleText then f.TitleText:SetText("What's new in SpeakStone") end
+
+    local scroll = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -32)
+    scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -32, 12)
+    local content = CreateFrame("Frame", nil, scroll)
+    content:SetSize(440, 10)
+    scroll:SetScrollChild(content)
+
+    local lines = {}
+    for _, entry in ipairs(WHATS_NEW) do
+        lines[#lines + 1] = "|cffffd100" .. entry[1] .. "|r  |cff9d9d9d" .. entry[2] .. "|r"
+        for _, item in ipairs(entry[3]) do
+            lines[#lines + 1] = "  - " .. item
+        end
+        lines[#lines + 1] = " "
+    end
+    lines[#lines + 1] = "|cff9d9d9dUnofficial; not affiliated with Blizzard Entertainment.|r"
+    local text = content:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    text:SetPoint("TOPLEFT", 4, -4)
+    text:SetWidth(430)
+    text:SetJustifyH("LEFT")
+    text:SetSpacing(3)
+    text:SetText(table.concat(lines, "\n"))
+    content:SetHeight(text:GetStringHeight() + 12)
+
+    whatsNewFrame = f
+    f:Show()
+end
+
 function SpeakStone:CreateWindow()
     if addon.settingsWindow then return addon.settingsWindow end
 
@@ -754,6 +859,13 @@ function SpeakStone:CreateWindow()
     profiles:SetScript("OnClick", function() if addon.ShowTutorial then addon.ShowTutorial(2) end end)
     AttachTooltip(profiles, "Profiles", "Switch to a premade profile, or rerun the first-start setup. Also /ss tutorial.")
 
+    local whatsNew = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    whatsNew:SetSize(100, 24)
+    whatsNew:SetPoint("RIGHT", profiles, "LEFT", -6, 0)
+    whatsNew:SetText("What's new")
+    whatsNew:SetScript("OnClick", function() addon.ShowWhatsNew() end)
+    AttachTooltip(whatsNew, "What's new", "The changes in each release, newest first, with dates. Also /ss whatsnew.")
+
     -- ----------------------------------------------------------------------
     -- Keeping the cards true
     -- ----------------------------------------------------------------------
@@ -962,6 +1074,9 @@ SlashCmdList.SPEAKSTONE = function(msg)
         return
     elseif msg == "frame" then
         if addon.SpeechFramePreview then addon.SpeechFramePreview() end
+        return
+    elseif msg == "whatsnew" or msg == "new" then
+        addon.ShowWhatsNew()
         return
     end
     addon:OpenSettings()

@@ -56,10 +56,14 @@ local function DB()
 end
 
 local function Readable(value)
-    if type(value) ~= "string" or value == "" then
+    if type(value) ~= "string" then
         return nil
     end
+    -- Secret check must come before any comparison: `value == ""` on a secret string taints/errors.
     if addon.IsSecret and addon.IsSecret(value) then
+        return nil
+    end
+    if value == "" then
         return nil
     end
     return value

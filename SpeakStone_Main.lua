@@ -1642,16 +1642,88 @@ local function SwapIdentity(text, token)
     return text
 end
 
-local function LookupGossipVariant(knownTexts, liveText)
+local function CanonicalGossip(text)
+    if type(text) ~= "string" then return "" end
+    local s = text:lower():gsub("[%p%c]", " ")
+    return s:gsub("%s+", " "):gsub("^ ", ""):gsub(" $", "")
+end
+
+local function WordsSet(canonicalText)
+    local set, count = {}, 0
+    for w in canonicalText:gmatch("%S+") do
+        if not set[w] then
+            set[w] = true
+            count = count + 1
+        end
+    end
+    return set, count
+end
+
+local function WordJaccard(words1, count1, words2, count2)
+    if count1 == 0 or count2 == 0 then return 0 end
+    local match = 0
+    for w in pairs(words1) do
+        if words2[w] then match = match + 1 end
+    end
+    local union = count1 + count2 - match
+    if union == 0 then return 0 end
+    return match / union
+end
+
+local function LookupGossipVariant(knownTexts, liveText, transcribed)
     local ok, key = pcall(NormalizeGossipText, liveText)
     if not ok or not key then return nil end
+
+    -- 1. Byte-exact match
     if knownTexts[key] then return knownTexts[key] end
+
+    -- 2. Exact match with class/race substitutions ($c, $r)
     local okSwap, withClass, withRace, withBoth = pcall(function()
         local c = SwapIdentity(key, "$c")
         return c, SwapIdentity(key, "$r"), SwapIdentity(c, "$r")
     end)
-    if not okSwap then return nil end
-    return knownTexts[withClass] or knownTexts[withRace] or knownTexts[withBoth]
+    if okSwap then
+        local found = knownTexts[withClass] or knownTexts[withRace] or knownTexts[withBoth]
+        if found then return found end
+    end
+
+    -- 3. Canonical match (punctuation, em-dashes '--', smart quotes, casing insensitive)
+    local canonLive = CanonicalGossip(key)
+    local canonWithClass = okSwap and CanonicalGossip(withClass)
+    local canonWithRace = okSwap and CanonicalGossip(withRace)
+    local canonWithBoth = okSwap and CanonicalGossip(withBoth)
+
+    for k, v in pairs(knownTexts) do
+        local ck = CanonicalGossip(k)
+        if ck == canonLive or ck == canonWithClass or ck == canonWithRace or ck == canonWithBoth then
+            return v
+        end
+    end
+
+    -- 4. Word-overlap fallback (>= 70% with a clear margin), ONLY against lines whose stored text was transcribed
+    -- from the clip (SpeakStone_GossipTranscribed, tools/build_gossip_texts.py) and may hold a misheard word. Run
+    -- against Blizzard's own text it misfired: city guards have dozens of near-identical answers, and with one
+    -- clip missing, ~300 of 8,693 lines would have played another variant (2026-10-18 measurement).
+    local liveWords, liveWordCount = WordsSet(canonLive)
+    if transcribed and liveWordCount >= 5 then
+        local bestVariant, bestScore, secondScore = nil, 0, 0
+        for k, v in pairs(transcribed) do
+            local kWords, kWordCount = WordsSet(CanonicalGossip(k))
+            local score = WordJaccard(liveWords, liveWordCount, kWords, kWordCount)
+            if score > bestScore then
+                secondScore = bestScore
+                bestScore = score
+                bestVariant = v
+            elseif score > secondScore then
+                secondScore = score
+            end
+        end
+        if bestScore >= 0.70 and (bestScore - secondScore >= 0.15) then
+            return bestVariant
+        end
+    end
+
+    return nil
 end
 
 function addon.GossipTextKnown(npcID, text)
@@ -1659,7 +1731,7 @@ function addon.GossipTextKnown(npcID, text)
     if not known or type(text) ~= "string" or IsSecret(text) then
         return false
     end
-    return LookupGossipVariant(known, text) ~= nil
+    return LookupGossipVariant(known, text, SpeakStone_GossipTranscribed and SpeakStone_GossipTranscribed[npcID]) ~= nil
 end
 
 local function CreatureIDFromGUID(guid)
@@ -1714,7 +1786,8 @@ local function PlayGossipAudio()
     if knownTexts then
         local ok, liveText = pcall(C_GossipInfo.GetText)
         if ok and liveText and not IsSecret(liveText) then
-            variant = LookupGossipVariant(knownTexts, liveText)
+            variant = LookupGossipVariant(knownTexts, liveText,
+                SpeakStone_GossipTranscribed and SpeakStone_GossipTranscribed[npcID])
         end
         if not variant then
             local key = "gossip-nomatch-" .. npcID
