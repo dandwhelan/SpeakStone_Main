@@ -1,4 +1,10 @@
 local addonName, addon = ...
+-- WoW Forever reports interface numbers in the 16xxx band (Harvester.lua matches the same band). Read at run time so
+-- one source tree serves both games: the Forever build only renames the saved variables and swaps the data tables.
+do
+    local interfaceVersion = select(4, GetBuildInfo())
+    addon.IS_FOREVER = type(interfaceVersion) == "number" and interfaceVersion >= 16000 and interfaceVersion <= 16999
+end
 local LDB = LibStub("LibDataBroker-1.1")
 local icon = LibStub("LibDBIcon-1.0")
 
@@ -158,6 +164,36 @@ local defaultSettings = {
     -- Scroll the text along with the voice. Off = the text stays put and the
     -- mouse wheel scrolls it.
     speechAutoScroll = true,
+    -- Dialogue UI: show the quest text paragraph by paragraph as the voice
+    -- reaches it. Off by default (it hides text the player may want to skim).
+    syncDialogueText = false,
+    -- Subtitles: the line in a small bar over the world, words typed out as the
+    -- voice reaches them, the word being read in gold (Subtitles.lua). Off by
+    -- default; when on, the speech frame stays away.
+    -- The look of SpeakStone's own windows: "parchment", "stone" or "midnight" (Theme.lua).
+    uiTheme = "stone",
+    showSubtitles = false,
+    -- Subtitles also over the open quest window (off: they wait until you walk away).
+    subtitlesWhileOpen = false,
+    -- The font the subtitles, speech frame and Guide text are read in (Fonts.lua): "default",
+    -- "opendyslexic", ... and the subtitle text size.
+    readingFont = "default",
+    subtitleFontSize = 18,
+    -- The colour of the word being read: "auto" (gold, deep red on parchment), "gold", "white", ...
+    highlightColour = "auto",
+    -- Subtitle bar: its own background and text colours (accessibility); "theme" follows the theme.
+    subtitleBack = "theme",
+    subtitleText = "theme",
+    -- Blizzard's talking head: light the word being read (DialogueSync.lua).
+    talkingHeadHighlight = false,
+    -- A quest line that comes up in combat waits and plays when combat ends,
+    -- instead of talking over the fight (or, with pauseAutoPlayInCombat, being
+    -- dropped).
+    waitForCombatEnd = false,
+    subtitleTypeOut = true,
+    subtitleHighlight = true,
+    subtitleRows = 2,
+    subtitleLocked = false,
     -- Grow the frame to show the whole text (up to SpeechFrame's cap)
     -- instead of a four-line scroll area.
     speechFitText = false,
@@ -194,7 +230,9 @@ local function AutoPlayAllowed(kind)
     if not SpeakStone_MainDB or not SpeakStone_MainDB.autoPlayEnabled then
         return false
     end
-    if SpeakStone_MainDB.pauseAutoPlayInCombat
+    -- "Wait for combat to end" holds the line instead (ScheduleSound), so it
+    -- is not dropped here.
+    if SpeakStone_MainDB.pauseAutoPlayInCombat and not SpeakStone_MainDB.waitForCombatEnd
         and ((InCombatLockdown and InCombatLockdown()) or UnitAffectingCombat("player")) then
         return false
     end
@@ -646,7 +684,7 @@ local function BuildAudioIndex()
                         -- idStr is kept rather than rebuilt with tostring
                         -- in the library's search filter, which compared
                         -- against it once per quest on every pass.
-                        entry = { id = id, idStr = questID, types = {} }
+                        entry = { id = id, idStr = questID, types = {}, pack = packName }
                         quests[id] = entry
                         questCount = questCount + 1
                     end
@@ -679,6 +717,7 @@ local function BuildAudioIndex()
                             npcIDStr = npcIDStr,
                             variant = tonumber(variantStr),
                             soundFile = soundFile,
+                            pack = packName,
                         })
                         if not gossipNPCSeen[npcID] then
                             gossipNPCSeen[npcID] = true
@@ -1166,6 +1205,10 @@ local function StopCurrentSound(keepQueue)
         return
     end
 
+    if addon.combatHold == currentSound then
+        addon.combatHold = nil
+        currentSound.waitingReason = nil
+    end
     if currentSound.nextSoundTimer then
         currentSound.nextSoundTimer:Cancel()
     end
@@ -1295,8 +1338,13 @@ end
 -- that is already waiting when a new voice line starts, to push it back.
 -- Manual plays (the keybind, the quest window button) skip this: pressing
 -- play means now.
+local HoldForCombat
+
 local function ScheduleSound(soundData, delay)
     delay = delay or 0
+    if HoldForCombat(soundData) then
+        return
+    end
     if YieldingToNPCVoice() then
         delay = math.max(delay, npcVoiceEndsAt - GetTime() + NPCVoiceGap())
     end
@@ -1318,6 +1366,47 @@ local function ScheduleSound(soundData, delay)
     else
         DoPlaySound(soundData)
     end
+end
+
+-- A quest line that comes up in combat waits for it to end (waitForCombatEnd)
+-- and plays then. Only quest text: gossip and books belong to a window the
+-- player is looking at, which is no longer the case once the fight is over.
+local function InCombat()
+    return (InCombatLockdown and InCombatLockdown()) or UnitAffectingCombat("player")
+end
+
+local combatFrame
+
+-- Combat ended: play the line that was waiting, if it is still the one the
+-- player is waiting for (not stopped, not replaced).
+function addon.OnCombatEnded()
+    if combatFrame then
+        combatFrame:UnregisterEvent("PLAYER_REGEN_ENABLED")
+    end
+    local held = addon.combatHold
+    addon.combatHold = nil
+    if held and addon.activeSound == held then
+        held.waitingReason = nil
+        ScheduleSound(held, tonumber(SpeakStone_MainDB.autoPlayDelay) or 1.0)
+    end
+end
+
+function HoldForCombat(soundData)
+    if not SpeakStone_MainDB.waitForCombatEnd or not InCombat() then
+        return false
+    end
+    if not soundData.questID or soundData.textType == "gossip" or soundData.textType == "item" then
+        return false
+    end
+    addon.combatHold = soundData
+    soundData.waitingReason = "Waiting: in combat"
+    if not combatFrame then
+        combatFrame = CreateFrame("Frame")
+        combatFrame:SetScript("OnEvent", addon.OnCombatEnded)
+    end
+    combatFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+    NotifySpeechFrame("wait", soundData)
+    return true
 end
 
 -- Capture for a passage that had no audio. The recording itself lives in
@@ -1464,6 +1553,14 @@ function PlayQuestAudio(textType, skipDelay)
             return
         end
         addon.activeSound = soundData
+        -- Dialogue UI's own text: blank its words now so the page does not flash
+        -- whole before the voice starts (DialogueSync.lua; opt-in).
+        if addon.QuestTextSyncExpect then
+            local ok, err = pcall(addon.QuestTextSyncExpect, soundData)
+            if not ok then
+                geterrorhandler()(err)
+            end
+        end
 
         -- Delay shortly to account for greeting audio when using autoplay
         if SpeakStone_MainDB.autoPlayEnabled and not skipDelay and not SpeakStone_MainDB.muteGossip then
@@ -2050,6 +2147,9 @@ addon.StopBook = StopBook
 local PlayItemAudio
 
 local function HookDialogueUI()
+    if addon.QuestTextSyncHook then
+        addon.QuestTextSyncHook()
+    end
     if DUIBookFrame and not addon.duiHooked then
         if type(DUIBookFrame.ScrollToPage) == "function" and type(DUIBookFrame.ScrollTo) == "function" then
             addon.duiHooked = true

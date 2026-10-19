@@ -1,5 +1,20 @@
 # Changelog
 
+## 4.0.0
+
+**New**
+- Subtitles: the line being spoken is shown over the world in its own small bar, with the word being read highlighted. Off by default; turn it on in settings.
+- Dialogue UI: quest text can follow the voice inside Dialogue UI's own window (optional).
+- A redesigned SpeakStone Guide and settings window, with themes and font choices.
+- The Guide shows each quest's zone and who gives it, and can group by NPC.
+
+**Voices** (arrive with the voice packs)
+- Corrected pronunciation of Primalists, Nozdormu, Murozond, Khadgar, Kel'Thuzad and Runecarver.
+- Jesper (Hallow's End) now has a child's voice.
+- New takes for Archmage Khadgar and Chromie.
+
+Unofficial; not affiliated with Blizzard Entertainment. The voices are similar to the in-game characters.
+
 ## 3.2.6 (October 2026)
 
 ### Greetings

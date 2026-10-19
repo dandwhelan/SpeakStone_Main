@@ -104,7 +104,7 @@ local SETTINGS_TABS = {
         title = "Playback",
         sections = {
             {
-                title = "Reading",
+                title = "What is read",
                 options = {
                     {
                         option = "autoPlayEnabled",
@@ -141,6 +141,11 @@ local SETTINGS_TABS = {
                         indent = true,
                         tooltip = "Autoplay leaves a quest passage alone once you have heard it, on any character. Read Quest still plays it. /ss forget clears the list.",
                     },
+                },
+            },
+            {
+                title = "When it is read",
+                options = {
                     {
                         option = "queueQuestSpeech",
                         label = "Queue quests instead of interrupting",
@@ -151,11 +156,11 @@ local SETTINGS_TABS = {
                         label = "Auto-accept quests (hold Shift to skip)",
                         tooltip = "Accept quests as soon as they are offered and hear them in the speech frame instead. Hold Shift while talking to the quest giver to skip it for that quest.",
                     },
-                },
-            },
-            {
-                title = "Stay quiet",
-                options = {
+                    {
+                        option = "waitForCombatEnd",
+                        label = "Wait for combat to end before reading a quest",
+                        tooltip = "A quest line that comes up in combat waits, and plays once the fight is over. Subtitles show it waiting. Off: it plays straight away (or is skipped, if autoplay is set to pause in combat).",
+                    },
                     {
                         option = "pauseAutoPlayInCombat",
                         label = "Not in combat",
@@ -203,10 +208,50 @@ local SETTINGS_TABS = {
         },
     },
     {
-        title = "Speech frame",
+        title = "On screen",
         sections = {
             {
-                title = "Speech frame",
+                title = "Subtitles",
+                info = "A small bar over the world that shows who is speaking and the words as the voice reaches them once you walk "
+                    .. "away from the NPC. Drag it to move it, right-click it for more, Ctrl and the mouse wheel resize it.",
+                options = {
+                    {
+                        option = "showSubtitles",
+                        label = "Show subtitles instead of the speech frame",
+                        tooltip = "A small bar over the world shows who is speaking and the words as the voice reaches them, even while the quest window is open. Drag it to move it; right-click for more. Ctrl and the mouse wheel resize it.",
+                    },
+                    {
+                        option = "subtitlesWhileOpen",
+                        label = "Also show them while the quest window is open",
+                        indent = true,
+                        parent = "showSubtitles",
+                        tooltip = "The quest window already shows the text, so by default the subtitles appear once you walk away or the window closes. Turn this on to have them over the world even while the window is open.",
+                    },
+                    {
+                        option = "subtitleTypeOut",
+                        label = "Type the words out",
+                        indent = true,
+                        parent = "showSubtitles",
+                        tooltip = "The words appear as the voice reaches them. Off: the whole line shows and the row being read stays in view. The timing is an estimate: the recordings do not mark where each word falls.",
+                    },
+                    {
+                        option = "subtitleHighlight",
+                        label = "Highlight the word being read in gold",
+                        indent = true,
+                        parent = "showSubtitles",
+                        tooltip = "Lights the word being read and the one before it.",
+                    },
+                    {
+                        option = "subtitleLocked",
+                        label = "Lock the subtitles in place",
+                        indent = true,
+                        parent = "showSubtitles",
+                        tooltip = "The bar no longer catches the mouse: it cannot be dragged or resized, and clicks pass through to the game.",
+                    },
+                },
+            },
+            {
+                title = "Speech bar",
                 info = SPEECH_FRAME_INFO,
                 options = {
                     {
@@ -230,10 +275,44 @@ local SETTINGS_TABS = {
                     },
                 },
             },
+            {
+                title = "In other windows",
+                options = {
+                    {
+                        option = "syncDialogueText",
+                        label = "Reveal quest text as it is spoken (Dialogue UI)",
+                        tooltip = "With the Dialogue UI addon, the quest text follows the voice: words appear as it reaches them and the word being read is gold (set under Subtitles: Type the words out, Highlight). The timing is an estimate. Off: the full text shows straight away.",
+                    },
+                    {
+                        option = "talkingHeadHighlight",
+                        label = "Light the word being read in talking heads",
+                        tooltip = "Blizzard's talking head shows its words whole. This lights the word being read as the line plays, in the highlight colour. The timing is an estimate.",
+                    },
+                },
+                extras = { "previews" },
+            },
         },
     },
     {
-        title = "Interface",
+        title = "Look",
+        sections = {
+            {
+                title = "Theme",
+                extras = { "theme" },
+                options = {},
+            },
+            {
+                title = "Font and colours",
+                info = "How the words SpeakStone shows are drawn: the font, its size and the colours, in the subtitle bar, the "
+                    .. "speech frame and the Guide. A font made to be easier on the eye can help readers with dyslexia; which one "
+                    .. "works best is personal, so there are several to try.",
+                extras = { "font", "fontpreview", "fontsize", "subback", "subtext", "colour" },
+                options = {},
+            },
+        },
+    },
+    {
+        title = "General",
         sections = {
             {
                 title = "Interface",
@@ -264,12 +343,24 @@ local SETTINGS_TABS = {
                     },
                 },
             },
+            {
+                title = "Help and community",
+                extrasFirst = true,
+                extras = { "links" },
+                options = {
+                    {
+                        option = "showDebugMessages",
+                        label = "Advanced: show debug messages in chat",
+                        small = true,
+                        tooltip = "Prints which clip was chosen, and says so when a quest has no audio installed. Useful when reporting a problem.",
+                    },
+                },
+            },
         },
     },
 }
 
--- A troubleshooting switch, not a preference: kept out of the sections and
--- drawn small at the foot of the options.
+-- A troubleshooting switch, not a preference: drawn small at the foot of the General tab.
 local DEBUG_OPTION = {
     option = "showDebugMessages",
     label = "Advanced: show debug messages in chat",
@@ -323,6 +414,7 @@ local function CreateCard(parent, spec)
     local bg = card:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
     bg:SetColorTexture(0.09, 0.08, 0.07, 0.85)
+    card.ssCardBg = bg
 
     -- The one piece of colour on the tile. It carries the state, so a glance
     -- at the left column says which tile wants attention.
@@ -343,6 +435,7 @@ local function CreateCard(parent, spec)
     value:SetWidth(CARD_WIDTH - 20)
     value:SetJustifyH("LEFT")
     card.value = value
+    value.ssRole = false
 
     local caption = card:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     -- Anchored below the value line now, not off the card's bottom edge --
@@ -370,7 +463,9 @@ end
 local function SetCardState(card, accent, value, caption)
     card.accent:SetColorTexture(accent[1], accent[2], accent[3], 1)
     card.value:SetText(value or "")
-    card.value:SetTextColor(accent[1], accent[2], accent[3])
+    -- Bright greens and golds vanish on paper: the same hues, darker.
+    local shade = addon.Theme().light and 0.55 or 1
+    card.value:SetTextColor(accent[1] * shade, accent[2] * shade, accent[3] * shade)
     card.caption:SetText(caption or "")
 end
 
@@ -395,6 +490,8 @@ local EXPECTED_PACK_FAMILIES = {
         packs = { "Audio_Pack1", "Audio_Pack2", "Chatter" },
     },
 }
+
+addon.EXPECTED_PACK_FAMILIES = EXPECTED_PACK_FAMILIES   -- the Guide's Voice packs tab reads it
 
 -- Judged against whichever family the player actually uses, so someone on
 -- the Forever bundle is not told they lack every expansion pack.
@@ -425,6 +522,13 @@ local ACCENT_NEUTRAL = { 0.85, 0.75, 0.45 }
 -- What's new (owner, 2026-10-18: "Add a What's new button ... up to 20 items with the dates"). Newest first; keep
 -- at most 20 and drop the oldest when adding a release. Player wording only (CLAUDE.md public wording rules).
 local WHATS_NEW = {
+    { "4.0.0", "2026-10-19", {
+        "A complete interface rebuild: three themes (Parchment, Stone, Midnight), a new settings window and a guided tutorial.",
+        "The SpeakStone Guide: browse every voiced quest, greeting and book by expansion, zone, NPC or title, read the text and read along as it plays.",
+        "A Voice packs tab shows which packs you have and which are missing.",
+        "Subtitles and a text box when you walk away, with the word being read lit.",
+        "Choose subtitle colours, a reading font and text size, helpful for dyslexia and low vision.",
+        "WoW Forever has the same new interface, with its own quest texts and packs." } },
     { "3.2.6", "2026-10-18", {
         "NPC greetings play even when the game's text differs slightly from ours (dashes, quote marks, capitals).",
         "Greetings for about 250 more lines are recognised, among them all nine of Orweyna's.",
@@ -485,22 +589,11 @@ function addon.ShowWhatsNew()
         whatsNewFrame:SetShown(not whatsNewFrame:IsShown())
         return
     end
-    local f = CreateFrame("Frame", "SpeakStoneWhatsNewFrame", UIParent, "BasicFrameTemplateWithInset")
-    f:SetSize(500, 460)
-    f:SetPoint("CENTER")
-    f:SetFrameStrata("DIALOG")
-    f:SetToplevel(true)
-    f:SetMovable(true)
-    f:EnableMouse(true)
-    f:RegisterForDrag("LeftButton")
-    f:SetScript("OnDragStart", f.StartMoving)
-    f:SetScript("OnDragStop", f.StopMovingOrSizing)
-    f:SetClampedToScreen(true)
+    local f = addon.UIK.Window("SpeakStoneWhatsNewFrame", 500, 460, "What's new in SpeakStone")
     tinsert(UISpecialFrames, "SpeakStoneWhatsNewFrame")
-    if f.TitleText then f.TitleText:SetText("What's new in SpeakStone") end
 
     local scroll = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -32)
+    scroll:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -42)
     scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -32, 12)
     local content = CreateFrame("Frame", nil, scroll)
     content:SetSize(440, 10)
@@ -508,13 +601,13 @@ function addon.ShowWhatsNew()
 
     local lines = {}
     for _, entry in ipairs(WHATS_NEW) do
-        lines[#lines + 1] = "|cffffd100" .. entry[1] .. "|r  |cff9d9d9d" .. entry[2] .. "|r"
+        lines[#lines + 1] = addon.Theme().titleCode .. entry[1] .. "|r  " .. addon.Theme().dimCode .. entry[2] .. "|r"
         for _, item in ipairs(entry[3]) do
             lines[#lines + 1] = "  - " .. item
         end
         lines[#lines + 1] = " "
     end
-    lines[#lines + 1] = "|cff9d9d9dUnofficial; not affiliated with Blizzard Entertainment.|r"
+    lines[#lines + 1] = addon.Theme().dimCode .. "Unofficial; not affiliated with Blizzard Entertainment.|r"
     local text = content:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     text:SetPoint("TOPLEFT", 4, -4)
     text:SetWidth(430)
@@ -530,32 +623,18 @@ end
 function SpeakStone:CreateWindow()
     if addon.settingsWindow then return addon.settingsWindow end
 
-    local frame = CreateFrame("Frame", "SpeakStoneSettingsFrame", UIParent, "BasicFrameTemplateWithInset")
-    frame:SetSize(FRAME_WIDTH, FRAME_HEIGHT)
-    frame:SetPoint("CENTER")
-    frame:SetMovable(true)
-    frame:EnableMouse(true)
-    frame:RegisterForDrag("LeftButton")
-    frame:SetScript("OnDragStart", frame.StartMoving)
-    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
-    frame:SetClampedToScreen(true)
-    frame:SetFrameStrata("DIALOG")
-    frame:Hide()
+    local frame = addon.UIK.Window("SpeakStoneSettingsFrame", FRAME_WIDTH, FRAME_HEIGHT, "SpeakStone")
     tinsert(UISpecialFrames, "SpeakStoneSettingsFrame")
     -- The tutorial opens at login, so Settings often opens on top of it.
     frame:HookScript("OnShow", function()
         if addon.PlaceTutorial then addon.PlaceTutorial() end
     end)
 
-    if frame.TitleText then
-        frame.TitleText:SetText("SpeakStone")
-    end
-
     local version = C_AddOns and C_AddOns.GetAddOnMetadata
         and C_AddOns.GetAddOnMetadata(addonName, "Version")
     if version then
         local versionText = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-        versionText:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -30, -8)
+        versionText:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -42, -12)
         versionText:SetText("v" .. version)
     end
 
@@ -576,74 +655,37 @@ function SpeakStone:CreateWindow()
     end
 
     local function CardButton(card, text, width, onClick, tooltip)
-        local button = CreateFrame("Button", nil, card, "UIPanelButtonTemplate")
-        button:SetSize(width, 22)
-        button:SetText(text)
-        button:SetScript("OnClick", onClick)
+        local button = addon.UIK.Button(card, text, width, 22, onClick)
         AttachTooltip(button, text, tooltip)
         return button
     end
 
-    cards.packs = PlaceCard({ label = "VOICE PACKS", onClick = function() OpenAudioLibraryUI() end })
-    AttachTooltip(cards.packs, "Voice packs", "How much audio is installed and where it came from. Click to browse and replay every voiced quest your packs provide.")
+    cards.packs = PlaceCard({ label = "VOICE PACKS", onClick = function() OpenAudioLibraryUI("packs") end })
+    AttachTooltip(cards.packs, "Voice packs", "How much audio is installed and where it came from. Click to see, in the SpeakStone Guide, which pack of each expansion is installed and which is missing.")
 
     cards.captured = PlaceCard({ label = "YOUR CAPTURES", onClick = ExportHarvest })
     AttachTooltip(cards.captured, "Your captures", "Greetings and book pages exist nowhere but a live client, so they are the part worth sending. Click to export everything recorded so far.")
 
-    -- The capture switch's state, with what to do about what it has caught.
-    cards.capture = PlaceCard({ label = "CAPTURE" }, CARD_HEIGHT + 30)
-    AttachTooltip(cards.capture, "Capture", "Whether SpeakStone is recording the text it encounters. Your character's name is replaced with $n before anything is stored.")
-    local export = CardButton(cards.capture, "Export", 96, ExportHarvest,
-        "Everything recorded: NPC greetings, books and quest text, in one payload to paste at the site. Also /ssharvest export.")
-    export:SetPoint("BOTTOMLEFT", cards.capture, "BOTTOMLEFT", 10, 8)
-    local clear = CardButton(cards.capture, "Clear", 96,
-        function() StaticPopup_Show("SPEAKSTONE_CONFIRM_CLEAR_HARVEST") end,
-        "Throw away everything captured so far. Submit it first if you have not.")
-    clear:SetPoint("LEFT", export, "RIGHT", 8, 0)
-
-    -- One card for every link. An addon cannot open a browser, so each
-    -- button puts its address in the box below, selected, ready to copy.
-    local links = PlaceCard({ label = "LINKS" }, 150)
-    links.value:Hide()
-    links.caption:Hide()
-    links.accent:SetColorTexture(ACCENT_NEUTRAL[1], ACCENT_NEUTRAL[2], ACCENT_NEUTRAL[3], 1)
-    local linkBox = CreateFrame("EditBox", nil, links, "InputBoxTemplate")
-    linkBox:SetSize(CARD_WIDTH - 30, 20)
-    linkBox:SetPoint("BOTTOMLEFT", links, "BOTTOMLEFT", 16, 8)
-    linkBox:SetAutoFocus(false)
-    local linkURL = "https://" .. WEBSITE
-    linkBox:SetText(linkURL)
-    linkBox:SetCursorPosition(0)
-    -- Read-only in effect: typing into it would only mislead.
-    linkBox:SetScript("OnTextChanged", function(self, userInput)
-        if userInput then
-            self:SetText(linkURL)
-            self:HighlightText()
-        end
-    end)
-    linkBox:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
-    linkBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
-
-    local previousLink
-    for _, spec in ipairs({
-        { "Submit captured text", "", "Submit captured text, and get voice packs." },
-        { "Report an issue", "/report", "Wrong voice, broken audio, or anything else worth flagging." },
-        { "Lend your voice", "/voice", "Sign up to lend your voice to an NPC." },
-    }) do
-        local path = spec[2]
-        local button = CardButton(links, spec[1], CARD_WIDTH - 20, function()
-            linkURL = "https://" .. WEBSITE .. path
-            linkBox:SetText(linkURL)
-            linkBox:SetFocus()
-            linkBox:HighlightText()
-        end, spec[3] .. " Puts the address in the box below to copy (Ctrl+C).")
-        if previousLink then
-            button:SetPoint("TOPLEFT", previousLink, "BOTTOMLEFT", 0, -4)
-        else
-            button:SetPoint("TOPLEFT", links.label, "BOTTOMLEFT", 0, -8)
-        end
-        previousLink = button
-    end
+    -- The way into everything else, one button each: the Guide browses what is voiced, the setup
+    -- guide walks through the choices again, What's new lists the changes.
+    local guideButton = addon.UIK.Button(frame, "Open SpeakStone Guide", CARD_WIDTH, 36, function() OpenAudioLibraryUI() end)
+    guideButton:SetPoint("TOPLEFT", frame, "TOPLEFT", LEFT_X, nextCardY - 6)
+    -- The same dark button as Tutorial and What's new, but taller with a larger label so it is the one to press.
+    guideButton:SetHeight(44)
+    guideButton.label:SetFontObject("GameFontNormalMed3")
+    guideButton.Paint()   -- SetFontObject resets the label colour
+    AttachTooltip(guideButton, "SpeakStone Guide", "Browse and replay every voiced quest, greeting and book, grouped by expansion, zone, NPC or title, with the words and how much you have heard. Also /sslibrary.")
+    local guideHint = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    guideHint:SetPoint("TOPLEFT", guideButton, "BOTTOMLEFT", 2, -6)
+    guideHint:SetWidth(CARD_WIDTH - 4)
+    guideHint:SetJustifyH("LEFT")
+    guideHint:SetText("Quests, gossip, books, favourites and recent, with the text and a read-along.")
+    local setupButton = addon.UIK.Button(frame, "Tutorial", CARD_WIDTH, 26, function() if addon.ShowTutorial then addon.ShowTutorial(1) end end)
+    setupButton:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", LEFT_X, 48)
+    AttachTooltip(setupButton, "Tutorial", "Walk through the choices again: profile, how it looks, and how it behaves while you play. Also /ss tutorial.")
+    local newButton = addon.UIK.Button(frame, "What's new", CARD_WIDTH, 26, function() addon.ShowWhatsNew() end)
+    newButton:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", LEFT_X, 16)
+    AttachTooltip(newButton, "What's new", "The changes in each release, newest first, with dates. Also /ss whatsnew.")
 
     -- ----------------------------------------------------------------------
     -- Right column: the options, one tab at a time
@@ -666,13 +708,6 @@ function SpeakStone:CreateWindow()
         for _, button in ipairs(dependentButtons) do
             local master = SpeakStone_MainDB[button.parentOption]
             if master then button:Enable() else button:Disable() end
-            if button.text then
-                if master then
-                    button.text:SetTextColor(1, 0.82, 0)
-                else
-                    button.text:SetTextColor(0.5, 0.5, 0.5)
-                end
-            end
         end
     end
 
@@ -689,26 +724,20 @@ function SpeakStone:CreateWindow()
         end
         Advance(20)
 
-        local divider = panel:CreateTexture(nil, "ARTWORK")
+        local divider = addon.UIK.Divider(panel)
         divider:SetPoint("TOPLEFT", frame, "TOPLEFT", RIGHT_X, cursorY)
         divider:SetSize(optionsWidth, 1)
-        divider:SetColorTexture(0.35, 0.31, 0.24, 0.9)
         Advance(8)
     end
 
     local function makeCheckButton(info)
-        local checkButton = CreateFrame("CheckButton", addonName .. "CheckBox_" .. info.option, panel, "SettingsCheckBoxTemplate")
+        local checkButton = addon.UIK.Check(panel, info.label, info.small and "GameFontDisableSmall" or "GameFontNormal")
         -- Indented options are the ones the option above them governs, so the
         -- shape of the list says which switch turns which off.
         local x = RIGHT_X + 2 + (info.indent and 18 or 0)
         checkButton:SetPoint("TOPLEFT", frame, "TOPLEFT", x, cursorY)
-        checkButton.text = checkButton:CreateFontString(nil, "ARTWORK", info.small and "GameFontDisableSmall" or "GameFontNormal")
-        checkButton.text:SetText(info.label)
-        checkButton.text:SetPoint("LEFT", checkButton, "RIGHT", 4, 0)
-        checkButton:SetSize(21, 20)
         -- The label is part of the click target, not just decoration next to it.
         checkButton:SetHitRectInsets(0, -checkButton.text:GetWidth(), 0, 0)
-        checkButton.HoverBackground = nil
         checkButton:SetChecked(SpeakStone_MainDB[info.option])
 
         checkButton:SetScript("OnClick", function(self)
@@ -731,30 +760,132 @@ function SpeakStone:CreateWindow()
         return checkButton
     end
 
+    -- The look of SpeakStone's own windows: three themes (Theme.lua).
+    local function makeThemeRow()
+        local row = addon.UIK.ThemeButtons(panel, optionsWidth - 16)
+        row:SetPoint("TOPLEFT", frame, "TOPLEFT", RIGHT_X + 8, cursorY)
+        Advance(34)
+    end
+
+    -- The reading font: a drop-down listing the fonts in Fonts.lua, each in its own letters; a font this
+    -- client cannot load is listed greyed out. Under it, a preview in the chosen font and colours.
+    local function makeFontRow()
+        if not (addon.FontEntry and addon.UIK.FontDropdown) then return end
+        local label = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+        label:SetPoint("TOPLEFT", frame, "TOPLEFT", RIGHT_X + 8, cursorY - 6)
+        label:SetText("Reading font")
+        local drop = addon.UIK.FontDropdown(panel, 240)
+        drop:SetPoint("LEFT", label, "LEFT", 150, 0)
+        Advance(34)
+    end
+
+    local function makeFontPreview()
+        local box = addon.UIK.FontPreview(panel, optionsWidth - 16, 64)
+        box:SetPoint("TOPLEFT", frame, "TOPLEFT", RIGHT_X + 8, cursorY)
+        Advance(86)
+    end
+
+    -- Where to get help and give it: the website's pages (the address goes in the box, ready to copy), and
+    -- the captured text to send.
+    local function makeLinks()
+        local linkURL = "https://" .. WEBSITE
+        local box = addon.UIK.CopyBox(panel, linkURL, optionsWidth - 40)
+        local bw = math.floor((optionsWidth - 16 - 8) / 3)
+        for i, spec in ipairs({
+            { "Submit text", "", "Submit your captured text, and get voice packs." },
+            { "Report an issue", "/report", "Wrong voice, broken audio, or anything else worth flagging." },
+            { "Lend your voice", "/voice", "Sign up to lend your voice to an NPC." },
+        }) do
+            local path = spec[2]
+            local button = addon.UIK.Button(panel, spec[1], bw, 26, function()
+                linkURL = "https://" .. WEBSITE .. path
+                box:SetURL(linkURL)
+                box:SetFocus()
+                box:HighlightText()
+            end)
+            button:SetPoint("TOPLEFT", frame, "TOPLEFT", RIGHT_X + 8 + (i - 1) * (bw + 4), cursorY)
+            AttachTooltip(button, spec[1], spec[3] .. " Puts the address in the box below to copy (Ctrl+C).")
+        end
+        Advance(32)
+        box:SetPoint("TOPLEFT", frame, "TOPLEFT", RIGHT_X + 8, cursorY)
+        Advance(30)
+        local export = addon.UIK.Button(panel, "Export captured text", 170, 26, ExportHarvest)
+        export:SetPoint("TOPLEFT", frame, "TOPLEFT", RIGHT_X + 8, cursorY)
+        AttachTooltip(export, "Export captured text", "Everything recorded: NPC greetings, books and quest text, in one payload to paste at the site. Also /ssharvest export.")
+        local clear = addon.UIK.Button(panel, "Clear captured text", 170, 26, function() StaticPopup_Show("SPEAKSTONE_CONFIRM_CLEAR_HARVEST") end)
+        clear:SetPoint("LEFT", export, "RIGHT", 6, 0)
+        AttachTooltip(clear, "Clear captured text", "Throw away everything captured so far. Submit it first if you have not.")
+        Advance(34)
+    end
+
+    -- A row of colour swatches for one setting (UIKit.lua).
+    local function makeSwatchRow(title, option, list, default, tip)
+        local row = addon.UIK.SwatchRow(panel, title, option, list, default, tip, 150)
+        row:SetPoint("TOPLEFT", frame, "TOPLEFT", RIGHT_X + 8, cursorY - 4)
+        Advance(30)
+    end
+
+    local function makeColourRow()
+        makeSwatchRow("Highlight colour", "highlightColour", addon.HighlightColours, "auto", {
+            "Gold, or deep red where the text is on light paper (Dialogue UI's parchment theme).",
+            "The colour of the word being read, in subtitles, Dialogue UI and talking heads." })
+    end
+
+    local function makeSubBackRow()
+        makeSwatchRow("Subtitle background", "subtitleBack", addon.SubtitleBackColours, "theme", {
+            "The theme's own background.",
+            "The colour behind the subtitle text. Soft cream, yellow, blue or green with dark text is easier on the eyes for many people with dyslexia." })
+    end
+
+    local function makeSubTextRow()
+        makeSwatchRow("Subtitle text", "subtitleText", addon.SubtitleTextColours, "theme", {
+            "The theme's own text colour.",
+            "The colour of the subtitle text. Dark blue or dark brown on a light background, or white or yellow on a dark one." })
+    end
+
+    -- Buttons that show each feature working, in the game.
+    local function makePreviewRow()
+        local specs = {
+            { "Preview subtitles", 130, function() if addon.PreviewSubtitles then addon.PreviewSubtitles() end end,
+              "Plays a sample line three times in the subtitle bar, with your current settings." },
+            { "Preview Dialogue UI", 140, function() if addon.PreviewWindow then addon.PreviewWindow("dialogue") end end,
+              "A sample quest page with the words typing out and the one being read lit, as Dialogue UI's window would show it." },
+            { "Preview talking head", 150, function() if addon.PreviewWindow then addon.PreviewWindow("talkinghead") end end,
+              "A sample talking head text with the word being read lit." },
+        }
+        local x = RIGHT_X + 8
+        for _, spec in ipairs(specs) do
+            local button = addon.UIK.Button(panel, spec[1], spec[2], 22, spec[3])
+            button:SetPoint("TOPLEFT", frame, "TOPLEFT", x, cursorY)
+            AttachTooltip(button, spec[1], spec[4])
+            x = x + spec[2] + 6
+        end
+        Advance(30)
+    end
+
     -- A slider under its section's options: DELAY_SLIDER, DUCK_SLIDER.
     local function makeSlider(spec)
         Advance(14)
-        local name = addonName .. spec.name
-        local slider = CreateFrame("Slider", name, panel, "OptionsSliderTemplate")
-        slider:SetPoint("TOPLEFT", frame, "TOPLEFT", RIGHT_X + 8, cursorY)
-        slider:SetWidth(220)
+        local slider = addon.UIK.Slider(panel, 220)
+        slider:SetPoint("TOPLEFT", frame, "TOPLEFT", RIGHT_X + 8, cursorY - 6)
         slider:SetMinMaxValues(spec.min, spec.max)
         slider:SetValueStep(spec.step)
         slider:SetObeyStepOnDrag(true)
-        _G[name .. "Low"]:SetText(spec.low)
-        _G[name .. "High"]:SetText(spec.high)
+        slider.low:SetText(spec.low)
+        slider.high:SetText(spec.high)
 
         local function Snap(value)
             return math.floor(value / spec.step + 0.5) * spec.step
         end
         local function Describe(value)
-            _G[name .. "Text"]:SetText(spec.describe(value))
+            slider.caption:SetText(spec.describe(value))
         end
 
         slider:SetScript("OnValueChanged", function(self, value)
             value = Snap(value)
             SpeakStone_MainDB[spec.option] = value
             Describe(value)
+            if addon.SpeechSettingChanged then addon.SpeechSettingChanged(spec.option) end
         end)
         slider:SetScript("OnShow", function(self)
             local value = tonumber(SpeakStone_MainDB[spec.option]) or spec.default
@@ -764,10 +895,9 @@ function SpeakStone:CreateWindow()
         AttachTooltip(slider, spec.title, spec.tooltip)
         if spec.parent then
             slider.parentOption = spec.parent
-            slider.text = _G[name .. "Text"]
             table.insert(dependentButtons, slider)
         end
-        Advance(34)
+        Advance(50)
     end
 
     -- Tabs across the top of the column (owner, 2026-10-16: design 1).
@@ -777,23 +907,26 @@ function SpeakStone:CreateWindow()
         SpeakStone_MainDB.settingsTab = index
         for i, p in ipairs(panels) do
             p:SetShown(i == index)
-            if i == index then
-                tabButtons[i]:Disable()
-                tabButtons[i]:LockHighlight()
-            else
-                tabButtons[i]:Enable()
-                tabButtons[i]:UnlockHighlight()
-            end
+            tabButtons[i]:SetSelected(i == index)
         end
     end
 
-    local tabWidth = math.floor((optionsWidth - 4 * (#SETTINGS_TABS - 1)) / #SETTINGS_TABS)
+    -- Each tab as wide as its name needs, shrunk together if they do not all fit.
+    local measure = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local tabWidths, tabTotal = {}, 4 * (#SETTINGS_TABS - 1)
+    for i, tab in ipairs(SETTINGS_TABS) do
+        measure:SetText(tab.title)
+        tabWidths[i] = math.max(60, math.floor(measure:GetStringWidth() + 26))
+        tabTotal = tabTotal + tabWidths[i]
+    end
+    measure:Hide()
+    local tabShrink = tabTotal > optionsWidth and (optionsWidth - 4 * (#SETTINGS_TABS - 1)) / (tabTotal - 4 * (#SETTINGS_TABS - 1)) or 1
+    local tabX = 0
     for tabIndex, tab in ipairs(SETTINGS_TABS) do
-        local button = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-        button:SetSize(tabWidth, TAB_HEIGHT)
-        button:SetPoint("TOPLEFT", frame, "TOPLEFT", RIGHT_X + (tabIndex - 1) * (tabWidth + 4), TOP_Y)
-        button:SetText(tab.title)
-        button:SetScript("OnClick", function() SelectTab(tabIndex) end)
+        local tabWidth = math.floor(tabWidths[tabIndex] * tabShrink)
+        local button = addon.UIK.Button(frame, tab.title, tabWidth, TAB_HEIGHT, function() SelectTab(tabIndex) end)
+        button:SetPoint("TOPLEFT", frame, "TOPLEFT", RIGHT_X + tabX, TOP_Y)
+        tabX = tabX + tabWidth + 4
         tabButtons[tabIndex] = button
 
         -- Same size as the window, so every control below keeps its offsets
@@ -807,9 +940,41 @@ function SpeakStone:CreateWindow()
         for index, section in ipairs(tab.sections) do
             if index > 1 then Advance(12) end
             makeSectionHeader(section.title, section.info)
+            local function Extras(first)
+                for _, kind in ipairs(section.extras or {}) do
+                    if kind == "theme" then
+                        if first == (section.extrasFirst or false) then makeThemeRow() end
+                    elseif first == (section.extrasFirst or false) then
+                        if kind == "font" then
+                            makeFontRow()
+                        elseif kind == "fontpreview" then
+                            makeFontPreview()
+                        elseif kind == "links" then
+                            makeLinks()
+                        elseif kind == "fontsize" then
+                            makeSlider({
+                                option = "subtitleFontSize", default = 18, min = 14, max = 36, step = 2, low = "14", high = "36",
+                                describe = function(v) return string.format("Subtitle text size: %d", v) end,
+                                title = "Subtitle text size",
+                                tooltip = "How large the subtitle words are. Larger text takes more rows' height, so the bar grows.",
+                            })
+                        elseif kind == "subback" then
+                            makeSubBackRow()
+                        elseif kind == "subtext" then
+                            makeSubTextRow()
+                        elseif kind == "colour" then
+                            makeColourRow()
+                        elseif kind == "previews" then
+                            makePreviewRow()
+                        end
+                    end
+                end
+            end
+            if section.extrasFirst then Extras(true) end
             for _, info in ipairs(section.options) do
                 makeCheckButton(info)
             end
+            if not section.extrasFirst then Extras(false) end
             if section.slider then
                 makeSlider(section.slider)
             end
@@ -817,54 +982,6 @@ function SpeakStone:CreateWindow()
     end
     panel = frame
     SelectTab(tonumber(SpeakStone_MainDB.settingsTab) or 1)
-
-    -- Pinned just above the button row rather than after the last section.
-    cursorY = -(FRAME_HEIGHT - 66)
-    makeCheckButton(DEBUG_OPTION)
-
-    -- ----------------------------------------------------------------------
-    -- Actions. The cards are shortcuts to two of these, not replacements.
-    -- ----------------------------------------------------------------------
-    -- "Play" section (owner, 2026-09-28): one button per Audio Library tab,
-    -- in place of a single "Open Audio Library" button.
-    local playLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    playLabel:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", LEFT_X, 19)
-    playLabel:SetText("Library")
-    local previous
-    for _, spec in ipairs({
-        { "quests", "Quests", "Browse and replay every voiced quest your installed packs provide. Also /sslibrary." },
-        { "gossip", "Gossip", "Browse and replay voiced NPC greetings." },
-        { "books", "Books", "Browse every voiced book and read it aloud, whole or page by page." },
-        { "favourites", "Favourites", "Everything you starred, in the library or on the speech frame. The library's Recent tab lists what you played lately." },
-    }) do
-        local mode, label, tip = spec[1], spec[2], spec[3]
-        local button = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-        button:SetSize(80, 24)
-        button:SetText(label)
-        if previous then
-            button:SetPoint("LEFT", previous, "RIGHT", 4, 0)
-        else
-            button:SetPoint("LEFT", playLabel, "RIGHT", 6, 0)
-        end
-        button:SetScript("OnClick", function() OpenAudioLibraryUI(mode) end)
-        AttachTooltip(button, label, tip)
-        previous = button
-    end
-
-    -- Export and Clear live on the Capture card now, beside what they act on.
-    local profiles = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    profiles:SetSize(100, 24)
-    profiles:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -16, 14)
-    profiles:SetText("Profiles")
-    profiles:SetScript("OnClick", function() if addon.ShowTutorial then addon.ShowTutorial(2) end end)
-    AttachTooltip(profiles, "Profiles", "Switch to a premade profile, or rerun the first-start setup. Also /ss tutorial.")
-
-    local whatsNew = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    whatsNew:SetSize(100, 24)
-    whatsNew:SetPoint("RIGHT", profiles, "LEFT", -6, 0)
-    whatsNew:SetText("What's new")
-    whatsNew:SetScript("OnClick", function() addon.ShowWhatsNew() end)
-    AttachTooltip(whatsNew, "What's new", "The changes in each release, newest first, with dates. Also /ss whatsnew.")
 
     -- ----------------------------------------------------------------------
     -- Keeping the cards true
@@ -882,24 +999,13 @@ function SpeakStone:CreateWindow()
                 local missing = MissingPacks(packs)
                 local packLine
                 if #missing == 0 then
-                    packLine = "|cff00ff00All voice packs installed|r"
+                    packLine = (addon.Theme().light and "|cff1b6b2a" or "|cff00ff00") .. "All voice packs installed|r"
                 else
-                    packLine = "|cffff6b5eMissing:|r " .. table.concat(missing, ", ")
+                    packLine = (addon.Theme().light and "|cffa02b20" or "|cffff6b5e") .. "Missing:|r " .. table.concat(missing, ", ")
                 end
                 local caption = string.format("clip(s) across %d quest(s)\n%s", quests, packLine)
                 SetCardState(cards.packs, ACCENT_GOOD, clips, caption)
             end
-        end
-
-        -- Whether capture is running is not a fact about the counts, so it is
-        -- set outside the block below: with the capture module absent, the
-        -- card used to be left blank rather than saying anything.
-        if SpeakStone_MainDB.harvestEnabled then
-            SetCardState(cards.capture, ACCENT_GOOD, "Recording",
-                "Quest text, greetings and books are being recorded as you meet them.")
-        else
-            SetCardState(cards.capture, ACCENT_BAD, "Off",
-                "Nothing new is being recorded. Turn on capture under Interface.")
         end
 
         if addon.HarvestCounts then
@@ -929,17 +1035,22 @@ function SpeakStone:CreateWindow()
             -- The top-level entry total is exactly what HarvestCounts just
             -- counted, so it is handed over rather than walked for again.
             local entries = capturedQuests + npcs + items
+            local recording = SpeakStone_MainDB.harvestEnabled
+            local good = addon.Theme().light and "|cff1b6b2a" or "|cff00ff00"
+            if not recording then
+                summary = summary .. "\n|cffff6b5eCapture is off (General tab).|r"
+            end
             if addon.HarvestShouldSubmit and addon.HarvestShouldSubmit(entries) then
-                SetCardState(cards.captured, ACCENT_GOOD, glines,
-                    summary .. "\n|cff00ff00Ready to submit -- click to export.|r")
+                SetCardState(cards.captured, ACCENT_GOOD, glines, summary .. "\n" .. good .. "Ready to submit -- click to export.|r")
             else
-                SetCardState(cards.captured, ACCENT_NEUTRAL, glines, summary)
+                SetCardState(cards.captured, recording and ACCENT_NEUTRAL or ACCENT_BAD, glines, summary)
             end
         end
     end
 
     addon.RefreshSettingsStatus = RefreshDashboard
-    frame:SetScript("OnShow", function()
+    addon.ThemeRegister(function() if frame:IsShown() then RefreshDashboard() end end)
+    frame:HookScript("OnShow", function()
         RefreshDashboard()
         RefreshOptionStates()
     end)
@@ -1005,7 +1116,7 @@ function SpeakStone:CreateSettings()
     -- The speech frame's two switches, here as well as in the window, so it
     -- can be turned off from the game's own Options without knowing /ss.
     local speechFrame = CreateFrame("Frame", nil, optionsFrame)
-    speechFrame:SetSize(500, 174)
+    speechFrame:SetSize(500, 306)
     speechFrame.layoutIndex = 4
     speechFrame.topPadding = 14
     local speechTitle = speechFrame:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
@@ -1017,6 +1128,11 @@ function SpeakStone:CreateSettings()
     for _, spec in ipairs({
         { "showSpeechFrame", "Show the speech frame when you walk away" },
         { "speechAutoScroll", "Auto-scroll the speech frame text" },
+        { "waitForCombatEnd", "Wait for combat to end before reading a quest" },
+        { "showSubtitles", "Show subtitles instead of the speech frame" },
+        { "subtitleTypeOut", "Type the subtitle words out" },
+        { "subtitleHighlight", "Highlight the word being read" },
+        { "syncDialogueText", "Reveal quest text as it is spoken (Dialogue UI)" },
         { "speechFitText", "Grow the speech frame to show all the text" },
         { "queueQuestSpeech", "Queue quests instead of interrupting" },
         { "autoAcceptQuests", "Auto-accept quests (hold Shift to skip)" },

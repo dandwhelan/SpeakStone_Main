@@ -126,6 +126,7 @@ local function SourceWindowOpen(sd)
     end
     return Shown(QuestFrame) or (QuestMapFrame and QuestMapFrame:IsVisible())
 end
+addon.SourceWindowOpen = SourceWindowOpen
 
 -- --------------------------------------------------------------------------
 -- The frame
@@ -198,18 +199,16 @@ local function Build()
     -- A dark band fading out to the right, gold hairlines top and bottom.
     local band = frame:CreateTexture(nil, "BACKGROUND")
     band:SetAllPoints()
-    band:SetColorTexture(1, 1, 1, 1)
-    band:SetGradient("HORIZONTAL", CreateColor(0, 0, 0, 0.85), CreateColor(0, 0, 0, 0.45))
+    frame.band = band
     local lineTop = frame:CreateTexture(nil, "BORDER")
     lineTop:SetPoint("TOPLEFT")
     lineTop:SetPoint("TOPRIGHT")
     lineTop:SetHeight(1)
-    lineTop:SetColorTexture(0.94, 0.76, 0.35, 0.4)
     local lineBottom = frame:CreateTexture(nil, "BORDER")
     lineBottom:SetPoint("BOTTOMLEFT")
     lineBottom:SetPoint("BOTTOMRIGHT")
     lineBottom:SetHeight(1)
-    lineBottom:SetColorTexture(0.94, 0.76, 0.35, 0.25)
+    frame.lineTop, frame.lineBottom = lineTop, lineBottom
 
     frame.portrait = frame:CreateTexture(nil, "ARTWORK")
     frame.portrait:SetSize(PORTRAIT, PORTRAIT)
@@ -248,7 +247,6 @@ local function Build()
     controls.gear:SetScript("OnLeave", function() GameTooltip:Hide() end)
     controls.time = controls:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     controls.time:SetPoint("RIGHT", controls.gear, "LEFT", -8, 0)
-    controls.time:SetTextColor(0.75, 0.72, 0.65)
     -- Favourite: adds what is being read to the Audio Library's Favourites.
     controls.star = CreateFrame("Button", nil, controls)
     controls.star:SetSize(16, 16)
@@ -262,7 +260,7 @@ local function Build()
     controls.star:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:AddLine("Favourite", 1, 1, 1)
-        GameTooltip:AddLine("Keep this in the Audio Library's Favourites tab.", 0.7, 0.7, 0.7)
+        GameTooltip:AddLine("Keep this in the SpeakStone Guide's Favourites tab.", 0.7, 0.7, 0.7)
         GameTooltip:Show()
     end)
     controls.star:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -294,8 +292,7 @@ local function Build()
     -- The text, whole, in a mouse-wheel scroll area TEXT_LINES tall.
     local textFont = CreateFont("SpeakStoneSpeechTextFont")
     textFont:CopyFontObject(GameFontHighlight)
-    textFont:SetFont((GameFontHighlight:GetFont()), 13, "")
-    textFont:SetSpacing(2)
+    frame.textFont = textFont
     local lineHeight = 13 + 2
 
     local scroll = CreateFrame("ScrollFrame", nil, frame)
@@ -307,7 +304,7 @@ local function Build()
     scroll:SetScript("OnMouseWheel", function(self, delta)
         -- A manual scroll pauses the auto-scroll for a few seconds.
         frame.manualScrollUntil = GetTime() + 4
-        local target = self:GetVerticalScroll() - delta * lineHeight * 2
+        local target = self:GetVerticalScroll() - delta * frame.lineHeight * 2
         self:SetVerticalScroll(math.max(0, math.min(target, self:GetVerticalScrollRange())))
     end)
     local child = CreateFrame("Frame", nil, scroll)
@@ -323,18 +320,71 @@ local function Build()
     frame.text:SetJustifyV("TOP")
     frame.text:SetWordWrap(true)
 
+    frame.measure = frame:CreateFontString(nil, "ARTWORK")
+    frame.measure:SetFontObject(textFont)
+    frame.measure:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", 0, -60)
+    frame.measure:SetAlpha(0)
+    frame.measure.ssRole = false
+    addon.SpeechFrameApplyFont()
+
     frame.progress = CreateFrame("StatusBar", nil, frame)
     frame.progress:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
-    frame.progress:SetStatusBarColor(0.94, 0.76, 0.35, 0.9)
     frame.progress:SetHeight(2)
     frame.progress:SetMinMaxValues(0, 1)
     frame.progress:SetPoint("TOPLEFT", scroll, "BOTTOMLEFT", 0, -4)
     frame.progress:SetPoint("RIGHT", scroll, "RIGHT", 0, 0)
-    local track = frame.progress:CreateTexture(nil, "BACKGROUND")
-    track:SetAllPoints()
-    track:SetColorTexture(1, 1, 1, 0.1)
+    frame.track = frame.progress:CreateTexture(nil, "BACKGROUND")
+    frame.track:SetAllPoints()
 
     ApplyPosition()
+    addon.SpeechFramePaint()
+end
+
+-- The reading font (Fonts.lua) on the text, and the row height measured from it.
+function addon.SpeechFrameApplyFont()
+    if not frame or not frame.textFont then
+        return
+    end
+    local custom = addon.ApplyReadingFont and addon.ApplyReadingFont(frame.textFont, 12, "")
+    if not custom then
+        frame.textFont:SetFont((GameFontHighlight:GetFont()), 13, "")
+    end
+    local spacing = custom and 4 or 2
+    frame.textFont:SetSpacing(spacing)
+    frame.measure:SetText("A")
+    local one = frame.measure:GetStringHeight() or 0
+    frame.measure:SetText("A\nA")
+    local two = frame.measure:GetStringHeight() or 0
+    frame.lineHeight = (two - one > 4) and (two - one) or ((custom and 12 or 13) + spacing)
+    frame.scroll:SetHeight(frame.lineHeight * TEXT_LINES)
+    frame.filledFor = nil
+end
+
+-- Colours and background from the chosen theme (Theme.lua).
+function addon.SpeechFramePaint()
+    if not frame then
+        return
+    end
+    local theme = addon.Theme()
+    local art = addon.ThemeSlice(frame, "bar")
+    frame.band:SetShown(not art)
+    addon.ThemeBackground(frame.band, true)
+    frame.lineTop:SetColorTexture(theme.line[1], theme.line[2], theme.line[3], theme.line[4])
+    frame.lineBottom:SetColorTexture(theme.line[1], theme.line[2], theme.line[3], theme.line[4] * 0.6)
+    frame.name:SetTextColor(unpack(theme.title))
+    frame.textFont:SetTextColor(unpack(theme.text))
+    -- The game's drop shadow behind dark ink on paper reads as bold: off on the light theme.
+    frame.textFont:SetShadowColor(0, 0, 0, theme.light and 0 or 1)
+    frame.textFont:SetShadowOffset(theme.light and 0 or 1, theme.light and 0 or -1)
+    addon.ThemeShadow(frame.name)
+    addon.ThemeShadow(frame.controls.time)
+    frame.controls.time:SetTextColor(unpack(theme.sub))
+    frame.progress:SetStatusBarColor(theme.accent[1], theme.accent[2], theme.accent[3], 0.9)
+    frame.track:SetColorTexture(unpack(theme.track))
+    frame.filledFor = nil          -- the header carries the theme's colour for the title
+end
+if addon.ThemeRegister then
+    addon.ThemeRegister(function() addon.SpeechFramePaint() end)
 end
 
 -- A queued quest line starts after the player may have walked away, when
@@ -410,7 +460,7 @@ local function HeaderText(sd)
     end
     name = name or title or "SpeakStone"
     if title and title ~= name then
-        return name .. "  |cff9d9d9d" .. title .. "|r"
+        return name .. "  " .. ((addon.Theme and addon.Theme().subCode) or "|cff9d9d9d") .. title .. "|r"
     end
     return name
 end
@@ -449,6 +499,7 @@ local function Fill(sd)
     end
     frame.text:SetWidth(width)
     frame.text:SetText(text)
+    frame.plain, frame.litIndex, frame.readKey = text, nil, nil
     local textHeight = math.max(1, frame.text:GetStringHeight())
     frame.scrollChild:SetSize(width, textHeight)
     -- Fixed four lines, or grown to fit the whole text (capped).
@@ -471,6 +522,28 @@ local function Refresh()
     end
     local elapsed = Elapsed(sd)
     local duration = Duration(sd)
+    -- Read along: the word being spoken lit in the text, when the player has that on.
+    if frame.plain and addon.ReadTokens then
+        local playing = duration and not paused and sd.isPlaying and (DB().subtitleHighlight ~= false)
+            and not frame.plain:find("|", 1, true)
+        if playing then
+            local key = frame.plain .. "#" .. duration
+            if frame.readKey ~= key then
+                frame.readKey = key
+                frame.readTokens, frame.readSpoken, frame.readWords = addon.ReadTokens(frame.plain)
+                frame.readTimes = addon.SubtitleWordTimes(frame.readWords, duration)
+            end
+            local index = elapsed >= duration and 0 or addon.SubtitleWordAt(frame.readTimes, elapsed + 0.12)
+            if frame.litIndex ~= index then
+                frame.litIndex = index
+                frame.text:SetText(addon.LitText(frame.plain, frame.readTokens, frame.readSpoken, index,
+                    addon.HighlightCode(addon.ThemeIsLight())))
+            end
+        elseif frame.litIndex then
+            frame.litIndex = nil
+            frame.text:SetText(frame.plain)
+        end
+    end
     if duration then
         local fraction = math.min(1, elapsed / duration)
         frame.progress:SetValue(fraction)
@@ -503,6 +576,10 @@ local function ShouldShow(sd)
         return true
     end
     if not DB().showSpeechFrame or sd.frameDismissed then
+        return false
+    end
+    -- The subtitles take over the job of showing the text.
+    if addon.SubtitlesEnabled and addon.SubtitlesEnabled() then
         return false
     end
     if TalkingHeadFrame and TalkingHeadFrame:IsShown() then
@@ -734,6 +811,11 @@ function OpenMenu(owner)
                 function() return (db.speechSize or "medium") == size.key end,
                 function() db.speechSize = size.key; ApplyPosition() end)
         end
+        local themes = root:CreateButton("Theme")
+        for _, key in ipairs(addon.ThemeOrder) do
+            themes:CreateRadio(addon.Themes[key].label, function() return addon.Theme().key == key end,
+                function() addon.SetTheme(key) end)
+        end
         root:CreateCheckbox("Auto-scroll the text",
             function() return db.speechAutoScroll ~= false end,
             function() db.speechAutoScroll = db.speechAutoScroll == false end)
@@ -778,6 +860,15 @@ end
 -- A speech-frame option changed (the gear menu, /ss, or the game's
 -- Options page): apply it to the frame now, not on the next clip.
 function addon.SpeechSettingChanged(key)
+    if addon.SubtitleSettingChanged then
+        addon.SubtitleSettingChanged(key)
+    end
+    if key == "readingFont" and addon.SpeechFrameApplyFont then
+        addon.SpeechFrameApplyFont()
+    end
+    if addon.FontPreviewRefresh then
+        addon.FontPreviewRefresh()
+    end
     if key == "speechFitText" and frame then
         frame.filledFor = nil
     elseif (key == "speechSize" or key == "speechFramePos") and frame then
@@ -788,6 +879,14 @@ function addon.SpeechSettingChanged(key)
 end
 
 function addon.SpeechFrameNotify(event, sd)
+    for _, name in ipairs({ "QuestTextSyncNotify", "SubtitleNotify" }) do
+        if addon[name] then
+            local ok, err = pcall(addon[name], event, sd)
+            if not ok then
+                geterrorhandler()(err)
+            end
+        end
+    end
     if event == "start" then
         if current and current.preview then
             Clear()

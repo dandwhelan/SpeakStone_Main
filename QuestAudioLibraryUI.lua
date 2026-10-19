@@ -1,7 +1,5 @@
 local _, addon = ...
 
-local NUM_VISIBLE_ROWS = 14
-local ROW_HEIGHT = 34
 -- Where the list starts: below the Quests / Gossip / Books tabs and the
 -- search box (owner, 2026-09-28: a Books button across the top).
 local LIST_TOP = -86
@@ -260,317 +258,839 @@ local function PaintStar(button, on)
 end
 addon.PaintFavouriteStar = PaintStar
 
+
+-- --------------------------------------------------------------------------
+-- The tree: expansions, then groups, then quests (Compendium style)
+-- --------------------------------------------------------------------------
+-- An expansion is read off the pack a quest's clips live in. Inside it a quest
+-- is grouped by its zone when SpeakStone_QuestZones names one, and otherwise by
+-- the first letter of its title. Progress is how many of its quests the player
+-- has heard play.
+
+local EXPANSION_NAMES = {
+    Classic = "Classic", TheBurningCrusade = "The Burning Crusade", WrathoftheLichKing = "Wrath of the Lich King",
+    Cataclysm = "Cataclysm", MistsofPandaria = "Mists of Pandaria", WarlordsofDraenor = "Warlords of Draenor",
+    Legion = "Legion", BattleforAzeroth = "Battle for Azeroth", Shadowlands = "Shadowlands",
+    Dragonflight = "Dragonflight", TheWarWithin = "The War Within", Midnight = "Midnight",
+    Chatter = "Chatter and greetings",
+}
+-- WoW Forever has no expansions: its quests sit under the pack they shipped in.
+local FOREVER_PACK_NAMES = { Audio_Pack1 = "Audio Pack 1", Audio_Pack2 = "Audio Pack 2", Chatter = "Chatter and greetings" }
+local EXPANSION_ORDER = {
+    "Classic", "The Burning Crusade", "Wrath of the Lich King", "Cataclysm", "Mists of Pandaria",
+    "Warlords of Draenor", "Legion", "Battle for Azeroth", "Shadowlands", "Dragonflight", "The War Within",
+    "Midnight", "Chatter and greetings", "WoW Forever", "Other",
+}
+local FOREVER_ORDER = { "Audio Pack 1", "Audio Pack 2", "Chatter and greetings", "WoW Forever", "Other" }
+if addon.IS_FOREVER then EXPANSION_ORDER = FOREVER_ORDER end
+local EXPANSION_RANK = {}
+for rank, name in ipairs(EXPANSION_ORDER) do EXPANSION_RANK[name] = rank end
+
+local function ExpansionOf(pack)
+    if type(pack) ~= "string" then return "Other" end
+    local foreverShort = pack:match("^SpeakStone_Forever_(.+)$")
+    if foreverShort then
+        return addon.IS_FOREVER and FOREVER_PACK_NAMES[foreverShort] or "WoW Forever"
+    end
+    local short = pack:match("^SpeakStone_Pack_(.+)$") or pack
+    short = short:gsub("_Part%d+$", "")
+    return EXPANSION_NAMES[short] or short
+end
+addon.GuideExpansionOf = ExpansionOf
+
+local function IsHeard(id)
+    local heard = SpeakStone_MainDB and SpeakStone_MainDB.heardQuests
+    if not heard then return false end
+    return (heard[id .. "_description"] or heard[id .. "_progress"] or heard[id .. "_completion"]) and true or false
+end
+
+local function FirstLetter(text)
+    if type(text) == "string" and text ~= "" then
+        local first = text:sub(1, 1):upper()
+        if first:match("%a") then return first end
+    end
+    return "#"
+end
+
+-- Where a quest is and who gives it come from QuestInfo.lua (built by
+-- tools/build_quest_info.py): names are kept once in a pool and quests point into it.
+local function PoolName(index)
+    local pool = SpeakStone_QuestNames
+    return index and pool and pool[index] or nil
+end
+
+local function ZoneOf(id)
+    local zones = SpeakStone_QuestZoneOf
+    return zones and PoolName(zones[id]) or nil
+end
+
+local function ContinentOf(id)
+    local zones, continents = SpeakStone_QuestZoneOf, SpeakStone_QuestContinentOf
+    local zone = zones and zones[id]
+    return zone and continents and PoolName(continents[zone]) or nil
+end
+
+local function GiverOf(id)
+    local givers = SpeakStone_QuestGiverOf
+    return givers and PoolName(givers[id]) or nil
+end
+addon.GuideZoneOf, addon.GuideGiverOf = ZoneOf, GiverOf
+
+local UNKNOWN = "Unsorted"
+
+local CONTINENT_ORDER = {
+    "Eastern Kingdoms", "Kalimdor", "Outland", "Northrend", "Pandaria", "Draenor", "Broken Isles", "Argus",
+    "Kul Tiras", "Zandalar", "The Shadowlands", "Dragon Isles", "Khaz Algar", "Quel'Thalas",
+}
+local CONTINENT_RANK = {}
+for rank, name in ipairs(CONTINENT_ORDER) do CONTINENT_RANK[name] = rank end
+
+local function GroupLess(a, b)
+    if a.label == "#" or a.label == UNKNOWN then return false end
+    if b.label == "#" or b.label == UNKNOWN then return true end
+    return a.label < b.label
+end
+
+local function TopLess(a, b)
+    local ra, rb = EXPANSION_RANK[a.label] or CONTINENT_RANK[a.label], EXPANSION_RANK[b.label] or CONTINENT_RANK[b.label]
+    if ra and rb then return ra < rb end
+    if ra then return true end
+    if rb then return false end
+    return GroupLess(a, b)
+end
+
+-- How the lists can be grouped, per tab (the Guide's "Group by" buttons).
+local GROUPINGS = {
+    quests = { { "expansion", addon.IS_FOREVER and "Pack" or "Expansion" }, { "zone", "Zone" }, { "npc", "NPC" }, { "quest", "Quest" } },
+    gossip = { { "expansion", addon.IS_FOREVER and "Pack" or "Expansion" }, { "npc", "NPC" } },
+}
+addon.GuideGroupings = GROUPINGS
+
+-- The two levels an entry sits under, by tab and grouping:
+--   quests / expansion   expansion > zone > quest        quests / zone   continent > zone > quest
+--   quests / npc         first letter > giver > quest    quests / quest  first letter > quest
+--   gossip / expansion   expansion > first letter > line  gossip / npc    first letter > NPC > line
+--   books                first letter > book
+local function Levels(mode, groupBy, entry)
+    if mode == "quests" then
+        local id = entry.id
+        if groupBy == "zone" then
+            return ContinentOf(id) or UNKNOWN, ZoneOf(id) or UNKNOWN
+        elseif groupBy == "npc" then
+            local giver = GiverOf(id)
+            return giver and FirstLetter(giver) or "#", giver or "Unknown giver"
+        elseif groupBy == "quest" then
+            return FirstLetter(SpeakStone_QuestTitles and SpeakStone_QuestTitles[id]), nil
+        end
+        return ExpansionOf(entry.pack), ZoneOf(id) or UNKNOWN
+    elseif mode == "gossip" then
+        local name = SpeakStone_NPCNames and SpeakStone_NPCNames[entry.npcID]
+        if groupBy == "expansion" then
+            return ExpansionOf(entry.pack), FirstLetter(name)
+        end
+        return FirstLetter(name), name or ("NPC " .. entry.npcID)
+    end
+    return FirstLetter(BookName(entry.book.base)), nil
+end
+
+-- mode: "quests", "gossip" or "books". groupBy: see GROUPINGS. heardFilter: nil, "heard" or "new" (quests only).
+-- Returns the top-level nodes. A node is { key, label, kind, total, heard, groups, entries }.
+local function BuildTree(mode, list, heardFilter, groupBy)
+    local tops, topByKey = {}, {}
+    local function Top(label)
+        local top = topByKey[label]
+        if not top then
+            top = { key = label, label = label, kind = "header", total = 0, heard = 0, groups = {}, groupByKey = {}, entries = {} }
+            topByKey[label] = top
+            tops[#tops + 1] = top
+        end
+        return top
+    end
+    for _, entry in ipairs(list) do
+        local heard = mode == "quests" and IsHeard(entry.id) or false
+        if not ((heardFilter == "heard" and not heard) or (heardFilter == "new" and heard)) then
+            local topLabel, groupLabel = Levels(mode, groupBy, entry)
+            local top = Top(topLabel)
+            top.total = top.total + 1
+            if heard then top.heard = top.heard + 1 end
+            if groupLabel then
+                local group = top.groupByKey[groupLabel]
+                if not group then
+                    group = { key = top.key .. "/" .. groupLabel, label = groupLabel, kind = "group", total = 0, heard = 0, entries = {} }
+                    top.groupByKey[groupLabel] = group
+                    top.groups[#top.groups + 1] = group
+                end
+                group.total = group.total + 1
+                if heard then group.heard = group.heard + 1 end
+                group.entries[#group.entries + 1] = entry
+            else
+                top.entries[#top.entries + 1] = entry
+            end
+        end
+    end
+    table.sort(tops, TopLess)
+    for _, top in ipairs(tops) do
+        table.sort(top.groups, GroupLess)
+    end
+    return tops
+end
+
+-- The visible rows, top to bottom: open nodes show what is inside them.
+local function Flatten(tops, expanded, forceOpen)
+    local rows = {}
+    for _, top in ipairs(tops) do
+        local open = forceOpen or expanded[top.key]
+        rows[#rows + 1] = { kind = "header", node = top, depth = 0, open = open }
+        if open then
+            for _, group in ipairs(top.groups) do
+                local groupOpen = forceOpen or expanded[group.key]
+                rows[#rows + 1] = { kind = "group", node = group, depth = 1, open = groupOpen }
+                if groupOpen then
+                    for _, entry in ipairs(group.entries) do
+                        rows[#rows + 1] = { kind = "leaf", entry = entry, depth = 2 }
+                    end
+                end
+            end
+            for _, entry in ipairs(top.entries) do
+                rows[#rows + 1] = { kind = "leaf", entry = entry, depth = 1 }
+            end
+        end
+    end
+    return rows
+end
+addon.GuideBuildTree, addon.GuideFlatten = BuildTree, Flatten
+
+-- --------------------------------------------------------------------------
+-- Voice packs: which of the expected packs are installed, per expansion
+-- --------------------------------------------------------------------------
+local function Thousands(n)
+    local text = tostring(math.floor(tonumber(n) or 0))
+    local out = text:reverse():gsub("(%d%d%d)", "%1,"):reverse()
+    return (out:gsub("^,", ""))
+end
+addon.GuideThousands = Thousands
+
+local function PartLabel(short)
+    local part = short:match("_Part(%d+)$")
+    if part then return "Part " .. part end
+    local number = short:match("^Audio_Pack(%d+)$")
+    if number then return "Audio Pack " .. number end
+    if short == "Chatter" then return "Chatter" end
+    return nil
+end
+
+-- Rows for the Voice packs tab: { label, parts = { { label, installed, clips } }, have, total, clips }, in
+-- expansion order, and the totals. A family with no pack installed at all (WoW Forever on a retail install) is
+-- left out; the retail family is always there, so a missing pack shows as missing.
+function addon.GuidePackRows(installedPacks)
+    local installed = {}
+    for _, pack in ipairs(installedPacks or {}) do installed[pack.name] = pack.clips or 0 end
+    local rows, byLabel, seen = {}, {}, {}
+    local function Row(label)
+        local row = byLabel[label]
+        if not row then
+            row = { label = label, parts = {}, have = 0, total = 0, clips = 0 }
+            byLabel[label] = row
+            rows[#rows + 1] = row
+        end
+        return row
+    end
+    for index, family in ipairs(addon.EXPECTED_PACK_FAMILIES or {}) do
+        local any = false
+        for _, short in ipairs(family.packs) do
+            if installed[family.prefix .. short] then any = true end
+        end
+        local primary = addon.IS_FOREVER and family.prefix == "SpeakStone_Forever_" or (not addon.IS_FOREVER and index == 1)
+        if primary or any then
+            for _, short in ipairs(family.packs) do
+                local name = family.prefix .. short
+                seen[name] = true
+                local row = Row(ExpansionOf(name))
+                local clips = installed[name]
+                local part = PartLabel(short)
+                if part == row.label or (part and addon.IS_FOREVER) then part = nil end
+                row.parts[#row.parts + 1] = { label = part, installed = clips ~= nil, clips = clips or 0 }
+                row.total = row.total + 1
+                if clips then
+                    row.have = row.have + 1
+                    row.clips = row.clips + clips
+                end
+            end
+        end
+    end
+    for name, clips in pairs(installed) do
+        if not seen[name] and name ~= "SpeakStone_Main" then
+            local row = Row("Other packs")
+            row.parts[#row.parts + 1] = { label = name:gsub("^SpeakStone_", ""), installed = true, clips = clips }
+            row.total, row.have, row.clips = row.total + 1, row.have + 1, row.clips + clips
+        end
+    end
+    table.sort(rows, function(a, b)
+        local ra, rb = EXPANSION_RANK[a.label], EXPANSION_RANK[b.label]
+        if ra and rb then return ra < rb end
+        if ra then return true end
+        if rb then return false end
+        return a.label < b.label
+    end)
+    local have, total, clips = 0, 0, 0
+    for _, row in ipairs(rows) do
+        have, total, clips = have + row.have, total + row.total, clips + row.clips
+    end
+    return rows, have, total, clips
+end
+
+-- --------------------------------------------------------------------------
+-- The words of a quest line (QuestTexts.lua: DEFLATE chunks, unpacked on demand)
+-- --------------------------------------------------------------------------
+local textCache, textOrder = {}, {}
+
+local function ChunkTexts(chunk)
+    local hit = textCache[chunk]
+    if hit then return hit end
+    local records = {}
+    local blobs = SpeakStone_QuestTexts
+    local packed = type(blobs) == "table" and blobs[chunk]
+    if type(packed) == "string" and addon.Inflate then
+        local raw = addon.Inflate(addon.Base64Decode(packed))
+        if raw then
+            for id, passage, text in raw:gmatch("(%d+)\30(%a+)\30([^\31]*)") do
+                records[id .. "_" .. passage] = text
+            end
+        end
+    end
+    textCache[chunk] = records
+    textOrder[#textOrder + 1] = chunk
+    if #textOrder > 6 then
+        textCache[table.remove(textOrder, 1)] = nil
+    end
+    return records
+end
+
+-- The text a quest's description / progress / completion was voiced from, or nil.
+function addon.QuestTextFor(id, passage)
+    local size = tonumber(SpeakStone_QuestTextChunk) or 128
+    return ChunkTexts(math.floor(id / size))[id .. "_" .. passage]
+end
+
+-- Quest and book text as the player would see it: $B line breaks, and the player's own
+-- name / class / race / gendered words filled in.
+local function LiveText(t)
+    if not t or t == "" then return nil end
+    local ok, out = pcall(function()
+        local name = UnitName("player") or "friend"
+        local _, class = UnitClass("player")
+        local race = UnitRace("player") or "traveller"
+        local female = UnitSex("player") == 3
+        t = t:gsub("%$[bB]", "\n")
+        t = t:gsub("%$[gG]%s*([^:;]*):([^;]*);", function(m, f) return female and f or m end)
+        t = t:gsub("%$[nN]", name):gsub("<name>", name)
+        t = t:gsub("%$[cC]", (class and class:lower():gsub("^%l", string.upper)) or "hero"):gsub("<class>", class or "hero")
+        t = t:gsub("%$[rR]", race):gsub("<race>", race)
+        return t
+    end)
+    return ok and out or t
+end
+
+-- --------------------------------------------------------------------------
+-- Reading along: the word being spoken lit in the text on the page
+-- --------------------------------------------------------------------------
+-- The same estimate as the subtitles (Subtitles.lua): the clip's length shared out over its
+-- words. Stage directions ("<Kinduru nods.>") are shown but not read, so they take no time.
+local ReadTokens, Lit = addon.ReadTokens, addon.LitText
+
+
 -- --------------------------------------------------------------------------
 -- Building the window
 -- --------------------------------------------------------------------------
+local function DB_NoReadAlong()
+    return SpeakStone_MainDB and SpeakStone_MainDB.guideReadAlong == false
+end
+
+local ROWS_SHOWN = 17      -- the most rows the quest tab shows (it has the most controls above the list)
+local ROWS_MAX = 19        -- rows built: favourites and recent have no controls and show the most
+local ROW_H = 24
+local LIST_WIDTH = 350
+local WINDOW_W, WINDOW_H = 900, 620
+
 local function BuildUI()
-    local frame = CreateFrame("Frame", "SpeakStoneAudioLibraryUI", UIParent, "BasicFrameTemplateWithInset")
-    frame:SetSize(400, 636)
-    frame:SetPoint("CENTER")
-    frame:SetMovable(true)
-    frame:EnableMouse(true)
-    frame:RegisterForDrag("LeftButton")
-    frame:SetScript("OnDragStart", frame.StartMoving)
-    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
-    frame:SetClampedToScreen(true)
-    frame:SetFrameStrata("DIALOG")
-    frame:Hide()
-
-    -- Allow closing with Escape key
+    local frame = addon.UIK.Window("SpeakStoneAudioLibraryUI", WINDOW_W, WINDOW_H, "SpeakStone Guide")
     tinsert(UISpecialFrames, "SpeakStoneAudioLibraryUI")
+    local function Colours() return addon.Theme().ui end
 
-    -- Title
-    if frame.TitleText then
-        frame.TitleText:SetText("SpeakStone Audio Library")
-    else
-        local title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        title:SetPoint("TOP", frame, "TOP", 0, -5)
-        title:SetText("SpeakStone Audio Library")
-        frame.title = title
-    end
-
-    -- Tabs across the top: Quests, Gossip, Books (owner, 2026-09-28). This
-    -- replaced a single Quests <-> Gossip toggle when books became a third list.
+    -- Tabs across the top: Quests, Gossip, Books, Favourites, Recent.
     frame.tabs = {}
     local TAB_ORDER = {
         { "quests", "Quests" }, { "gossip", "Gossip" }, { "books", "Books" },
-        { "favourites", "Favourites" }, { "recent", "Recent" },
+        { "favourites", "Favourites" }, { "recent", "Recent" }, { "packs", "Voice packs" },
     }
-    for i, t in ipairs(TAB_ORDER) do
-        local tab = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-        tab:SetSize(72, 22)
-        tab:SetPoint("TOPLEFT", frame, "TOPLEFT", 14 + (i - 1) * 74, -28)
-        tab:SetText(t[2])
+    local tabX = 16
+    for _, t in ipairs(TAB_ORDER) do
+        local width = t[1] == "packs" and 96 or 74
+        local tab = addon.UIK.Button(frame, t[2], width, 24)
+        tab:SetPoint("TOPLEFT", frame, "TOPLEFT", tabX, -44)
+        tabX = tabX + width + 4
         frame.tabs[t[1]] = tab
     end
 
-    -- Search Box
-    local searchBox = CreateFrame("EditBox", "SpeakStoneAudioLibrarySearchBox", frame, "SearchBoxTemplate")
-    searchBox:SetSize(360, 22)
-    searchBox:SetPoint("TOPLEFT", frame, "TOPLEFT", 20, -56)
-    searchBox:SetAutoFocus(false)
+    -- Search and the quest filters.
+    local searchBox = addon.UIK.EditBox(frame, LIST_WIDTH, "Search quest, NPC, zone, ID, race or sex...")
+    searchBox:SetPoint("TOPLEFT", frame, "TOPLEFT", 16, -78)
     searchBox:SetMaxLetters(60)
-    if searchBox.Instructions then
-        searchBox.Instructions:SetText("Search quest ID, name, race or sex...")
-    end
     frame.searchBox = searchBox
+    searchBox.Instructions = { SetText = function(_, text) searchBox:SetHint(text) end }
 
-    -- One list per tab, since a quest row, a gossip row and a book row show
-    -- different data: gossip has no "types" to key three fixed buttons off,
-    -- and a book is a set of pages.
-
-    -- ScrollFrame (FauxScrollFrame for high performance virtualized rows)
-    local scrollFrame = CreateFrame("ScrollFrame", "SpeakStoneAudioLibraryScrollFrame", frame, "FauxScrollFrameTemplate")
-    scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 12, LIST_TOP)
-    scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -36, 44)
-    frame.scrollFrame = scrollFrame
-
-    -- Bottom status and stop preview button
-    local countText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    countText:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 18, 16)
-    countText:SetJustifyH("LEFT")
-    frame.countText = countText
-
-    local stopButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    stopButton:SetSize(90, 22)
-    stopButton:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -16, 12)
-    stopButton:SetText("Stop Audio")
-    stopButton:SetScript("OnClick", function()
-        frame:StopAudio()
-    end)
-    frame.stopButton = stopButton
-
-    -- Mouse wheel scrolling handler
-    local function OnListMouseWheel(delta)
-        local scrollBar = _G["SpeakStoneAudioLibraryScrollFrameScrollBar"]
-        if scrollBar and scrollBar:IsShown() then
-            local current = scrollBar:GetValue()
-            local minVal, maxVal = scrollBar:GetMinMaxValues()
-            local step = ROW_HEIGHT * 3
-            if delta > 0 then
-                scrollBar:SetValue(math.max(minVal, current - step))
-            else
-                scrollBar:SetValue(math.min(maxVal, current + step))
-            end
-        end
-    end
-
-    frame:EnableMouseWheel(true)
-    frame:SetScript("OnMouseWheel", function(self, delta)
-        OnListMouseWheel(delta)
-    end)
-
-    scrollFrame:SetScript("OnVerticalScroll", function(self, offset)
-        FauxScrollFrame_OnVerticalScroll(self, offset, ROW_HEIGHT, function()
+    -- Group by: how the tree is organised. Which choices there are depends on the tab.
+    frame.groupBy = (SpeakStone_MainDB and SpeakStone_MainDB.guideGroupBy) or "expansion"
+    frame.groupButtons = {}
+    local groupLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    groupLabel.ssRole = false
+    groupLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -111)
+    groupLabel:SetText("Group by")
+    frame.groupLabel = groupLabel
+    for i = 1, 4 do
+        local button = addon.UIK.Button(frame, "", 70, 22, function(self)
+            frame.groupBy = self.value
+            if SpeakStone_MainDB then SpeakStone_MainDB.guideGroupBy = self.value end
+            frame.expanded = {}
+            frame:UpdateFilters()
+            frame.treeDirty = true
             frame:UpdateList()
         end)
-    end)
+        button:SetPoint("TOPLEFT", frame, "TOPLEFT", 78 + (i - 1) * 74, -106)
+        frame.groupButtons[i] = button
+    end
 
-    -- Create pooled row frames (14 rows created once and reused)
+    -- Quest filters, and open / close everything.
+    frame.filterButtons = {}
+    local filterX = 0
+    for i, f in ipairs({ { nil, "All", 40 }, { "heard", "Heard", 58 }, { "new", "Not heard", 80 } }) do
+        local button = addon.UIK.Button(frame, f[2], f[3], 22, function()
+            frame.heardFilter = f[1]
+            frame:UpdateFilters()
+            frame.treeDirty = true
+            frame:UpdateList()
+        end)
+        button:SetPoint("TOPLEFT", frame, "TOPLEFT", 16 + filterX, -134)
+        filterX = filterX + f[3] + 4
+        button.value = f[1]
+        frame.filterButtons[i] = button
+    end
+    frame.expandAll = addon.UIK.Button(frame, "Expand all", 78, 22, function() frame:SetAllOpen(true) end)
+    frame.expandAll:SetPoint("TOPRIGHT", frame, "TOPLEFT", 16 + 350 - 84, -134)
+    frame.collapseAll = addon.UIK.Button(frame, "Collapse all", 80, 22, function() frame:SetAllOpen(false) end)
+    frame.collapseAll:SetPoint("TOPRIGHT", frame, "TOPLEFT", 16 + 350, -134)
+
+    function frame:SetAllOpen(open)
+        wipe(self.expanded)
+        if open and self.tree then
+            for _, top in ipairs(self.tree) do
+                self.expanded[top.key] = true
+                for _, group in ipairs(top.groups) do
+                    self.expanded[group.key] = true
+                end
+            end
+        end
+        self.treeDirty = true
+        self:UpdateList()
+    end
+
+    function frame:UpdateFilters()
+        local mode = self.mode or "quests"
+        local choices = addon.GuideGroupings[mode]
+        -- A grouping the tab does not offer falls back to its first.
+        if choices then
+            local offered = false
+            for _, c in ipairs(choices) do
+                if c[1] == self.groupBy then offered = true end
+            end
+            if not offered then self.groupBy = choices[1][1] end
+        end
+        for i, button in ipairs(self.groupButtons) do
+            local c = choices and choices[i]
+            button:SetShown(c ~= nil)
+            if c then
+                button.value = c[1]
+                button:SetText(c[2])
+                button:SetSelected(c[1] == self.groupBy)
+            end
+        end
+        self.groupLabel:SetShown(choices ~= nil)
+        for _, button in ipairs(self.filterButtons) do
+            button:SetShown(mode == "quests")
+            button:SetSelected(button.value == self.heardFilter)
+        end
+        local tree = mode == "quests" or mode == "gossip" or mode == "books"
+        self.expandAll:SetShown(tree)
+        self.collapseAll:SetShown(tree)
+        -- Open / close everything sits on the group row when there is no filter row, else beside the filters.
+        local controlsY = (mode == "books") and -106 or -134
+        self.expandAll:ClearAllPoints()
+        self.expandAll:SetPoint("TOPRIGHT", self, "TOPLEFT", 16 + 350 - 84, controlsY)
+        self.collapseAll:ClearAllPoints()
+        self.collapseAll:SetPoint("TOPRIGHT", self, "TOPLEFT", 16 + 350, controlsY)
+        -- The list starts under whatever controls this tab has.
+        local top = (mode == "quests" or mode == "gossip") and -164 or (mode == "books" and -138 or -110)
+        self.listFrame:ClearAllPoints()
+        self.listFrame:SetPoint("TOPLEFT", self, "TOPLEFT", 16, top)
+        local rows = math.min(ROWS_MAX, math.floor((572 + top) / ROW_H))
+        self.rowsShown = rows
+        self.listFrame:SetSize(LIST_WIDTH, rows * ROW_H)
+        self.scroll:SetHeight(rows * ROW_H)
+        -- The Voice packs tab replaces the list and the page with its own view.
+        local packs = mode == "packs"
+        self.listFrame:SetShown(not packs)
+        self.page:SetShown(not packs)
+        self.searchBox:SetShown(not packs)
+        self.countText:SetShown(not packs)
+        if packs then
+            self.scroll:Hide()
+            self.groupLabel:Hide()
+            for _, button in ipairs(self.groupButtons) do button:Hide() end
+            for _, button in ipairs(self.filterButtons) do button:Hide() end
+            self.expandAll:Hide()
+            self.collapseAll:Hide()
+        end
+        self.packsView:SetShown(packs)
+    end
+
+    -- The list: rows of the tree, drawn a screenful at a time.
+    local listFrame = CreateFrame("Frame", nil, frame)
+    listFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 16, -164)
+    listFrame:SetSize(LIST_WIDTH, ROWS_SHOWN * ROW_H)
+    frame.rowsShown = ROWS_SHOWN
+    listFrame.bg = listFrame:CreateTexture(nil, "BACKGROUND")
+    listFrame.bg:SetAllPoints()
+    listFrame.border = addon.UIK.MakeBorder(listFrame)
+    local scroll = addon.UIK.VScroll(frame, ROWS_SHOWN * ROW_H)
+    scroll:SetPoint("TOPLEFT", listFrame, "TOPRIGHT", 4, 0)
+    frame.scroll = scroll
+    frame.scrollFrame = scroll          -- the old name, still read by the filter pass
+    frame.listFrame = listFrame
+
+    local function OnListMouseWheel(delta)
+        scroll:SetValue(scroll:GetValue() - delta * 3)
+    end
+    listFrame:EnableMouseWheel(true)
+    listFrame:SetScript("OnMouseWheel", function(_, delta) OnListMouseWheel(delta) end)
+    scroll:SetScript("OnValueChanged", function() frame:UpdateList() end)
+
     frame.rows = {}
-    for i = 1, NUM_VISIBLE_ROWS do
-        local row = CreateFrame("Button", nil, frame)
-        row:SetSize(342, ROW_HEIGHT)
-        row:SetPoint("TOPLEFT", frame, "TOPLEFT", 16, LIST_TOP - (i - 1) * ROW_HEIGHT)
-
-        -- Highlight texture
-        local highlight = row:CreateTexture(nil, "HIGHLIGHT")
-        highlight:SetAllPoints()
-        highlight:SetColorTexture(1, 1, 1, 0.08)
-
-        -- Alternate row background
-        if i % 2 == 0 then
-            local bg = row:CreateTexture(nil, "BACKGROUND")
-            bg:SetAllPoints()
-            bg:SetColorTexture(1, 1, 1, 0.025)
-        end
-
-        -- Favourite star, at the left of every row.
-        local star = CreateFrame("Button", nil, row)
-        star:SetSize(16, 16)
-        star:SetPoint("LEFT", row, "LEFT", 2, 0)
-        star:SetNormalTexture(STAR_TEXTURE)
-        star:SetScript("OnClick", function()
-            local data = row.questData or row.gossipData or row.bookData
-            if not data or not addon.ToggleFavourite then return end
-            -- FavouritesChanged redraws every row, this one included.
-            addon.ToggleFavourite(EntryKey(data))
-        end)
-        star:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:AddLine("Favourite", 1, 0.82, 0)
-            GameTooltip:AddLine("Keep this in the Favourites tab.", 1, 1, 1)
-            GameTooltip:Show()
-        end)
-        star:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        row.star = star
-
-        -- Two lines: the quest's name on top, its ID beneath, so a row reads
-        -- as the quest it is and still carries the number the files are
-        -- named after.
-        local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        text:SetPoint("TOPLEFT", row, "TOPLEFT", 22, -3)
-        text:SetPoint("RIGHT", row, "RIGHT", -144, 0)
-        text:SetJustifyH("LEFT")
-        text:SetWordWrap(false)
-        row.text = text
-
-        local idText = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-        idText:SetPoint("TOPLEFT", text, "BOTTOMLEFT", 0, -1)
-        idText:SetPoint("RIGHT", row, "RIGHT", -144, 0)
-        idText:SetJustifyH("LEFT")
-        idText:SetWordWrap(false)
-        row.idText = idText
-
-        -- Completion button
-        local compBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-        compBtn:SetSize(44, 20)
-        compBtn:SetPoint("RIGHT", row, "RIGHT", -2, 0)
-        compBtn:SetText("Comp")
-        row.compBtn = compBtn
-
-        -- Progress button
-        local progBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-        progBtn:SetSize(44, 20)
-        progBtn:SetPoint("RIGHT", compBtn, "LEFT", -3, 0)
-        progBtn:SetText("Prog")
-        row.progBtn = progBtn
-
-        -- Description button
-        local descBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-        descBtn:SetSize(44, 20)
-        descBtn:SetPoint("RIGHT", progBtn, "LEFT", -3, 0)
-        descBtn:SetText("Desc")
-        row.descBtn = descBtn
-
-        -- Click handlers. Quest rows use all three buttons; a gossip row uses
-        -- only descBtn, relabeled "Play" -- see UpdateList.
-        descBtn:SetScript("OnClick", function()
-            if row.bookData then
-                frame:OpenBook(row.bookData.book, 1)
-            elseif row.gossipData then
-                frame:PlayGossipClip(row.gossipData.npcID, row.gossipData.variant)
-            elseif row.questData then
-                frame:PlaySpecificAudio(row.questData.id, "description")
-            end
-        end)
-        progBtn:SetScript("OnClick", function()
-            if row.bookData then
-                frame:OpenBook(row.bookData.book, 1)
-                frame:PlayBook(row.bookData.book, 1)
-            elseif row.questData then
-                frame:PlaySpecificAudio(row.questData.id, "progress")
-            end
-        end)
-        compBtn:SetScript("OnClick", function()
-            if row.questData then
-                frame:PlaySpecificAudio(row.questData.id, "completion")
-            end
-        end)
-
-        -- Tooltips
-        local function ShowRowTooltip(owner)
-            if row.bookData then
-                local b = row.bookData
-                GameTooltip:SetOwner(owner or row, "ANCHOR_RIGHT")
-                GameTooltip:AddLine(BookName(b.book.base), 1, 0.82, 0)
-                if b.kind == "book" then
-                    local total = 0
-                    for _, page in ipairs(b.book.pages) do
-                        total = total + (frame:GetPageDuration(b.book, page) or 0)
-                    end
-                    GameTooltip:AddLine(#b.book.pages .. " page(s)", 0.7, 0.7, 0.7)
-                    if total > 0 then GameTooltip:AddLine(string.format("%.1fs in all", total), 0.3, 1, 0.3) end
-                    GameTooltip:AddLine("Book: reads every page in order.", 0.8, 0.8, 1)
-                else
-                    GameTooltip:AddLine("Page " .. b.page, 0.7, 0.7, 0.7)
-                    local d = frame:GetPageDuration(b.book, b.page)
-                    if d then GameTooltip:AddLine(string.format("%.1fs", d), 0.3, 1, 0.3) end
-                end
-                GameTooltip:Show()
-                return
-            end
-            if row.gossipData then
-                local g = row.gossipData
-                GameTooltip:SetOwner(owner or row, "ANCHOR_RIGHT")
-                local name = SpeakStone_NPCNames and SpeakStone_NPCNames[g.npcID]
-                GameTooltip:AddLine(name or ("NPC " .. g.npcID), 1, 0.82, 0)
-                GameTooltip:AddLine("NPC ID: " .. g.npcID .. "  |  Gossip variant " .. g.variant, 0.7, 0.7, 0.7)
-                local voice = GetVoice("npc", g.npcID)
-                if voice then
-                    GameTooltip:AddLine("Voice: " .. voice.label, 0.8, 0.8, 1)
-                end
-                local duration = frame:GetGossipDuration(g.npcID, g.variant)
-                if duration then
-                    GameTooltip:AddLine(string.format("%.1fs", duration), 0.3, 1, 0.3)
-                end
-                local state = addon.GossipClipAutoplayState and addon.GossipClipAutoplayState(g.npcID)
-                if state == "suppressed" then
-                    GameTooltip:AddLine(" ")
-                    GameTooltip:AddLine("Not autoplayed in-game: this NPC's gossip", 1, 0.5, 0.2)
-                    GameTooltip:AddLine("changes with quest/story state, and no captured", 1, 0.5, 0.2)
-                    GameTooltip:AddLine("text is on file to match the live line against.", 1, 0.5, 0.2)
-                elseif state == "matched" then
-                    GameTooltip:AddLine(" ")
-                    GameTooltip:AddLine("Autoplays only when the NPC is showing the exact", 0.6, 0.9, 0.6)
-                    GameTooltip:AddLine("line this clip was voiced from.", 0.6, 0.9, 0.6)
-                end
-                GameTooltip:Show()
-                return
-            end
-
-            if not row.questData then return end
-            GameTooltip:SetOwner(owner or row, "ANCHOR_RIGHT")
-            local title = GetQuestTitle(row.questData.id)
-            if title then
-                GameTooltip:AddLine(title, 1, 0.82, 0)
-                GameTooltip:AddLine("Quest ID: " .. row.questData.id, 0.7, 0.7, 0.7)
-            else
-                GameTooltip:AddLine("Quest ID: " .. row.questData.id, 1, 0.82, 0)
-            end
-            for _, questType in ipairs({ "description", "progress", "completion" }) do
-                local voice = row.questData.types[questType] and GetVoice("quest", row.questData.id, questType)
-                if voice then
-                    GameTooltip:AddLine(questType:sub(1, 1):upper() .. questType:sub(2) .. " voice: " .. voice.label, 0.8, 0.8, 1)
-                end
-            end
-
-            local dLen = frame:GetAudioDuration(row.questData.id, "description")
-            local pLen = frame:GetAudioDuration(row.questData.id, "progress")
-            local cLen = frame:GetAudioDuration(row.questData.id, "completion")
-
-            if dLen then GameTooltip:AddLine("Description: " .. string.format("%.1fs", dLen), 0.3, 1, 0.3) end
-            if pLen then GameTooltip:AddLine("Progress: " .. string.format("%.1fs", pLen), 0.3, 1, 0.3) end
-            if cLen then GameTooltip:AddLine("Completion: " .. string.format("%.1fs", cLen), 0.3, 1, 0.3) end
-
-            GameTooltip:Show()
-        end
-
-        row:SetScript("OnEnter", function(self) ShowRowTooltip(self) end)
-        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        descBtn:SetScript("OnEnter", function(self) ShowRowTooltip(self) end)
-        descBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        progBtn:SetScript("OnEnter", function(self) ShowRowTooltip(self) end)
-        progBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        compBtn:SetScript("OnEnter", function(self) ShowRowTooltip(self) end)
-        compBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
-        -- Mouse wheel forwarding
+    for i = 1, ROWS_MAX do
+        local row = CreateFrame("Button", nil, listFrame)
+        row:SetPoint("TOPLEFT", listFrame, "TOPLEFT", 0, -(i - 1) * ROW_H)
+        row:SetPoint("TOPRIGHT", listFrame, "TOPRIGHT", 0, -(i - 1) * ROW_H)
+        row:SetHeight(ROW_H)
+        row.select = row:CreateTexture(nil, "BACKGROUND")
+        row.select:SetAllPoints()
+        row.hover = row:CreateTexture(nil, "HIGHLIGHT")
+        row.hover:SetAllPoints()
+        row.sign = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        row.sign.ssRole = false
+        row.label = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        row.label.ssRole = false
+        row.label:SetJustifyH("LEFT")
+        row.label:SetWordWrap(false)
+        row.count = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        row.count.ssRole = false
+        row.count:SetPoint("RIGHT", row, "RIGHT", -8, 0)
+        row.count:SetJustifyH("RIGHT")
+        row.barTrack = row:CreateTexture(nil, "ARTWORK")
+        row.barTrack:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 8, 2)
+        row.barTrack:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -8, 2)
+        row.barTrack:SetHeight(2)
+        row.barFill = row:CreateTexture(nil, "OVERLAY")
+        row.barFill:SetPoint("BOTTOMLEFT", row.barTrack, "BOTTOMLEFT", 0, 0)
+        row.barFill:SetHeight(2)
         row:EnableMouseWheel(true)
-        row:SetScript("OnMouseWheel", function(self, delta) OnListMouseWheel(delta) end)
-        descBtn:EnableMouseWheel(true)
-        descBtn:SetScript("OnMouseWheel", function(self, delta) OnListMouseWheel(delta) end)
-        progBtn:EnableMouseWheel(true)
-        progBtn:SetScript("OnMouseWheel", function(self, delta) OnListMouseWheel(delta) end)
-        compBtn:EnableMouseWheel(true)
-        compBtn:SetScript("OnMouseWheel", function(self, delta) OnListMouseWheel(delta) end)
-
+        row:SetScript("OnMouseWheel", function(_, delta) OnListMouseWheel(delta) end)
+        row:SetScript("OnClick", function() frame:ClickRow(row) end)
         frame.rows[i] = row
     end
 
-    -- ----------------------------------------------------------------------
-    -- Methods
-    -- ----------------------------------------------------------------------
+    -- Bottom bar
+    local countText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    countText:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 18, 18)
+    countText:SetJustifyH("LEFT")
+    countText.ssRole = false
+    frame.countText = countText
+
+    local stopButton = addon.UIK.Button(frame, "Stop audio", 100, 24, function() frame:StopAudio() end)
+    stopButton:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -16, 12)
+    frame.stopButton = stopButton
+    stopButton:Hide()
+
+    -- The page on the right
+    local page = CreateFrame("Frame", nil, frame)
+    page:SetPoint("TOPLEFT", frame, "TOPLEFT", 392, -78)
+    page:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -16, 44)
+    page.bg = page:CreateTexture(nil, "BACKGROUND")
+    page.bg:SetAllPoints()
+    page.border = addon.UIK.MakeBorder(page)
+    frame.page = page
+
+    local function Text(parent, fontObject, width, justify)
+        local fs = parent:CreateFontString(nil, "OVERLAY", fontObject)
+        fs.ssRole = false
+        fs:SetJustifyH(justify or "LEFT")
+        fs:SetJustifyV("TOP")
+        fs:SetWordWrap(true)
+        if width then fs:SetWidth(width) end
+        return fs
+    end
+
+    -- The Voice packs tab: every pack there should be, per expansion, with a tick when it is installed.
+    local packsView = CreateFrame("Frame", nil, frame)
+    packsView:SetPoint("TOPLEFT", frame, "TOPLEFT", 16, -78)
+    packsView:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -16, 44)
+    packsView.bg = packsView:CreateTexture(nil, "BACKGROUND")
+    packsView.bg:SetAllPoints()
+    packsView.border = addon.UIK.MakeBorder(packsView)
+    packsView:Hide()
+    frame.packsView = packsView
+    packsView.summary = Text(packsView, "GameFontNormalLarge", 700)
+    packsView.summary:SetPoint("TOPLEFT", packsView, "TOPLEFT", 20, -16)
+    packsView.hint = Text(packsView, "GameFontHighlightSmall", 820)
+    packsView.hint:SetPoint("TOPLEFT", packsView.summary, "BOTTOMLEFT", 0, -6)
+    packsView.rows = {}
+    for i = 1, 16 do
+        local row = CreateFrame("Frame", nil, packsView)
+        row:SetPoint("TOPLEFT", packsView, "TOPLEFT", 14, -62 - (i - 1) * 28)
+        row:SetPoint("RIGHT", packsView, "RIGHT", -14, 0)
+        row:SetHeight(28)
+        row.stripe = row:CreateTexture(nil, "BACKGROUND")
+        row.stripe:SetAllPoints()
+        row.icon = row:CreateTexture(nil, "ARTWORK")
+        row.icon:SetSize(20, 20)
+        row.icon:SetPoint("LEFT", row, "LEFT", 8, 0)
+        row.name = Text(row, "GameFontNormal", 220)
+        row.name:SetPoint("LEFT", row.icon, "RIGHT", 10, 0)
+        row.name:SetJustifyV("MIDDLE")
+        row.parts = Text(row, "GameFontNormalSmall", 380)
+        row.parts:SetPoint("LEFT", row, "LEFT", 270, 0)
+        row.parts:SetJustifyV("MIDDLE")
+        row.count = Text(row, "GameFontNormalSmall", 150, "RIGHT")
+        row.count:SetPoint("RIGHT", row, "RIGHT", -10, 0)
+        row.count:SetJustifyV("MIDDLE")
+        packsView.rows[i] = row
+    end
+    packsView.linkLabel = Text(packsView, "GameFontNormalSmall", 600)
+    packsView.linkLabel:SetPoint("BOTTOMLEFT", packsView, "BOTTOMLEFT", 20, 46)
+    packsView.linkLabel:SetText("Get the missing packs on CurseForge (Ctrl+C to copy the address):")
+    packsView.linkBox = addon.UIK.CopyBox(packsView, "https://www.curseforge.com/members/dandwhelan/projects", 520)
+    packsView.linkBox:SetPoint("BOTTOMLEFT", packsView, "BOTTOMLEFT", 20, 16)
+
+    local TICK = "Interface\\RaidFrame\\ReadyCheck-Ready"
+    local CROSS = "Interface\\RaidFrame\\ReadyCheck-NotReady"
+    local PARTIAL = "Interface\\RaidFrame\\ReadyCheck-Waiting"
+    function frame:RefreshPacks()
+        local ui = Colours()
+        local index = addon.GetAudioIndex and addon.GetAudioIndex()
+        local rows, have, total, clips = addon.GuidePackRows(index and index.packs)
+        packsView.bg:SetColorTexture(ui.inset[1], ui.inset[2], ui.inset[3], ui.inset[4])
+        packsView.border:SetColor(ui.edge[1], ui.edge[2], ui.edge[3], 0.6)
+        local good = addon.Theme().light and "|cff1b6b2a" or "|cff4fd16f"
+        local bad = addon.Theme().light and "|cffa02b20" or "|cffff6b5e"
+        packsView.summary:SetText(string.format("%d of %d voice packs installed  \194\183  %s clips",
+            have, total, Thousands(clips)))
+        packsView.summary:SetTextColor(ui.title[1], ui.title[2], ui.title[3])
+        packsView.hint:SetText(have == total and "Every pack is installed. Check CurseForge now and then for updates."
+            or "A tick means every part of that expansion's audio is installed; a cross means none of it is.")
+        packsView.hint:SetTextColor(ui.dim[1], ui.dim[2], ui.dim[3])
+        packsView.linkLabel:SetTextColor(ui.dim[1], ui.dim[2], ui.dim[3])
+        addon.ThemeShadow(packsView.linkLabel)
+        for _, fs in ipairs({ packsView.summary, packsView.hint }) do addon.ThemeShadow(fs) end
+        for i, row in ipairs(packsView.rows) do
+            local data = rows[i]
+            if not data then
+                row:Hide()
+            else
+                row:Show()
+                if i % 2 == 0 then
+                    row.stripe:SetColorTexture(ui.hover[1], ui.hover[2], ui.hover[3], ui.hover[4])
+                else
+                    row.stripe:SetColorTexture(0, 0, 0, 0)
+                end
+                local all, none = data.have == data.total, data.have == 0
+                row.icon:SetTexture(all and TICK or (none and CROSS or PARTIAL))
+                row.name:SetText(data.label)
+                row.name:SetTextColor(ui.title[1], ui.title[2], ui.title[3])
+                local parts = {}
+                if #data.parts > 1 or (data.parts[1] and data.parts[1].label) then
+                    for _, part in ipairs(data.parts) do
+                        local name = part.label or "Installed"
+                        parts[#parts + 1] = part.installed and (good .. name .. "|r") or (bad .. name .. " (missing)|r")
+                    end
+                else
+                    parts[1] = all and (good .. "Installed|r") or (bad .. "Not installed|r")
+                end
+                row.parts:SetText(table.concat(parts, "   "))
+                row.count:SetText(data.clips > 0 and (Thousands(data.clips) .. " clips") or "")
+                row.count:SetTextColor(ui.dim[1], ui.dim[2], ui.dim[3])
+                for _, fs in ipairs({ row.name, row.parts, row.count }) do addon.ThemeShadow(fs) end
+            end
+        end
+    end
+
+    -- Reading along: while the clip for the text on the page plays, the word being spoken is lit.
+    local lastLit
+    function frame:ReadAlong()
+        local target = self.readTarget
+        if not target then
+            if lastLit then lastLit.fs:SetText(lastLit.plain) end
+            lastLit = nil
+            return
+        end
+        local started, duration = self.playStarted, self.playDuration
+        local playing = started and duration and duration > 0 and self.playKey == target.key
+            and GetTime() - started <= duration + 0.4
+        if lastLit and (not playing or lastLit.fs ~= target.fs or lastLit.key ~= target.key) then
+            -- It has finished, stopped, or the page moved on: the text as it was.
+            lastLit.fs:SetText(lastLit.plain)
+            lastLit = nil
+        end
+        if not playing then
+            return
+        end
+        if DB_NoReadAlong and DB_NoReadAlong() then return end
+        if not target.tokens then
+            target.tokens, target.spoken, target.words = ReadTokens(target.plain)
+            target.times = addon.SubtitleWordTimes(target.words, duration)
+        end
+        local elapsed = GetTime() - started
+        local index = addon.SubtitleWordAt(target.times, elapsed + 0.12)
+        if elapsed >= duration then index = 0 end
+        if target.lastIndex ~= index then
+            target.lastIndex = index
+            target.fs:SetText(Lit(target.plain, target.tokens, target.spoken, index,
+                addon.HighlightCode(target.light or addon.ThemeIsLight())))
+            -- Long text: keep the place in view.
+            if target.scroll and target.child and index > 0 then
+                local range = target.scroll:GetVerticalScrollRange()
+                if range > 0 then
+                    target.scroll:SetVerticalScroll(math.min(range, range * (elapsed / duration)))
+                end
+            end
+        end
+        lastLit = target
+    end
+    frame:HookScript("OnUpdate", function(_, dt)
+        frame.readAcc = (frame.readAcc or 0) + dt
+        if frame.readAcc >= 0.08 then
+            frame.readAcc = 0
+            -- Nothing tells an addon when a clip ends: it has, once its length has passed. (A book being read
+            -- whole turns its own pages, so it is left to its own timer.)
+            local started, duration = frame.playStarted, frame.playDuration
+            if started and duration and duration > 0 and GetTime() - started > duration + 0.5 and not frame.playingWholeBook() then
+                frame:StopAudio()
+            end
+            frame:ReadAlong()
+        end
+    end)
+
+    -- A favourite star for whatever is selected.
+    local star = CreateFrame("Button", nil, page)
+    star:SetSize(20, 20)
+    star:SetPoint("TOPRIGHT", page, "TOPRIGHT", -12, -12)
+    star:SetNormalTexture(STAR_TEXTURE)
+    star:SetScript("OnClick", function()
+        local entry = frame.selectedEntry
+        if entry and addon.ToggleFavourite then addon.ToggleFavourite(EntryKey(entry)) end
+    end)
+    star:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:AddLine("Favourite", 1, 0.82, 0)
+        GameTooltip:AddLine("Keep this in the Favourites tab.", 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    star:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    star:Hide()
+    frame.star = star
+
+    -- Nothing selected / a header or group selected
+    local info = CreateFrame("Frame", nil, page)
+    info:SetAllPoints()
+    info.title = Text(info, "GameFontNormalHuge", 440)
+    info.title:SetPoint("TOPLEFT", info, "TOPLEFT", 20, -20)
+    info.body = Text(info, "GameFontNormal", 440)
+    info.body:SetPoint("TOPLEFT", info.title, "BOTTOMLEFT", 0, -12)
+    info.body:SetSpacing(4)
+    info.barTrack = info:CreateTexture(nil, "ARTWORK")
+    info.barTrack:SetSize(440, 8)
+    info.barTrack:SetPoint("TOPLEFT", info.body, "BOTTOMLEFT", 0, -16)
+    info.barFill = info:CreateTexture(nil, "OVERLAY")
+    info.barFill:SetHeight(8)
+    info.barFill:SetPoint("TOPLEFT", info.barTrack, "TOPLEFT", 0, 0)
+    frame.infoView = info
+
+    -- A quest
+    local qv = CreateFrame("Frame", nil, page)
+    qv:SetAllPoints()
+    qv.title = Text(qv, "GameFontNormalHuge", 410)
+    qv.title:SetPoint("TOPLEFT", qv, "TOPLEFT", 20, -20)
+    qv.sub = Text(qv, "GameFontNormalSmall", 440)
+    qv.sub:SetPoint("TOPLEFT", qv.title, "BOTTOMLEFT", 0, -6)
+    qv.voice = Text(qv, "GameFontNormal", 440)
+    qv.voice:SetPoint("TOPLEFT", qv.sub, "BOTTOMLEFT", 0, -14)
+    qv.heard = Text(qv, "GameFontNormalSmall", 440)
+    qv.heard:SetPoint("TOPLEFT", qv.voice, "BOTTOMLEFT", 0, -6)
+    qv.parts = {}
+    for i, part in ipairs({
+        { "description", "!", "Accept" }, { "progress", "\226\128\147", "In progress" }, { "completion", "?", "Hand in" },
+    }) do
+        local button = addon.UIK.Button(qv, "", 96, 52, function()
+            if frame.selectedEntry then
+                frame.questPassage = part[1]
+                frame:PlaySpecificAudio(frame.selectedEntry.id, part[1])
+            end
+        end)
+        button:SetPoint("TOPLEFT", qv, "TOPLEFT", 20 + (i - 1) * 112, -132)
+        local path = button.label:GetFont()
+        button.label:SetFont(path, 30, "OUTLINE")
+        button.glyph = part[2]
+        button.kind = part[1]
+        button.caption = Text(qv, "GameFontNormalSmall", 96, "CENTER")
+        button.caption:SetPoint("TOP", button, "BOTTOM", 0, -4)
+        button.caption:SetText(part[3])
+        button.length = Text(qv, "GameFontDisableSmall", 96, "CENTER")
+        button.length:SetPoint("TOP", button.caption, "BOTTOM", 0, -2)
+        qv.parts[i] = button
+    end
+    -- The words of the part being shown, scrollable; lit word by word while it plays.
+    qv.scroll = CreateFrame("ScrollFrame", nil, qv)
+    qv.scroll:SetPoint("TOPLEFT", qv, "TOPLEFT", 20, -214)
+    qv.scroll:SetPoint("BOTTOMRIGHT", qv, "BOTTOMRIGHT", -20, 14)
+    qv.scroll:EnableMouseWheel(true)
+    qv.scroll:SetScript("OnMouseWheel", function(self, delta)
+        local range = self:GetVerticalScrollRange()
+        self:SetVerticalScroll(math.max(0, math.min(range, self:GetVerticalScroll() - delta * 40)))
+    end)
+    qv.child = CreateFrame("Frame", nil, qv.scroll)
+    qv.child:SetSize(430, 10)
+    qv.scroll:SetScrollChild(qv.child)
+    qv.text = Text(qv.child, "QuestFont", 430)
+    qv.text:SetPoint("TOPLEFT", qv.child, "TOPLEFT", 0, 0)
+    qv.text:SetSpacing(4)
+    qv:Hide()
+    frame.questView = qv
+
+    -- A gossip line
+    local gv = CreateFrame("Frame", nil, page)
+    gv:SetAllPoints()
+    gv.title = Text(gv, "GameFontNormalHuge", 410)
+    gv.title:SetPoint("TOPLEFT", gv, "TOPLEFT", 20, -20)
+    gv.sub = Text(gv, "GameFontNormalSmall", 440)
+    gv.sub:SetPoint("TOPLEFT", gv.title, "BOTTOMLEFT", 0, -6)
+    gv.text = Text(gv, "QuestFont", 440)
+    gv.text:SetPoint("TOPLEFT", gv.sub, "BOTTOMLEFT", 0, -16)
+    gv.text:SetSpacing(4)
+    gv.play = addon.UIK.Button(gv, "Play", 110, 30, function()
+        local e = frame.selectedEntry
+        if e then frame:PlayGossipClip(e.npcID, e.variant) end
+    end)
+    gv.play:SetPoint("BOTTOMLEFT", gv, "BOTTOMLEFT", 20, 20)
+    gv:Hide()
+    frame.gossipView = gv
+
     local activeDebugSound = nil
     local activePlayingQuestID = nil
     local activePlayingType = nil
@@ -706,9 +1226,8 @@ local function BuildUI()
         end
         CancelFilter()
 
-        local scrollBar = _G["SpeakStoneAudioLibraryScrollFrameScrollBar"]
-        if scrollBar then
-            scrollBar:SetValue(0)
+        if self.scroll then
+            self.scroll:SetValue(0)
         end
 
         local activeList = self:ActiveList() or {}
@@ -777,7 +1296,10 @@ local function BuildUI()
                         results[#results + 1] = entry
                     else
                         local title = GetQuestTitle(entry.id)
+                        local giver, zone = GiverOf(entry.id), ZoneOf(entry.id)
                         if (title and title:lower():find(needle, 1, true))
+                            or (giver and giver:lower():find(needle, 1, true))
+                            or (zone and zone:lower():find(needle, 1, true))
                             or VoiceMatches(GetVoice("quest", entry.id), state.words) then
                             results[#results + 1] = entry
                         end
@@ -826,166 +1348,17 @@ local function BuildUI()
         end)
     end
 
-    -- Update visible rows
-    function frame:UpdateList()
-        local isGossip = self.mode == "gossip"
-        local isBooks = self.mode == "books"
-        local list = self.filteredList or self:ActiveList() or {}
-        local numItems = #list
-        -- Taken once. UpdateList runs on every frame of a search pass, and
-        -- each of the branches below used to build a throwaway table to take
-        -- a length from.
-        local activeList = self:ActiveList()
-        local totalItems = activeList and #activeList or 0
-        FauxScrollFrame_Update(self.scrollFrame, numItems, NUM_VISIBLE_ROWS, ROW_HEIGHT)
-        local offset = FauxScrollFrame_GetOffset(self.scrollFrame)
-
-        for i = 1, NUM_VISIBLE_ROWS do
-            local index = offset + i
-            local row = self.rows[i]
-            if index <= numItems then
-                local data = list[index]
-                row:Show()
-                local kind = EntryKind(data)
-                PaintStar(row.star, addon.IsFavourite and addon.IsFavourite(EntryKey(data)))
-
-                if kind == "book" then
-                    row.questData = nil
-                    row.gossipData = nil
-                    row.bookData = data
-                    local name = BookName(data.book.base)
-                    row.compBtn:Hide()
-                    row.descBtn:Show()
-                    row.progBtn:Show()
-                    row.text:SetText("|cffffd100" .. name .. "|r")
-                    row.idText:SetText(#data.book.pages .. (#data.book.pages == 1 and " page" or " pages"))
-                    row.descBtn:SetText("Open")
-                    local on = activeBook == data.book and activeBookWhole
-                    row.progBtn:SetText(on and "|cff00ff00Read|r" or "Read")
-                elseif kind == "gossip" then
-                    row.questData = nil
-                    row.bookData = nil
-                    row.gossipData = data
-
-                    local name = SpeakStone_NPCNames and SpeakStone_NPCNames[data.npcID]
-                    if name then
-                        row.text:SetText("|cffffd100" .. name .. "|r")
-                    else
-                        row.text:SetText("|cff9d9d9dUnknown NPC|r")
-                    end
-
-                    local state = addon.GossipClipAutoplayState and addon.GossipClipAutoplayState(data.npcID)
-                    local label = "NPC " .. data.npcID .. "  \194\183  Gossip " .. data.variant
-                    local voice = GetVoice("npc", data.npcID)
-                    if voice then
-                        label = label .. "  \194\183  |cffb0b0ff" .. voice.label .. "|r"
-                    end
-                    if state == "suppressed" then
-                        label = label .. "  \194\183  |cffff8000not autoplayed|r"
-                    elseif state == "matched" then
-                        label = label .. "  \194\183  |cff80c080text-matched|r"
-                    end
-                    row.idText:SetText(label)
-
-                    row.progBtn:Hide()
-                    row.compBtn:Hide()
-                    row.descBtn:Show()
-                    if activePlayingNPCID == data.npcID and activePlayingVariant == data.variant then
-                        row.descBtn:SetText("|cff00ff00Play|r")
-                    else
-                        row.descBtn:SetText("Play")
-                    end
-                else
-                    row.gossipData = nil
-                    row.bookData = nil
-                    row.questData = data
-
-                    local title = GetQuestTitle(data.id)
-                    if not title then
-                        RequestQuestTitle(data.id)
-                    end
-                    if title and title ~= "" then
-                        row.text:SetText("|cffffd100" .. title .. "|r")
-                    else
-                        row.text:SetText("|cff9d9d9dUnknown quest|r")
-                    end
-                    local voice = GetVoice("quest", data.id)
-                    if voice then
-                        row.idText:SetText("Quest " .. data.id .. "  \194\183  |cffb0b0ff" .. voice.label .. "|r")
-                    else
-                        row.idText:SetText("Quest " .. data.id)
-                    end
-
-                    -- Description
-                    if data.types["description"] then
-                        row.descBtn:Show()
-                        if activePlayingQuestID == data.id and activePlayingType == "description" then
-                            row.descBtn:SetText("|cff00ff00Desc|r")
-                        else
-                            row.descBtn:SetText("Desc")
-                        end
-                    else
-                        row.descBtn:Hide()
-                    end
-
-                    -- Progress
-                    if data.types["progress"] then
-                        row.progBtn:Show()
-                        if activePlayingQuestID == data.id and activePlayingType == "progress" then
-                            row.progBtn:SetText("|cff00ff00Prog|r")
-                        else
-                            row.progBtn:SetText("Prog")
-                        end
-                    else
-                        row.progBtn:Hide()
-                    end
-
-                    -- Completion
-                    if data.types["completion"] then
-                        row.compBtn:Show()
-                        if activePlayingQuestID == data.id and activePlayingType == "completion" then
-                            row.compBtn:SetText("|cff00ff00Comp|r")
-                        else
-                            row.compBtn:SetText("Comp")
-                        end
-                    else
-                        row.compBtn:Hide()
-                    end
-                end
-            else
-                row.questData = nil
-                row.gossipData = nil
-                row.bookData = nil
-                row:Hide()
-            end
-        end
-
-        local noun = isBooks and "books" or (isGossip and "gossip clips" or "quests")
-        if self.mode == "favourites" then
-            noun = "favourites"
-        elseif self.mode == "recent" then
-            noun = "recently played"
-        end
-        if self.filtering then
-            -- A pass still running has not found everything yet, and "no
-            -- matching quests" while it is still looking is simply wrong --
-            -- which is what the empty result reads as for the first frame of
-            -- every name search.
-            self.countText:SetText(string.format("Searching... %d so far", numItems))
-        elseif numItems == 0 and totalItems == 0 and self.mode == "favourites" then
-            self.countText:SetText("No favourites yet: click the star on any row.")
-        elseif numItems == 0 and totalItems == 0 and self.mode == "recent" then
-            self.countText:SetText("Nothing played yet.")
-        elseif numItems == 0 then
-            self.countText:SetText("No matching " .. noun .. " found.")
-        elseif self.filteredList and numItems ~= totalItems then
-            self.countText:SetText(string.format("Showing %d / %d %s", numItems, totalItems, noun))
-        else
-            self.countText:SetText(string.format("Total: %d %s", numItems, noun))
-        end
+    -- Audio playback
+    function frame.playingWholeBook()
+        return activeBook ~= nil and activeBookWhole
     end
 
-    -- Audio playback
+    -- The Stop audio button shows only while something started here is playing.
+    function frame:UpdateStop()
+        local playing = activeDebugSound ~= nil or activePlayingQuestID ~= nil or activePlayingNPCID ~= nil or activeBook ~= nil
+        self.stopButton:SetShown(playing)
+    end
+
     function frame:StopAudio()
         if activeDebugSound then
             StopSound(activeDebugSound)
@@ -995,6 +1368,7 @@ local function BuildUI()
         activePlayingType = nil
         activePlayingNPCID = nil
         activePlayingVariant = nil
+        self.playKey, self.playStarted, self.playDuration = nil, nil, nil
         if bookTimer then
             bookTimer:Cancel()
             bookTimer = nil
@@ -1004,17 +1378,13 @@ local function BuildUI()
         if self.RefreshBook then self:RefreshBook() end
     end
 
-    -- Plays one page of a book. With `whole`, the next page follows when this
-    -- one ends, through to the last page; StopAudio (or playing anything
-    -- else) ends the reading.
     -- ------------------------------------------------------------------
     -- Book view: one book shown as a book, page by page (owner, 2026-09-28).
-    -- Covers the list; the page shown follows the reading.
+    -- Fills the page on the right while a book is selected.
     -- ------------------------------------------------------------------
-    local view = CreateFrame("Frame", nil, frame)
-    view:SetPoint("TOPLEFT", frame, "TOPLEFT", 14, LIST_TOP)
-    view:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -14, 44)
-    view:SetFrameLevel(frame:GetFrameLevel() + 20)
+
+    local view = CreateFrame("Frame", nil, page)
+    view:SetAllPoints()
     view:EnableMouse(true)
     view:Hide()
     local parchment = view:CreateTexture(nil, "BACKGROUND")
@@ -1025,49 +1395,45 @@ local function BuildUI()
     edge:SetPoint("BOTTOMRIGHT", -6, 6)
     edge:SetColorTexture(0.93, 0.87, 0.73, 1)
     local bTitle = view:CreateFontString(nil, "OVERLAY", "QuestTitleFontBlackShadow")
+    bTitle.ssRole = false
     bTitle:SetPoint("TOP", view, "TOP", 0, -18)
-    bTitle:SetWidth(300)
-    -- Long titles wrapped to three lines and ran into the page text; cap at two.
+    bTitle:SetWidth(380)
     if bTitle.SetMaxLines then bTitle:SetMaxLines(2) end
     bTitle:SetWordWrap(true)
     bTitle:SetTextColor(0.25, 0.16, 0.06)
     local bStatus = view:CreateFontString(nil, "OVERLAY", "GameFontBlackSmall")
+    bStatus.ssRole = false
     bStatus:SetPoint("TOP", bTitle, "BOTTOM", 0, -4)
-    bStatus:SetWidth(300)
+    bStatus:SetWidth(380)
 
-    -- The page's words (owner, 2026-09-28: "look at adding the book text"),
-    -- from BookTexts.lua, scrollable for long pages.
     local textScroll = CreateFrame("ScrollFrame", nil, view, "UIPanelScrollFrameTemplate")
-    -- Top edge is set in RefreshBook from the title's height, so a two-line
-    -- title pushes the text down instead of the title and "Reading the
-    -- book..." sitting on top of it.
-    textScroll:SetPoint("TOPLEFT", view, "TOPLEFT", 22, -58)
-    textScroll:SetPoint("BOTTOMRIGHT", view, "BOTTOMRIGHT", -34, 118)
+    textScroll:SetPoint("TOPLEFT", view, "TOPLEFT", 24, -58)
+    textScroll:SetPoint("BOTTOMRIGHT", view, "BOTTOMRIGHT", -40, 118)
     local textChild = CreateFrame("Frame", nil, textScroll)
-    textChild:SetSize(300, 10)
+    textChild:SetSize(400, 10)
     textScroll:SetScrollChild(textChild)
     local bText = textChild:CreateFontString(nil, "OVERLAY", "QuestFont")
+    bText.ssRole = false
     bText:SetPoint("TOPLEFT", 0, 0)
-    bText:SetWidth(300)
+    bText:SetWidth(400)
     bText:SetJustifyH("LEFT")
     bText:SetJustifyV("TOP")
     bText:SetTextColor(0.18, 0.12, 0.05)
 
     local bPage = view:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    bPage.ssRole = false
     bPage:SetPoint("BOTTOM", view, "BOTTOM", 0, 86)
     bPage:SetTextColor(0.3, 0.2, 0.08)
     local function Btn(label, w, point, x, y)
-        local b = CreateFrame("Button", nil, view, "UIPanelButtonTemplate")
-        b:SetSize(w, 24)
+        local b = addon.UIK.Button(view, label, w, 24)
         b:SetPoint(point, view, point, x, y)
-        b:SetText(label)
         return b
     end
     local prevBtn = Btn("< Prev", 80, "BOTTOMLEFT", 20, 80)
     local nextBtn = Btn("Next >", 80, "BOTTOMRIGHT", -20, 80)
     local playPageBtn = Btn("Play page", 100, "BOTTOM", -56, 46)
     local readBtn = Btn("Read book", 100, "BOTTOM", 56, 46)
-    local backBtn = Btn("Back to books", 120, "BOTTOM", 0, 12)
+    local backBtn = Btn("Close book", 120, "BOTTOM", 0, 12)
 
     -- Book text as the player would see it: $B line breaks, and the player's
     -- own name / class / race / gendered words filled in.
@@ -1111,10 +1477,18 @@ local function BuildUI()
         textScroll:SetPoint("TOPLEFT", view, "TOPLEFT", 22, -math.max(58, top))
         bPage:SetText(string.format("Page %d of %d", idx, #book.pages))
         if view.shownIndex ~= idx or view.shownBook ~= book then
-            bText:SetText(PageText(book, idx))
+            view.plain = PageText(book, idx)
+            bText:SetText(view.plain)
             textChild:SetHeight(math.max(10, bText:GetStringHeight() + 8))
             textScroll:SetVerticalScroll(0)
             view.shownIndex, view.shownBook = idx, book
+        end
+        local page = book.pages[idx]
+        if view.plain and not view.plain:find("|", 1, true) then
+            frame.readTarget = { fs = bText, plain = view.plain, key = "b:" .. book.base .. ":" .. page, scroll = textScroll,
+                child = textChild, ink = { 0.18, 0.12, 0.05 }, light = true }
+        else
+            frame.readTarget = nil
         end
         local reading = activeBook == book and activeBookWhole
         if activeBook == book and activeBookPage == book.pages[idx] then
@@ -1175,7 +1549,7 @@ local function BuildUI()
             soundPath, duration = path, len
         end
         if not soundPath then
-            print("SpeakStone Audio Library: page " .. page .. " of '" .. BookName(book.base) .. "' not found")
+            print("SpeakStone Guide: page " .. page .. " of '" .. BookName(book.base) .. "' not found")
             return false
         end
         local willPlay, handle = PlaySoundFile(soundPath, "Dialog")
@@ -1183,6 +1557,7 @@ local function BuildUI()
         if addon.NoteRecent then addon.NoteRecent("b:" .. book.base) end
         activeDebugSound = handle
         activeBook, activeBookPage, activeBookWhole = book, page, whole
+        frame.playKey, frame.playStarted, frame.playDuration = "b:" .. book.base .. ":" .. page, GetTime(), tonumber(duration)
         if view.book == book then
             view.index = index
             frame:RefreshBook()
@@ -1233,14 +1608,14 @@ local function BuildUI()
             addon.StopCurrentSound()
         end
 
-        local soundPath
+        local soundPath, length
         if addon.FindSound then
-            local _, path = addon.FindSound({ questID .. "_" .. audioType })
-            soundPath = path
+            local _, path, duration = addon.FindSound({ questID .. "_" .. audioType })
+            soundPath, length = path, duration
         end
 
         if not soundPath then
-            print("SpeakStone Audio Library: clip not found for Quest ID " .. tostring(questID) .. " (" .. tostring(audioType) .. ")")
+            print("SpeakStone Guide: clip not found for Quest ID " .. tostring(questID) .. " (" .. tostring(audioType) .. ")")
             return
         end
 
@@ -1250,6 +1625,7 @@ local function BuildUI()
             if addon.NoteRecent then addon.NoteRecent("q:" .. questID) end
             activePlayingQuestID = questID
             activePlayingType = audioType
+            self.playKey, self.playStarted, self.playDuration = "q:" .. questID .. ":" .. audioType, GetTime(), tonumber(length)
             self:UpdateList()
         end
     end
@@ -1265,14 +1641,14 @@ local function BuildUI()
             addon.StopCurrentSound()
         end
 
-        local soundPath
+        local soundPath, length
         if addon.FindSound then
-            local _, path = addon.FindSound({ "npc" .. npcID .. "_gossip" .. variant })
-            soundPath = path
+            local _, path, duration = addon.FindSound({ "npc" .. npcID .. "_gossip" .. variant })
+            soundPath, length = path, duration
         end
 
         if not soundPath then
-            print("SpeakStone Audio Library: clip not found for NPC " .. tostring(npcID) .. " gossip " .. tostring(variant))
+            print("SpeakStone Guide: clip not found for NPC " .. tostring(npcID) .. " gossip " .. tostring(variant))
             return
         end
 
@@ -1282,9 +1658,345 @@ local function BuildUI()
             if addon.NoteRecent then addon.NoteRecent("g:" .. npcID .. ":" .. variant) end
             activePlayingNPCID = npcID
             activePlayingVariant = variant
+            self.playKey, self.playStarted, self.playDuration = "g:" .. npcID .. ":" .. variant, GetTime(), tonumber(length)
             self:UpdateList()
         end
     end
+
+
+    -- ----------------------------------------------------------------------
+    -- The tree on screen
+    -- ----------------------------------------------------------------------
+    local function LeafLabel(entry)
+        local kind = EntryKind(entry)
+        if kind == "book" then
+            return BookName(entry.book.base)
+        elseif kind == "gossip" then
+            local name = SpeakStone_NPCNames and SpeakStone_NPCNames[entry.npcID]
+            return (name or ("NPC " .. entry.npcID)) .. "  \194\183  " .. entry.variant
+        end
+        local title = GetQuestTitle(entry.id)
+        if not title then
+            RequestQuestTitle(entry.id)
+            return "Quest " .. entry.id
+        end
+        return title
+    end
+
+    local function Percent(heard, total)
+        return total > 0 and math.floor(heard / total * 100 + 0.5) or 0
+    end
+
+    -- Rebuild the rows from the list the filter produced, the tab and what is open.
+    function frame:RebuildRows()
+        self.treeDirty = false
+        local list = self.filteredList or self:ActiveList() or {}
+        local mode = self.mode or "quests"
+        if mode == "favourites" or mode == "recent" then
+            self.tree = nil
+            local rows = {}
+            for _, entry in ipairs(list) do
+                rows[#rows + 1] = { kind = "leaf", entry = entry, depth = 0 }
+            end
+            self.flat = rows
+        else
+            self.tree = BuildTree(mode, list, mode == "quests" and self.heardFilter or nil, self.groupBy)
+            local searching = self.searchBox:GetText() ~= ""
+            self.flat = Flatten(self.tree, self.expanded, searching)
+        end
+        local shown = self.rowsShown or ROWS_SHOWN
+        self.scroll:SetMinMaxValues(0, math.max(0, #self.flat - shown))
+        self.scroll:SetShown(#self.flat > shown)
+        if self.scroll:GetValue() > math.max(0, #self.flat - shown) then
+            self.scroll:SetValue(math.max(0, #self.flat - shown))
+        end
+    end
+
+    function frame:ClickRow(row)
+        local r = row.rowData
+        if not r then return end
+        if r.kind == "leaf" then
+            self.selectedEntry = r.entry
+            self.selectedNode = nil
+            self:ShowPage()
+        else
+            local key = r.node.key
+            self.expanded[key] = not self.expanded[key] or nil
+            self.selectedEntry = nil
+            self.selectedNode = r.node
+            self.treeDirty = true
+            self:ShowPage()
+        end
+        self:UpdateList()
+    end
+
+    function frame:UpdateList()
+        self:UpdateStop()
+        if self.mode == "packs" then
+            self:RefreshPacks()
+            return
+        end
+        do
+            local list = self.filteredList or self:ActiveList()
+            local signature = tostring(list) .. ":" .. (list and #list or 0) .. ":" .. tostring(self.mode)
+                .. ":" .. tostring(self.heardFilter) .. ":" .. tostring(self.groupBy) .. ":" .. tostring(self.searchBox:GetText() ~= "")
+            if signature ~= self.treeSignature then
+                self.treeSignature = signature
+                self.treeDirty = true
+            end
+        end
+        if not self.flat or self.treeDirty then
+            self:RebuildRows()
+        end
+        local ui = Colours()
+        self.groupLabel:SetTextColor(ui.dim[1], ui.dim[2], ui.dim[3])
+        addon.ThemeShadow(self.groupLabel)
+        self.listFrame.bg:SetColorTexture(ui.inset[1], ui.inset[2], ui.inset[3], ui.inset[4])
+        self.listFrame.border:SetColor(ui.edge[1], ui.edge[2], ui.edge[3], 0.6)
+        self.page.bg:SetColorTexture(ui.inset[1], ui.inset[2], ui.inset[3], ui.inset[4])
+        self.page.border:SetColor(ui.edge[1], ui.edge[2], ui.edge[3], 0.6)
+        local offset = math.floor(self.scroll:GetValue() + 0.5)
+        local selectedEntry = self.selectedEntry
+        for i = 1, ROWS_MAX do
+            local row = self.rows[i]
+            local r = i <= (self.rowsShown or ROWS_SHOWN) and self.flat[offset + i] or nil
+            row.rowData = r
+            if not r then
+                row:Hide()
+            else
+                row:Show()
+                local indent = 8 + r.depth * 16
+                row.sign:ClearAllPoints()
+                row.sign:SetPoint("LEFT", row, "LEFT", indent, 0)
+                row.label:ClearAllPoints()
+                row.label:SetPoint("LEFT", row, "LEFT", indent + 16, 0)
+                row.label:SetPoint("RIGHT", row.count, "LEFT", -6, 0)
+                row.hover:SetColorTexture(ui.hover[1], ui.hover[2], ui.hover[3], ui.hover[4])
+                if r.kind == "leaf" then
+                    local entry = r.entry
+                    local selected = selectedEntry == entry
+                    row.sign:SetText("")
+                    row.label:SetText(LeafLabel(entry))
+                    local heard = EntryKind(entry) == "quest" and IsHeard(entry.id)
+                    row.count:SetText(heard and "heard" or "")
+                    row.count:SetTextColor(ui.accent[1], ui.accent[2], ui.accent[3])
+                    row.label:SetTextColor(ui.text[1], ui.text[2], ui.text[3])
+                    row.barTrack:Hide()
+                    row.barFill:Hide()
+                    if selected then
+                        row.select:SetColorTexture(ui.select[1], ui.select[2], ui.select[3], ui.select[4])
+                    else
+                        row.select:SetColorTexture(0, 0, 0, 0)
+                    end
+                else
+                    local node = r.node
+                    row.sign:SetText(r.open and "-" or "+")
+                    row.sign:SetTextColor(ui.accent[1], ui.accent[2], ui.accent[3])
+                    row.label:SetText(node.label)
+                    local isHeader = r.kind == "header"
+                    row.label:SetTextColor(isHeader and ui.title[1] or ui.text[1], isHeader and ui.title[2] or ui.text[2],
+                        isHeader and ui.title[3] or ui.text[3])
+                    if self.mode == "quests" then
+                        row.count:SetText(string.format("%d/%d \194\183 %d%%", node.heard, node.total, Percent(node.heard, node.total)))
+                    else
+                        row.count:SetText(tostring(node.total))
+                    end
+                    row.count:SetTextColor(ui.dim[1], ui.dim[2], ui.dim[3])
+                    if self.mode == "quests" then
+                        row.barTrack:Show()
+                        row.barTrack:SetColorTexture(ui.divider[1], ui.divider[2], ui.divider[3], 0.5)
+                        row.barFill:Show()
+                        row.barFill:SetColorTexture(ui.accent[1], ui.accent[2], ui.accent[3], 1)
+                        row.barFill:SetWidth(math.max(1, (LIST_WIDTH - 16) * (node.total > 0 and node.heard / node.total or 0)))
+                    else
+                        row.barTrack:Hide()
+                        row.barFill:Hide()
+                    end
+                    if self.selectedNode == node then
+                        row.select:SetColorTexture(ui.select[1], ui.select[2], ui.select[3], ui.select[4])
+                    else
+                        row.select:SetColorTexture(0, 0, 0, 0)
+                    end
+                end
+                row.sign.ssRole, row.label.ssRole, row.count.ssRole = false, false, false
+                addon.ThemeShadow(row.label)
+                addon.ThemeShadow(row.count)
+                addon.ThemeShadow(row.sign)
+            end
+        end
+        self:UpdatePage()
+        local mode = self.mode or "quests"
+        local list = self.filteredList or self:ActiveList() or {}
+        local activeList = self:ActiveList()
+        local numItems, totalItems = #list, activeList and #activeList or 0
+        local noun = mode == "books" and "books" or (mode == "gossip" and "gossip clips" or "quests")
+        if mode == "favourites" then noun = "favourites" elseif mode == "recent" then noun = "recently played" end
+        if self.filtering then
+            self.countText:SetText(string.format("Searching... %d so far", numItems))
+        elseif numItems == 0 and totalItems == 0 and mode == "favourites" then
+            self.countText:SetText("No favourites yet: click the star on a quest, line or book.")
+        elseif numItems == 0 and totalItems == 0 and mode == "recent" then
+            self.countText:SetText("Nothing played yet.")
+        elseif numItems == 0 then
+            self.countText:SetText("No matching " .. noun .. " found.")
+        elseif self.filteredList and numItems ~= totalItems then
+            self.countText:SetText(string.format("Showing %d / %d %s", numItems, totalItems, noun))
+        else
+            self.countText:SetText(string.format("Total: %d %s", numItems, noun))
+        end
+        local c = ui.dim
+        self.countText:SetTextColor(c[1], c[2], c[3])
+        addon.ThemeShadow(self.countText)
+    end
+
+    -- ----------------------------------------------------------------------
+    -- The page: what is selected
+    -- ----------------------------------------------------------------------
+    function frame:ShowPage()
+        local entry, node = self.selectedEntry, self.selectedNode
+        self.infoView:Hide()
+        self.questView:Hide()
+        self.gossipView:Hide()
+        if self.CloseBook then self:CloseBook() end
+        if entry then
+            local kind = EntryKind(entry)
+            if kind == "book" then
+                self:OpenBook(entry.book, 1)
+            elseif kind == "gossip" then
+                self.gossipView:Show()
+            else
+                self.questView:Show()
+            end
+            self.star:Show()
+        else
+            self.infoView:Show()
+            self.star:Hide()
+        end
+    end
+
+    function frame:UpdatePage()
+        local ui = Colours()
+        local entry, node = self.selectedEntry, self.selectedNode
+        local function Ink(fs, colour)
+            fs:SetTextColor(colour[1], colour[2], colour[3])
+            addon.ThemeShadow(fs)
+        end
+        if entry then
+            PaintStar(self.star, addon.IsFavourite and addon.IsFavourite(EntryKey(entry)))
+            local kind = EntryKind(entry)
+            if kind == "quest" then
+                local qv = self.questView
+                qv.title:SetText(LeafLabel(entry))
+                Ink(qv.title, ui.title)
+                local heard = IsHeard(entry.id)
+                local where = ZoneOf(entry.id)
+                local giver = GiverOf(entry.id)
+                qv.sub:SetText("Quest " .. entry.id .. "  \194\183  " .. ExpansionOf(entry.pack)
+                    .. (where and ("  \194\183  " .. where) or "") .. (giver and ("  \194\183  from " .. giver) or ""))
+                Ink(qv.sub, ui.dim)
+                local voice = GetVoice("quest", entry.id)
+                qv.voice:SetText(voice and ("Voice: " .. voice.label) or "")
+                Ink(qv.voice, ui.text)
+                qv.heard:SetText(heard and "You have heard this quest." or "You have not heard this quest read yet.")
+                Ink(qv.heard, heard and ui.accent or ui.dim)
+                for _, button in ipairs(qv.parts) do
+                    local has = entry.types[button.kind]
+                    button:SetShown(has and true or false)
+                    button.caption:SetShown(has and true or false)
+                    button.length:SetShown(has and true or false)
+                    if has then
+                        local playing = activePlayingQuestID == entry.id and activePlayingType == button.kind
+                        button:SetText((playing and "|cff00ff00" or addon.Theme().titleCode) .. button.glyph .. "|r")
+                        Ink(button.caption, ui.text)
+                        local len = self:GetAudioDuration(entry.id, button.kind)
+                        button.length:SetText(len and string.format("%.1fs", len) or "")
+                        Ink(button.length, ui.dim)
+                    end
+                end
+                -- The words of the part chosen (the description until one is picked).
+                local passage = self.questPassage
+                if not (passage and entry.types[passage]) then
+                    passage = entry.types.description and "description" or (entry.types.progress and "progress" or "completion")
+                end
+                for _, button in ipairs(qv.parts) do
+                    button:SetSelected(button.kind == passage)
+                end
+                local plain = LiveText(addon.QuestTextFor and addon.QuestTextFor(entry.id, passage))
+                if not (addon.ApplyReadingFont and addon.ApplyReadingFont(qv.text, 16, "")) then
+                    qv.text:SetFontObject("QuestFont")
+                end
+                qv.text:SetText(plain or "(The words of this part are not on file.)")
+                qv.text:SetTextColor(ui.text[1], ui.text[2], ui.text[3])
+                addon.ThemeShadow(qv.text)
+                qv.child:SetHeight(math.max(10, qv.text:GetStringHeight() + 10))
+                if plain and not plain:find("|", 1, true) then
+                    self.readTarget = { fs = qv.text, plain = plain, key = "q:" .. entry.id .. ":" .. passage,
+                        scroll = qv.scroll, child = qv.child, ink = ui.text }
+                else
+                    self.readTarget = nil
+                end
+            elseif kind == "gossip" then
+                local gv = self.gossipView
+                local name = SpeakStone_NPCNames and SpeakStone_NPCNames[entry.npcID]
+                gv.title:SetText(name or ("NPC " .. entry.npcID))
+                Ink(gv.title, ui.title)
+                local sub = "NPC " .. entry.npcID .. "  \194\183  Gossip " .. entry.variant
+                local voice = GetVoice("npc", entry.npcID)
+                if voice then sub = sub .. "  \194\183  " .. voice.label end
+                local state = addon.GossipClipAutoplayState and addon.GossipClipAutoplayState(entry.npcID)
+                if state == "suppressed" then sub = sub .. "  \194\183  not autoplayed in the game" end
+                gv.sub:SetText(sub)
+                Ink(gv.sub, ui.dim)
+                local text
+                for line, variant in pairs(SpeakStone_GossipTexts and SpeakStone_GossipTexts[entry.npcID] or {}) do
+                    if variant == entry.variant then text = line break end
+                end
+                if not (addon.ApplyReadingFont and addon.ApplyReadingFont(gv.text, 16, "")) then
+                    gv.text:SetFontObject("QuestFont")
+                end
+                gv.text:SetText(text or "(The words of this line are not on file.)")
+                if text and not text:find("|", 1, true) then
+                    self.readTarget = { fs = gv.text, plain = text, key = "g:" .. entry.npcID .. ":" .. entry.variant, ink = ui.text }
+                else
+                    self.readTarget = nil
+                end
+                Ink(gv.text, ui.text)
+                local playing = activePlayingNPCID == entry.npcID and activePlayingVariant == entry.variant
+                gv.play:SetText(playing and "Playing" or "Play")
+            end
+        elseif node then
+            local info = self.infoView
+            info.title:SetText(node.label)
+            Ink(info.title, ui.title)
+            local lines = {}
+            if self.mode == "quests" then
+                lines[#lines + 1] = string.format("%d voiced quests", node.total)
+                lines[#lines + 1] = string.format("%d heard \194\183 %d%%", node.heard, Percent(node.heard, node.total))
+                info.barTrack:Show()
+                info.barFill:Show()
+                info.barTrack:SetColorTexture(ui.divider[1], ui.divider[2], ui.divider[3], 0.5)
+                info.barFill:SetColorTexture(ui.accent[1], ui.accent[2], ui.accent[3], 1)
+                info.barFill:SetWidth(math.max(1, 440 * (node.total > 0 and node.heard / node.total or 0)))
+            else
+                lines[#lines + 1] = string.format("%d in this group", node.total)
+                info.barTrack:Hide()
+                info.barFill:Hide()
+            end
+            info.body:SetText(table.concat(lines, "\n"))
+            Ink(info.body, ui.text)
+        else
+            local info = self.infoView
+            info.title:SetText("SpeakStone Guide")
+            Ink(info.title, ui.title)
+            info.body:SetText("Open an expansion on the left and pick a quest, greeting or book to hear it. "
+                .. "The bar under each name shows how much of it you have heard.")
+            Ink(info.body, ui.text)
+            info.barTrack:Hide()
+            info.barFill:Hide()
+        end
+    end
+    addon.ThemeRegister(function() if frame:IsShown() then frame:UpdateList() end end)
+
 
     -- Main populate / toggle
     function frame:PopulateList()
@@ -1294,49 +2006,45 @@ local function BuildUI()
 
     function frame:SetMode(mode)
         if self.mode == mode then return end
-        -- Drop the previous tab's list BEFORE anything redraws: resetting the
-        -- scrollbar in FilterList redraws at once, and it used to draw the old
-        -- tab's rows under the new mode (gossip rows as books, etc.).
         self.filteredList = nil
         self.keyedList = nil
-        if self.CloseBook then self:CloseBook() end
+        self.selectedEntry, self.selectedNode = nil, nil
+        self.flat = nil
+        self.treeDirty = true
         self:StopAudio()
         self.mode = mode
         local hints = {
-            quests = "Search quest ID, name, race or sex...",
+            quests = "Search quest, NPC, zone, ID, race or sex...",
             gossip = "Search NPC ID, name, race or sex...",
             books = "Search book name...",
             favourites = "Search favourites...",
             recent = "Search recently played...",
         }
-        if searchBox.Instructions then
-            searchBox.Instructions:SetText(hints[mode] or hints.quests)
-        end
+        searchBox:SetHint(hints[mode] or hints.quests)
         self:UpdateTabs()
-        -- A rebuilt index invalidates the narrowing FilterList relies on --
-        -- the previous result was drawn from the other mode's list.
+        self:UpdateFilters()
+        self:ShowPage()
         self.lastQuery = nil
         self.lastResult = nil
+        if mode == "packs" then
+            self:RefreshPacks()
+            return
+        end
         self:FilterList(self.searchBox:GetText())
     end
 
-    -- The selected tab is shown pressed and can't be clicked again.
     function frame:UpdateTabs()
         local current = self.mode or "quests"
         for mode, tab in pairs(self.tabs) do
-            if mode == current then
-                tab:Disable()
-                tab:LockHighlight()
-            else
-                tab:Enable()
-                tab:UnlockHighlight()
-            end
+            tab:SetSelected(mode == current)
         end
     end
     for mode, tab in pairs(frame.tabs) do
         tab:SetScript("OnClick", function() frame:SetMode(mode) end)
     end
+    frame.expanded = {}
     frame:UpdateTabs()
+    frame:UpdateFilters()
 
     function frame:ToggleVisibility()
         if self:IsVisible() then
@@ -1346,14 +2054,9 @@ local function BuildUI()
         end
     end
 
-    -- SearchBox script
-    searchBox:SetScript("OnTextChanged", function(self, userInput)
-        if SearchBoxTemplate_OnTextChanged then
-            SearchBoxTemplate_OnTextChanged(self)
-        end
+    searchBox:SetScript("OnTextChanged", function(self)
         frame:QueueFilter(self:GetText())
     end)
-
     searchBox:SetScript("OnEscapePressed", function(self)
         if self:GetText() ~= "" then
             self:SetText("")
@@ -1361,51 +2064,41 @@ local function BuildUI()
             frame:Hide()
         end
     end)
+    searchBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
 
-    frame:SetScript("OnShow", function(self)
-        -- Every SpeakStone window defaulted to plain SetPoint("CENTER"), so
-        -- opening this from the Settings window (its main entry point) landed
-        -- it in the exact same screen position, stacked on top. Anchor beside
-        -- Settings when it is open; otherwise fall back to centered.
+    frame:HookScript("OnShow", function(self)
         self:ClearAllPoints()
-        if SpeakStoneSettingsFrame and SpeakStoneSettingsFrame:IsShown() then
-            self:SetPoint("LEFT", SpeakStoneSettingsFrame, "RIGHT", 12, 0)
-        else
-            self:SetPoint("CENTER")
-        end
+        self:SetPoint("CENTER")
         self:Raise()
         titleLoader:RegisterEvent("QUEST_DATA_LOAD_RESULT")
-        -- A title the client did not know last time it may know now -- so the
-        -- narrowed result from the previous open, computed while those were
-        -- still misses, cannot be reused either.
         wipe(titleMisses)
         self.keyedList = nil
         self.lastQuery = nil
         self.lastResult = nil
-        self:PopulateList()
+        self.mode = self.mode or "quests"
+        self:UpdateTabs()
+        self:UpdateFilters()
+        if self.mode == "packs" then
+            self:RefreshPacks()
+        else
+            self:PopulateList()
+            self:ShowPage()
+        end
     end)
 
-    frame:SetScript("OnHide", function(self)
-        -- Titles still in flight are of no use to a list nobody is looking
-        -- at, and the client caches what it has already sent -- so a quest
-        -- whose answer lands after this is resolved from the cache on the
-        -- next open rather than lost.
+    frame:HookScript("OnHide", function(self)
         titleLoader:UnregisterEvent("QUEST_DATA_LOAD_RESULT")
         if searchTimer then
             searchTimer:Cancel()
             searchTimer = nil
         end
-        -- A pass left running against a closed window is work nobody is
-        -- waiting for, and it would keep waking every frame until it finished.
         CancelFilter()
         self:StopAudio()
         self:CloseBook()
-        -- The index is tens of thousands of rows and most of the addon's
-        -- memory. Rebuilding it on the next open costs a moment; keeping it
-        -- costs every player the memory all session.
         self.allQuests, self.allGossip, self.allBooks = nil, nil, nil
         self.entryByKey, self.keyedList = nil, nil
         self.filteredList, self.lastQuery, self.lastResult = nil, nil, nil
+        self.flat, self.tree, self.selectedEntry, self.selectedNode = nil, nil, nil, nil
         self.isIndexed = false
         if addon.ReleaseAudioIndex then addon.ReleaseAudioIndex() end
     end)

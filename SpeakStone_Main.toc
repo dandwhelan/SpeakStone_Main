@@ -5,7 +5,7 @@
 ## Author: Nerf, SpeakStone@beanw.co.uk
 ## X-Wago-ID: 4N2kQZ6L
 ## X-Curse-Project-ID: 1708764
-## Version: 3.2.6
+## Version: 4.0.0
 ## SavedVariables: SpeakStone_MainDB
 
 ## OptionalDeps: SpeakStone_TWW_EN, SpeakStone_TWW_FR
@@ -19,12 +19,20 @@ Libs\LibDBIcon-1.0\LibDBIcon-1.0.lua
 # Addon files
 SoundLengths.lua
 QuestTitles.lua
+QuestInfo.lua
+QuestTexts.lua
 NPCNames.lua
 DynamicGossipNPCs.lua
 GossipTexts.lua
 VoicedLines.lua
 SpeakStone_Main.lua
+Theme.lua
+Fonts.lua
+Inflate.lua
+UIKit.lua
 SpeechFrame.lua
+Subtitles.lua
+DialogueSync.lua
 Harvester.lua
 SpeakStone_Main_Settings.lua
 BookTexts.lua
