@@ -1140,9 +1140,16 @@ local function DoPlaySound(soundData)
         return
     end
 
+    -- The game stops anything playing on the Dialog channel when the quest or
+    -- gossip window closes, whatever this addon does. With "stop narration when
+    -- the window closes" off (the default) that cut every clip short, so the
+    -- setting looked broken (player report, 2026-10-20). Narration that should
+    -- outlive the window plays on Master instead.
     local audioChannel = "Dialog"
     if SpeakStone_MainDB.muteGossip then
         MuteDialogChannel()
+        audioChannel = "Master"
+    elseif not SpeakStone_MainDB.stopDialogueOnClose then
         audioChannel = "Master"
     end
 

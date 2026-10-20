@@ -174,7 +174,7 @@ local SETTINGS_TABS = {
                     {
                         option = "stopDialogueOnClose",
                         label = "Stop narration when the window closes",
-                        tooltip = "Walking away mid-sentence stops the audio instead of leaving a disembodied voice following you.",
+                        tooltip = "Walking away mid-sentence stops the audio instead of leaving a disembodied voice following you. Off: the line finishes after the window closes, and plays at your Master volume rather than the Dialog slider.",
                     },
                 },
             },
@@ -522,11 +522,17 @@ local ACCENT_NEUTRAL = { 0.85, 0.75, 0.45 }
 -- What's new (owner, 2026-10-18: "Add a What's new button ... up to 20 items with the dates"). Newest first; keep
 -- at most 20 and drop the oldest when adding a release. Player wording only (CLAUDE.md public wording rules).
 local WHATS_NEW = {
+    { "4.0.1", "2026-10-20", {
+        "Narration finishes after you close the quest or gossip window when \"Stop narration when the window closes\" is off. It plays at your Master volume, since the game cuts the Dialog volume channel when a window closes.",
+        "The Guide names the character you hear giving each quest instead of a different one (Thrall's quests now show Princess Moira Bronzebeard and Greatmother Geyah where they speak).",
+        "Eternus shows as a female dragon.",
+        "Voice packs: better pronunciation of Primalists, Nozdormu, Murozond, Khadgar, Kel'Thuzad and Runecarver; Jesper has a child's voice; new takes for Archmage Khadgar and Chromie." } },
     { "4.0.0", "2026-10-19", {
         "A complete interface rebuild: three themes (Parchment, Stone, Midnight), a new settings window and a guided tutorial.",
         "The SpeakStone Guide: browse every voiced quest, greeting and book by expansion, zone, NPC or title, read the text and read along as it plays.",
         "A Voice packs tab shows which packs you have and which are missing.",
         "Subtitles and a text box when you walk away, with the word being read lit.",
+        "Optional: quest text follows the voice inside Dialogue UI's own window.",
         "Choose subtitle colours, a reading font and text size, helpful for dyslexia and low vision.",
         "WoW Forever has the same new interface, with its own quest texts and packs." } },
     { "3.2.6", "2026-10-18", {
@@ -578,9 +584,6 @@ local WHATS_NEW = {
         "Voices checked for every NPC's race and sex; new voices for Earthen, Vulpera, Tuskarr, Centaur and more." } },
     { "2.0.5", "2026-09-29", { "Book text for more voiced pages." } },
     { "2.0.3", "2026-09-29", { "The settings page knows the Cataclysm and Forever Chatter packs." } },
-    { "2.0.2", "2026-09-29", { "Every voiced book shows its text." } },
-    { "2.0.1", "2026-09-28", {
-        "Library buttons for Quests, Gossip and Books, and a book view that shows each page's text." } },
 }
 
 local whatsNewFrame

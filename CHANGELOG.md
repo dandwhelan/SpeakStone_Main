@@ -1,5 +1,18 @@
 # Changelog
 
+## 4.0.1
+
+**Fixes**
+- Narration now finishes after you close the quest or gossip window when "Stop narration when the window closes" is off. It plays at your Master volume, because the game cuts the Dialog volume channel when a window closes.
+- The SpeakStone Guide names the character you hear giving each quest. Quests that start from a board, poster or note still show that.
+- What's new lists these changes and the optional Dialogue UI follow-along.
+
+**Voices** (arrive with the voice packs)
+- Corrected pronunciation of Primalists, Nozdormu, Murozond, Khadgar, Kel'Thuzad and Runecarver.
+- Jesper (Hallow's End) has a child's voice; new takes for Archmage Khadgar and Chromie.
+
+Unofficial; not affiliated with Blizzard Entertainment. The voices are similar to the in-game characters.
+
 ## 4.0.0
 
 **New**
