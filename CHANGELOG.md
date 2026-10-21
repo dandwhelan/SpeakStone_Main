@@ -1,5 +1,20 @@
 # Changelog
 
+## 4.0.2 (October 2026)
+
+Over 3,200 character lines have been re-recorded with dedicated, character-fitting voices across both Retail and WoW Forever.
+
+### Voice & Character Polish
+- **Murlocs**: All 141 Murloc quest and gossip lines now have their proper gargling voice.
+- **Creatures & Peoples**: Re-recorded hundreds of lines for characters whose voices did not match their appearance, including Drogbar, Nerubians, Ogres, Fel Orcs, Centaur, Tortollan (including Scrollsage Nola), and Goblins.
+- **Volume Balancing**: Every re-recorded line has been loudness-balanced to sit naturally alongside in-game speech and ambience.
+- **WoW Forever**: Over 110 lines updated with corrected voices across Audio Pack 1, Audio Pack 2, and Forever Chatter.
+
+### Thank You
+A big thank you to Cliff for contributing dialogue through the website, Fiz for ongoing website submissions, and to everyone who flagged mismatched voices and reported lines on SpeakStone Studio and GitHub.
+
+Unofficial; not affiliated with Blizzard Entertainment. The voices are similar to the in-game characters.
+
 ## 4.0.1
 
 **Fixes**

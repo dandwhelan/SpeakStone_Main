@@ -246,6 +246,7 @@ SpeakStone_GossipTexts = {
 },
 [737]={ -- Kebok
   ["You sure picked an interesting time to chat with Ol' Kebok."]=1,
+  ["Back so soon?"]=2,
 },
 [738]={ -- Private Thorsen
   ["This is a dangerous place, adventurer. Be careful around here."]=1,
@@ -383,8 +384,8 @@ SpeakStone_GossipTexts = {
 },
 [1226]={ -- Maxan Anvol
   ["The Light protect you, $c."]=1,
-  ["Serve the Light well, hunter."]=1,
   ["Serve the Light well, $c."]=1,
+  ["Serve the Light well, hunter."]=1,
   ["I hope the Light is with you, adventurer. Is there anything I can do for you today?"]=2,
 },
 [1228]={ -- Magis Sparkmantle
@@ -1622,6 +1623,7 @@ SpeakStone_GossipTexts = {
 [2487]={ -- Fleet Master Seahorn
   ["Welcome to Booty Bay, $r."]=1,
   ["I'm getting too old for this! There's too many of them!$b$b<Fleet Master Seahorn pauses to catch his breath.>$b$bWhat am I saying? There's not enough of them! HAVE AT YOU, YOU MANGY CURS!"]=2,
+  ["This looks good, but I think it'll look even better if we beat it up a little bit. You know, to sell the illusion of a fight. What do you think?"]=3,
 },
 [2489]={ -- Milstaff Stormeye
   ["I do not believe you possess the mental acuity to grasp the nature of portal magic."]=1,
@@ -1656,6 +1658,9 @@ SpeakStone_GossipTexts = {
 },
 [2663]={ -- Narkk
   ["Care to purchase some piratey items?"]=1,
+},
+[2664]={ -- Kelsey Yance
+  ["Greetings and salutations! What can ol' Kelsey do for you this fine day?"]=1,
 },
 [2670]={ -- Xizk Goodstitch
   ["Welcome to my shop, $c. What is it the Goodstitch brothers can do for you?"]=1,
@@ -1706,6 +1711,7 @@ SpeakStone_GossipTexts = {
 [2834]={ -- Myizz Luckycatch
   ["Your skill exceeds mine, though I've heard that Old Man Heming in Booty Bay has copies of 'The Bass and You'. That is sure to help you increase your skill."]=1,
   ["You will need to find Nat Pagle in Dustwallow Marsh to get any better than you are currently."]=2,
+  ["I can teach you fishing skills."]=3,
 },
 [2835]={ -- Cedrik Prose
   ["Where would you like to fly?"]=1,
@@ -3556,6 +3562,9 @@ SpeakStone_GossipTexts = {
 },
 [4618]={ -- Martek the Exiled
   ["What brings you to a bunch of old, washed-up desert dogs like us?"]=1,
+},
+[4624]={ -- Booty Bay Bruiser
+  ["Keep it moving, pal."]=1,
 },
 [4631]={ -- Wharfmaster Lozgil
   ["I see some interesting characters come and go here at the port. Watch yourself, adventurer. It's never clear who to trust, what with all of the shady activity that goes on here..."]=1,
@@ -6264,6 +6273,9 @@ SpeakStone_GossipTexts = {
 [10059]={ -- Antarius
   ["Greetings, $c. I can help stable your pets or assist you in recovering lost companions."]=1,
   ["Greetings, $c. I can assist you in recovering lost companions."]=2,
+},
+[10060]={ -- Grimestack
+  ["Greetings, rogue. I can assist you in recovering lost companions."]=1,
 },
 [10061]={ -- Killium Bouldertoe
   ["Greetings, $c. I can help stable your pets or assist you in recovering lost companions."]=1,
@@ -12862,6 +12874,7 @@ SpeakStone_GossipTexts = {
   ["I saw soldiers from Stormwind fighting a fire before. They were heroes!"]=8,
   ["The Headless Horseman lives in the Scarlet Monastery. Sometimes he comes out and scares the grown ups, but not me!"]=9,
   ["I got some candy at the inn before. I can't wait to get some more!"]=10,
+  ["He's gone? Hooray!"]=11,
 },
 [23713]={ -- Kraxx
   ["My brother Krixx thinks he has it bad working in Orgrimmar. Nothing compares to the stench of this place. At least the boss had the decency to give me hazard pay! What? Do you want to see where the zeppelin is? Good thing I've got my zeppelin tracker right here!"]=1,
@@ -13153,6 +13166,8 @@ SpeakStone_GossipTexts = {
 [24519]={ -- Costumed Orphan Matron
   ["The Headless Horseman's undead mind is obsessed! During Hallow's End, his attacks on this village are frequent, and terrible."]=1,
   ["The Headless Horseman attacks! The fires threaten to consume the whole village! What will we do?"]=2,
+  ["We are free of the Headless Horseman's terror, for now. We may breathe easy again, but until he can be defeated while joined with his head, he may return."]=3,
+  ["The Headless Horseman, once a knight of the Silver Hand and a hero among his fellow paladins, is cursed. Driven insane within the Scarlet Monastery, he believes that he is alive and we are dead. Now, his fervor no longer serves the Light. With the coming of Hallow's End, he spreads gloom and fire across the villages of Azeroth."]=4,
 },
 [24525]={ -- Zeh'gehn
   ["Ahoy, mon! What be happenin', ye salty 'at steppa!$B$BDis place be all chacka-chacka, ye scallywag!"]=1,
@@ -18362,6 +18377,19 @@ SpeakStone_GossipTexts = {
   ["Greetings, $c. I can help stable your pets or assist you in recovering lost companions."]=1,
   ["Greetings, $c. I can assist you in recovering lost companions."]=2,
 },
+[42881]={ -- Tan'shang
+  ["You are brave to try to escape, young Ohgan'aka. Before you continue, let me teach you how to use your teeth to bite through the trolls' nets."]=1,
+},
+[42882]={ -- Tenjiyu
+  ["You are leaving the raptor dens? I was commanded to guard this post and prevent escapes, but... I think I understand why you want to leave. Fine. You may pass, but first, I have a request. The trolls often carry packs of raptor food, and I haven't been fed in days. You don't stand a chance in combat, but you're small enough that you might be able to steal it from one of the sleeping trolls inside the tents..."]=1,
+  ["Thank you. In return, I will teach you how to distract the trolls up ahead."]=2,
+},
+[42883]={ -- Chiyu
+  ["Quite impressive to have made it this far, Ohgan'aka. You are truly a talented young raptor... but the toughest test is yet to come. The trolls patrol the bridges up ahead, and they will be difficult to distract. If you drop a skull in their path, however, you may be able to cause them to trip and fall..."]=1,
+},
+[42888]={ -- Tian-kuyi
+  ["You wish to escape? That is fine, but you must know some things first. Stay away from the trolls. They will not kill you, but they will trap you and bring you back here. Speak with every raptor you see. Not only can they teach you new abilities, but they will help you remember your progress and make your path out of Zul'Gurub much easier. You already have a Dash ability - use it to get out of tight spots. Oh... and stay out of the water. Good luck!"]=1,
+},
 [42898]={ -- Darkcleric Marnal
   ["Speak your peace, $c."]=1,
 },
@@ -18406,6 +18434,9 @@ SpeakStone_GossipTexts = {
 },
 [43034]={ -- Colin Field
   ["Welcome to the Pig and Whistle! Grab a drink my friend and pull up a seat, the more the merrier!"]=1,
+},
+[43042]={ -- Robert Rhodes
+  ["Yes, adventurer?"]=1,
 },
 [43062]={ -- Bort
   ["You ever been to the jungle, $r?$b$bIt's real nice."]=1,
@@ -18477,6 +18508,9 @@ SpeakStone_GossipTexts = {
 [43319]={ -- Earthmender Deepvein
   ["So much senseless loss."]=1,
 },
+[43377]={ -- Ephram "Midriff" Moonfall
+  ["The gorillas are fascinating creatures. Better than night elves, who do foolish things, like... gambling away all their money and getting put on Sea Wolf MacKinley's hit list."]=1,
+},
 [43379]={ -- Limiah Whitebranch
   ["Greetings, $c. I can help stable your pets or assist you in recovering lost companions."]=1,
   ["Greetings, $c. I can assist you in recovering lost companions."]=2,
@@ -18518,6 +18552,7 @@ SpeakStone_GossipTexts = {
   ["Bossy is busy trying to figure out how to get back downstairs."]=1,
   ["<Bossy looks at you with large, liquid black eyes.>"]=2,
   ["Bossy looks at you with large, liquid black eyes."]=2,
+  ["Bossy lowers her head nobly, almost as if she understands the gravity and the meaning of your request."]=3,
 },
 [43558]={ -- Marie Allen
   ["Can I provide you with anything, adventurer?"]=1,
@@ -18525,12 +18560,32 @@ SpeakStone_GossipTexts = {
 [43570]={ -- Brock Rockbeard
   ["Where would you like to fly?"]=1,
 },
+[43605]={ -- Bloodsail Oarsman
+  ["Aye, what need ye?"]=1,
+},
 [43606]={ -- Innkeeper Duras
   ["If we are to make these new lands ours then we must have places to rest our battle weary bodies. Lay your axe by the fire and share the stories of your mighty battles."]=1,
+},
+[43636]={ -- Bloodsail Corsair
+  ["Yarr!"]=1,
+  ["Gangway!"]=2,
+  ["Arr!"]=3,
+  ["Blow me down!"]=4,
+  ["Ahoy!"]=5,
+  ["Avast!"]=6,
 },
 [43645]={ -- Ornag
   ["So many years of battle and slavery, it feels good to have a home again."]=1,
   ["Tell me what you want, and make it quick."]=2,
+},
+[43659]={ -- Long John Copper
+  ["Ahoy there!"]=1,
+},
+[43660]={ -- Enormous Shawn Stooker
+  ["What're y' looking at, human?"]=1,
+},
+[43661]={ -- Wailing Mary Smitts
+  ["Can I help you?"]=1,
 },
 [43694]={ -- Katie Stokx
   ["Years of quality breeding techniques and plenty of care allow me the privilege of showing you these horses! Please, take your time as you consider them for your mount. A horse is a companion for the ages, friend. Don't sell yourself short - get your steed here today!"]=1,
@@ -21084,6 +21139,9 @@ SpeakStone_GossipTexts = {
   ["Good day, champion. If you require my services as an auctioneer, I regret to inform you: no. Only grand master engineers possess the minimum intellectual capacity to interface with my superior functions. More importantly, why are you still talking to me?"]=1,
   ["Hello, adventurer. My services as an auctioneer are available to those with skill in engineering. Sadly, you have none. Please leave."]=2,
   ["Hello, champion. My services as an auctioneer are available to those with skill in engineering. Sadly, you have none. Please leave."]=2,
+},
+[65655]={ -- Eric Davidson
+  ["Are you afraid of spiders? Some feel them crawling on their skin as they wander through the endless woods."]=1,
 },
 [65908]={ -- Seer Yong
   ["Ah, the winds spoke of newcomers to our village. I feel that we will learn much from each other, so long as our minds are open and our spirits pure.$B$BPerhaps your people will be more respectful of mine than the Horde was."]=1,
@@ -24098,6 +24156,7 @@ SpeakStone_GossipTexts = {
 },
 [142656]={ -- Kalendormu
   ["Are you enjoying the festivities?"]=1,
+  ["The Fenlow sisters requested my assistance. The world has seen so many changes. Why should that stop our fun?"]=2,
 },
 [142752]={ -- Andegel
   ["These Kul Tirans have interesting beer! It is much more flavorful than what I have found on the mainland. They are truly dedicated to their craft!"]=1,
@@ -24764,6 +24823,7 @@ SpeakStone_GossipTexts = {
 },
 [164946]={ -- Veruca Darkstream
   ["Greetings, $c. If you're looking for training, you'll need to find a $c trainer. I only instruct rogues."]=1,
+  ["Greetings, $c. Have you come to learn about combat specializations?"]=3,
 },
 [164949]={ -- Patrice Lancaster
   ["Greetings, $c. If you're looking for training, you'll need to find a $c trainer. I only instruct priests."]=1,
