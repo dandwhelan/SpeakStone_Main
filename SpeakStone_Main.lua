@@ -992,7 +992,8 @@ local RECENT_MAX = 50
 
 function addon.ClipItemKey(soundFile)
     if type(soundFile) ~= "string" then return nil end
-    local base = soundFile:gsub("%.%a+$", "")
+    -- A both-sex NPC's second take ("<clip>_f" / "<clip>_m") is the same line: one key for both.
+    local base = soundFile:gsub("%.%a+$", ""):gsub("_[mf]$", "")
     local questID = base:match("^(%d+)_%a+$")
     if questID then return "q:" .. questID end
     local npcID, variant = base:match("^npc(%d+)_gossip(%d+)$")
@@ -1094,6 +1095,18 @@ end
 -- two places. One lookup means one set of rules about extension order and
 -- pack precedence.
 addon.FindSound = FindSound
+
+-- Both-sex NPC names (one name, male and female bodies in the game, e.g. Ironforge Mountaineer) ship a second take,
+-- "<clip>_f" or "<clip>_m", for the sex the plain clip is not (owner, 2026-10-26). Try the take that matches the NPC
+-- on screen first. No take, no NPC (quest log), or a sex the game won't say (secret value): the plain clip, as before.
+local function SexTakeCandidates(baseName)
+    local ok, sex = pcall(UnitSex, "npc")
+    -- Ask IsSecret before comparing: a secret value must not be compared (it handles nil itself).
+    if not ok or not addon.IsSecret or addon.IsSecret(sex) then return { baseName } end
+    if sex == 3 then return { baseName .. "_f", baseName } end
+    if sex == 2 then return { baseName .. "_m", baseName } end
+    return { baseName }
+end
 
 -- The clip has run its course, or never started. Distinct from
 -- StopCurrentSound, which interrupts one: there is no handle left to stop
@@ -1510,7 +1523,7 @@ function PlayQuestAudio(textType, skipDelay)
         -- size of the original PCM library and is what the game itself uses.
         -- Both are accepted so a pack can mix them while it is converted over.
         local baseName = questID .. "_" .. textType
-        local soundFile, soundPath, duration = FindSound({ baseName })
+        local soundFile, soundPath, duration = FindSound(SexTakeCandidates(baseName))
 
         if not soundPath then
             -- Report the gap so players can tell "not recorded yet" apart from
@@ -1924,7 +1937,7 @@ local function PlayGossipAudio()
     end
 
     local baseName = "npc" .. npcID .. "_gossip" .. variant
-    local soundFile, soundPath, duration = FindSound({ baseName })
+    local soundFile, soundPath, duration = FindSound(SexTakeCandidates(baseName))
 
     if not soundPath then
         -- Same dedup as the quest path: report once per session, not once
