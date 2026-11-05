@@ -531,13 +531,16 @@ local function Refresh()
             if frame.readKey ~= key then
                 frame.readKey = key
                 frame.readTokens, frame.readSpoken, frame.readWords = addon.ReadTokens(frame.plain)
-                frame.readTimes = addon.SubtitleWordTimes(frame.readWords, duration)
+                frame.readTimes, frame.readStarts = addon.SubtitleTiming(frame.readWords, duration, sd.soundFile)
+                frame.litIndex = nil
             end
             local index = elapsed >= duration and 0 or addon.SubtitleWordAt(frame.readTimes, elapsed + 0.12)
-            if frame.litIndex ~= index then
-                frame.litIndex = index
+            local span = addon.SubtitleSpan(frame.readStarts, index, frame.readWords, true)
+            local litKey = index .. (span and (":" .. span[1]) or "")
+            if frame.litIndex ~= litKey then
+                frame.litIndex = litKey
                 frame.text:SetText(addon.LitText(frame.plain, frame.readTokens, frame.readSpoken, index,
-                    addon.HighlightCode(addon.ThemeIsLight())))
+                    addon.HighlightCode(addon.ThemeIsLight()), span))
             end
         elseif frame.litIndex then
             frame.litIndex = nil

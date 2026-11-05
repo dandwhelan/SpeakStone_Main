@@ -358,6 +358,24 @@ local SETTINGS_TABS = {
             },
         },
     },
+    {
+        title = "Lore",
+        sections = {
+            {
+                title = "Zone lore",
+                info = "A short piece about a zone. Turn the banner on to be offered each zone once as you enter it; the list "
+                    .. "below keeps every zone so you can read or listen again whenever you like.",
+                options = {
+                    {
+                        option = "zoneLoreBanner",
+                        label = "Show a banner when I enter a new zone",
+                        tooltip = "A small banner with the zone's lore piece, once per zone. Off by default. Zones you have already seen are never announced again, but stay in the list below.",
+                    },
+                },
+                extras = { "lore" },
+            },
+        },
+    },
 }
 
 -- A troubleshooting switch, not a preference: drawn small at the foot of the General tab.
@@ -821,6 +839,61 @@ function SpeakStone:CreateWindow()
         Advance(34)
     end
 
+    -- The Lore tab's list (ZoneLore.lua): the lore book button, then each zone with Play / Stop.
+    local function makeLoreList()
+        local list = addon.ZoneLoreList and addon.ZoneLoreList() or {}
+        if #list == 0 then
+            local none = panel:CreateFontString(nil, "ARTWORK", "GameFontDisable")
+            none:SetPoint("TOPLEFT", frame, "TOPLEFT", RIGHT_X + 8, cursorY - 4)
+            none:SetText("No zone lore in this version yet.")
+            Advance(26)
+            return
+        end
+        local open = addon.UIK.Button(panel, "Open lore book", 140, 24, function()
+            if addon.LoreBookOpen then addon.LoreBookOpen() end
+        end)
+        open:SetPoint("TOPLEFT", frame, "TOPLEFT", RIGHT_X + 8, cursorY)
+        AttachTooltip(open, "Lore book", "Every zone's story beside its map. Also /sslore.")
+        Advance(32)
+        local rows = {}
+        local function Refresh()
+            for _, row in ipairs(rows) do
+                local entry = row.entry
+                local playing = addon.ZoneLoreIsPlaying(entry)
+                local hasClip = addon.ZoneLoreClip(entry) ~= nil
+                row.button:SetText(playing and "Stop" or "Play")
+                if hasClip then row.button:Enable() else row.button:Disable() end
+            end
+        end
+        for _, item in ipairs(list) do
+            local row = { entry = item.entry }
+            row.name = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+            row.name:SetPoint("TOPLEFT", frame, "TOPLEFT", RIGHT_X + 8, cursorY - 5)
+            row.name:SetText(item.title)
+            row.button = addon.UIK.Button(panel, "Play", 70, 22, function()
+                if addon.ZoneLoreIsPlaying(row.entry) then
+                    addon.ZoneLoreStop(row.entry)
+                else
+                    addon.ZoneLorePlay(row.entry)
+                end
+                Refresh()
+            end)
+            row.button:SetPoint("TOPLEFT", frame, "TOPLEFT", RIGHT_X + 260, cursorY)
+            AttachTooltip(row.button, item.title, item.text .. (item.hasClip and "" or " No narration for this zone is installed yet."))
+            rows[#rows + 1] = row
+            Advance(26)
+        end
+        -- Keeps Play / Stop and heard / new true while the tab is open (clips end by themselves).
+        local elapsed = 0
+        panel:HookScript("OnUpdate", function(_, dt)
+            elapsed = elapsed + (dt or 0)
+            if elapsed > 0.5 then elapsed = 0; Refresh() end
+        end)
+        panel:HookScript("OnShow", Refresh)
+        Refresh()
+        Advance(8)
+    end
+
     -- A row of colour swatches for one setting (UIKit.lua).
     local function makeSwatchRow(title, option, list, default, tip)
         local row = addon.UIK.SwatchRow(panel, title, option, list, default, tip, 150)
@@ -969,6 +1042,8 @@ function SpeakStone:CreateWindow()
                             makeColourRow()
                         elseif kind == "previews" then
                             makePreviewRow()
+                        elseif kind == "lore" then
+                            makeLoreList()
                         end
                     end
                 end

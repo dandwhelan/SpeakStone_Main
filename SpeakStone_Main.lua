@@ -83,6 +83,43 @@ if type(_G.SpeakStonePendingSoundPacks) == "table" then
     _G.SpeakStonePendingSoundPacks = nil
 end
 
+-- Sentence start times, one table per pack (SentenceTimings.lua in the pack, written by
+-- tools/build_sentence_timings.py). Registered the same way as a sound pack: directly if this file has run, else
+-- through a pending global. Values stay as strings ("31,65": sentence 2 starts at 3.1 s, 3 at 6.5 s when unit = 10)
+-- and are parsed only for the clip being played. A pack without the file simply has no entry.
+addon.sentenceSources = {}
+function SpeakStone_RegisterSentenceTimings(packName, timings, unit)
+    if type(packName) ~= "string" or type(timings) ~= "table" then
+        return
+    end
+    addon.sentenceSources[packName] = { t = timings, unit = tonumber(unit) or 100 }
+end
+if type(_G.SpeakStonePendingSentenceTimings) == "table" then
+    for _, entry in ipairs(_G.SpeakStonePendingSentenceTimings) do
+        SpeakStone_RegisterSentenceTimings(entry.name, entry.timings, entry.unit)
+    end
+    _G.SpeakStonePendingSentenceTimings = nil
+end
+
+-- Start times (seconds) of sentence 2, 3, ... of a clip, or nil when no installed pack has timings for it.
+function addon.SentenceTimesFor(soundFile)
+    if type(soundFile) ~= "string" then
+        return nil
+    end
+    local key = soundFile:gsub("%.%w+$", "")
+    for _, source in pairs(addon.sentenceSources) do
+        local raw = source.t[key]
+        if type(raw) == "string" then
+            local marks = {}
+            for number in raw:gmatch("%d+") do
+                marks[#marks + 1] = tonumber(number) / source.unit
+            end
+            return marks
+        end
+    end
+    return nil
+end
+
 -- Legacy mechanism, kept for the existing TWW language packs: explicitly
 -- named OptionalDeps that this addon loads and merges itself, rather than
 -- the pack registering on its own. New expansion packs should prefer
@@ -173,6 +210,8 @@ local defaultSettings = {
     -- The look of SpeakStone's own windows: "parchment", "stone" or "midnight" (Theme.lua).
     uiTheme = "stone",
     showSubtitles = false,
+    -- Zone lore: a banner once per zone on entering it (ZoneLore.lua). Off by default; the Lore tab works either way.
+    zoneLoreBanner = false,
     -- Subtitles also over the open quest window (off: they wait until you walk away).
     subtitlesWhileOpen = false,
     -- The font the subtitles, speech frame and Guide text are read in (Fonts.lua): "default",
@@ -309,6 +348,7 @@ local function InitializeAddonDB()
     SpeakStone_MainDB.favourites = SpeakStone_MainDB.favourites or {}
     SpeakStone_MainDB.recentClips = SpeakStone_MainDB.recentClips or {}
     SpeakStone_MainDB.heardQuests = SpeakStone_MainDB.heardQuests or {}
+    SpeakStone_MainDB.zoneLoreHeard = SpeakStone_MainDB.zoneLoreHeard or {}
 
     -- Fold in anything from the older stores (the standalone Harvester addon,
     -- and the missingCaptures table this addon used before capture was built

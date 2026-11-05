@@ -125,6 +125,7 @@ local function Draw(s, index)
     local db = DB()
     local typeOut = db.subtitleTypeOut ~= false
     local highlight = db.subtitleHighlight ~= false
+    local span = highlight and addon.SubtitleSpan(s.starts, index, s.words, typeOut) or nil
     for _, para in ipairs(s.paras) do
         if #para.words > 0 then
             local code = addon.HighlightCode(para.light)
@@ -140,7 +141,13 @@ local function Draw(s, index)
                     if typeOut and global > index then
                         break
                     end
-                    if highlight and index > 0 and (global == index or global == index - 1) then
+                    local lit
+                    if span then
+                        lit = global >= span[1] and global <= span[2]
+                    else
+                        lit = global == index or global == index - 1
+                    end
+                    if highlight and index > 0 and lit then
                         word = code .. word .. "|r"
                     end
                     parts[#parts + 1] = word
@@ -216,7 +223,9 @@ local function Tick()
         if not (duration and duration > 0 and sd.startedAt) then
             return EndSync()
         end
-        s.times = s.times or addon.SubtitleWordTimes(s.words, duration)
+        if not s.times then
+            s.times, s.starts = addon.SubtitleTiming(s.words, duration, sd.soundFile)
+        end
         local elapsed = math.max(0, GetTime() - sd.startedAt)
         index = elapsed >= duration and #s.words or addon.SubtitleWordAt(s.times, elapsed + LEAD)
     end
@@ -352,7 +361,7 @@ local function StartHead()
         return
     end
     head = { fs = fs, orig = orig, shown = orig, words = words, duration = duration,
-        times = addon.SubtitleWordTimes(words, duration), startedAt = GetTime() - 0.1 }
+        times = addon.SubtitleTiming(words, duration), startedAt = GetTime() - 0.1 }
     head.ticker = C_Timer.NewTicker(UPDATE_INTERVAL, HeadTick)
     HeadTick()
 end

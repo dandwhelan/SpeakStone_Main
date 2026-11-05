@@ -176,8 +176,139 @@ function addon.SubtitleWordAt(times, elapsed)
     return found
 end
 
+-- --------------------------------------------------------------------------
+-- Sentences. tools/build_sentence_timings.py holds a mirror of the rules below (split_words, sentence_starts): change
+-- both together. A word ends a sentence when it ends in . ! or ? (closing quotes allowed), is not an abbreviation
+-- ("Mr.", a lone initial), and the next word does not begin with a lower-case letter.
+-- --------------------------------------------------------------------------
+
+local ABBREV = {
+    mr = true, mrs = true, ms = true, dr = true, st = true, lt = true, capt = true, sgt = true, col = true,
+    gen = true, cmdr = true, prof = true, jr = true, sr = true, vs = true, mt = true, ft = true, adm = true,
+    maj = true, cpl = true, pvt = true, rev = true, hon = true, esq = true, etc = true,
+}
+
+local function EndsSentence(word)
+    local core = word
+    while true do
+        local s = core:gsub("\226\128[\153\157]$", "")
+        if s == core then break end
+        core = s
+    end
+    if not core:find("[%.!%?][\"')%]]*$") then
+        return false
+    end
+    if core:find("%a%.$") then
+        local bare = core:gsub("[^%a]", ""):lower()
+        if ABBREV[bare] or (#bare == 1 and bare ~= "i" and bare ~= "a") then
+            return false
+        end
+    end
+    return true
+end
+
+local function FirstLetter(word)
+    while true do
+        local s = word:gsub("^[\"'%(%[%-]", "", 1)
+        if s == word then s = word:gsub("^\226\128[\152\156]", "", 1) end
+        if s == word then break end
+        word = s
+    end
+    return word:sub(1, 1)
+end
+
+-- The word numbers (1-based) where a sentence begins; always starts with 1.
+function addon.SubtitleSentences(words)
+    local starts = {}
+    if #words == 0 then
+        return starts
+    end
+    starts[1] = 1
+    for i = 2, #words do
+        if EndsSentence(words[i - 1]) and not FirstLetter(words[i]):find("^%l$") then
+            starts[#starts + 1] = i
+        end
+    end
+    return starts
+end
+
+-- Which sentence a word belongs to (starts from SubtitleSentences).
+function addon.SubtitleSentenceOf(starts, index)
+    local found = 1
+    for s = 1, #starts do
+        if starts[s] <= index then found = s else break end
+    end
+    return found
+end
+
+-- True when `marks` (seconds, sentence 2 onward, from the pack's SentenceTimings) fit this text and clip: one per
+-- sentence after the first, rising, inside the clip. Text that splits differently from the voiced text gets no marks.
+function addon.SubtitleMarksFit(marks, sentenceCount, duration)
+    if type(marks) ~= "table" or #marks ~= sentenceCount - 1 or not duration or duration <= 0 then
+        return false
+    end
+    local prev = 0
+    for _, t in ipairs(marks) do
+        if type(t) ~= "number" or t <= prev or t >= duration then
+            return false
+        end
+        prev = t
+    end
+    return true
+end
+
+-- Word start times when the sentence starts are known: each sentence's words share the stretch from its start to the
+-- next sentence's start (the last one to the end of the clip), by the same weights as SubtitleWordTimes.
+function addon.SubtitleWordTimesAnchored(words, starts, marks, duration)
+    local times = {}
+    for s = 1, #starts do
+        local first = starts[s]
+        local last = (starts[s + 1] or (#words + 1)) - 1
+        local t0 = s == 1 and 0 or marks[s - 1]
+        local t1 = starts[s + 1] and marks[s] or duration
+        local total = 0
+        for i = first, last do
+            total = total + Weight(words[i])
+        end
+        local acc = 0
+        for i = first, last do
+            times[i] = t0 + (total > 0 and acc / total or 0) * (t1 - t0)
+            acc = acc + Weight(words[i])
+        end
+    end
+    return times
+end
+
+-- Word start times for a clip: the pack's sentence timings anchor them when they fit this text and clip (and then
+-- `starts`, the first word of each sentence, comes back too); otherwise the plain estimate and no starts. Every place
+-- that follows the voice through the words uses this, so they all light the same sentence.
+function addon.SubtitleTiming(words, duration, soundFile)
+    local times = addon.SubtitleWordTimes(words, duration)
+    if duration and duration > 0 and addon.SentenceTimesFor and type(soundFile) == "string" then
+        local ok, marks = pcall(addon.SentenceTimesFor, soundFile:match("[^/\\]+$") or soundFile)
+        if ok and marks then
+            local starts = addon.SubtitleSentences(words)
+            if addon.SubtitleMarksFit(marks, #starts, duration) then
+                return addon.SubtitleWordTimesAnchored(words, starts, marks, duration), starts
+            end
+        end
+    end
+    return times, nil
+end
+
+-- The { first, last } word span of the sentence holding word `index`, or nil (no sentence starts, nothing reached,
+-- or the player turned sentence highlighting off). typeOut: the span ends at the word reached.
+function addon.SubtitleSpan(starts, index, words, typeOut)
+    if not starts or not index or index < 1 or (SpeakStone_MainDB and SpeakStone_MainDB.subtitleSentenceHighlight == false) then
+        return nil
+    end
+    local si = addon.SubtitleSentenceOf(starts, index)
+    return { starts[si], typeOut and index or ((starts[si + 1] or (#words + 1)) - 1) }
+end
+
 -- The text to draw for a reading position. typeOut: only the words reached.
--- highlight: the word being read and the one before it in gold.
+-- highlight: the word being read and the one before it in gold -- or, with span = { first, last } (timings known),
+-- every word of the sentence being read, up to the word reached.
 function addon.HighlightCode(onLightBackground)
     local key = SpeakStone_MainDB and SpeakStone_MainDB.highlightColour or "auto"
     if key == "custom" then
@@ -195,7 +326,7 @@ function addon.HighlightCode(onLightBackground)
     return onLightBackground and "|cffb01e1e" or GOLD
 end
 
-function addon.SubtitleRender(words, index, typeOut, highlight, code)
+function addon.SubtitleRender(words, index, typeOut, highlight, code, span)
     code = code or GOLD
     local parts = {}
     for k = 1, #words do
@@ -203,7 +334,13 @@ function addon.SubtitleRender(words, index, typeOut, highlight, code)
             break
         end
         local word = words[k]
-        if highlight and index > 0 and (k == index or k == index - 1) then
+        local lit
+        if span then
+            lit = k >= span[1] and k <= span[2]
+        else
+            lit = k == index or k == index - 1
+        end
+        if highlight and index > 0 and lit then
             word = code .. word .. "|r"
         end
         parts[#parts + 1] = word
@@ -502,12 +639,15 @@ local function Refresh()
     local db = DB()
     local typeOut = db.subtitleTypeOut ~= false
     local highlight = db.subtitleHighlight ~= false
+    -- With the clip's sentence timings, the sentence being spoken is lit whole (up to the word reached when typing out).
+    local span = highlight and addon.SubtitleSpan(current.starts, index, words, typeOut) or nil
     local signature = index .. ":" .. tostring(typeOut) .. tostring(highlight) .. Rows() .. tostring(db.highlightColour)
+        .. (span and ("s" .. span[1]) or "")
     if current.signature == signature then
         return
     end
     current.signature = signature
-    frame.text:SetText(addon.SubtitleRender(words, index, typeOut, highlight, addon.HighlightCode(addon.SubtitleColours().light)))
+    frame.text:SetText(addon.SubtitleRender(words, index, typeOut, highlight, addon.HighlightCode(addon.SubtitleColours().light), span))
     frame.text:ClearAllPoints()
     -- Rows the words read so far take, to keep the row being read in view.
     frame.measure:SetText(addon.SubtitleRender(words, index, true, false))
@@ -547,11 +687,11 @@ end
 local function Show(sd, words)
     Build()
     local duration = tonumber(sd.duration)
-    current = {
-        sd = sd,
-        words = words,
-        times = (duration and duration > 0) and addon.SubtitleWordTimes(words, duration) or {},
-    }
+    current = { sd = sd, words = words, times = {} }
+    -- The pack's sentence timings for this clip, if it has them and they fit this text; else the estimate.
+    if duration and duration > 0 then
+        current.times, current.starts = addon.SubtitleTiming(words, duration, sd.soundFile)
+    end
     lingerUntil = nil
     local name, title = HeaderText(sd)
     frame.name:SetText(name)
@@ -795,9 +935,9 @@ function addon.ReadTokens(plain)
     return tokens, spoken, words
 end
 
-function addon.LitText(plain, tokens, spoken, index, code)
+function addon.LitText(plain, tokens, spoken, index, code, span)
     local marks = {}
-    for k = math.max(1, index - 1), index do
+    for k = span and span[1] or math.max(1, index - 1), span and span[2] or index do
         if spoken[k] then marks[#marks + 1] = tokens[spoken[k]] end
     end
     if #marks == 0 then return plain end

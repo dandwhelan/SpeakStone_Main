@@ -954,15 +954,17 @@ local function BuildUI()
         if DB_NoReadAlong and DB_NoReadAlong() then return end
         if not target.tokens then
             target.tokens, target.spoken, target.words = ReadTokens(target.plain)
-            target.times = addon.SubtitleWordTimes(target.words, duration)
+            target.times, target.starts = addon.SubtitleTiming(target.words, duration, self.playFile)
         end
         local elapsed = GetTime() - started
         local index = addon.SubtitleWordAt(target.times, elapsed + 0.12)
         if elapsed >= duration then index = 0 end
-        if target.lastIndex ~= index then
-            target.lastIndex = index
+        local span = addon.SubtitleSpan(target.starts, index, target.words, true)
+        local litKey = index .. (span and (":" .. span[1]) or "")
+        if target.lastIndex ~= litKey then
+            target.lastIndex = litKey
             target.fs:SetText(Lit(target.plain, target.tokens, target.spoken, index,
-                addon.HighlightCode(target.light or addon.ThemeIsLight())))
+                addon.HighlightCode(target.light or addon.ThemeIsLight()), span))
             -- Long text: keep the place in view.
             if target.scroll and target.child and index > 0 then
                 local range = target.scroll:GetVerticalScrollRange()
@@ -1368,7 +1370,7 @@ local function BuildUI()
         activePlayingType = nil
         activePlayingNPCID = nil
         activePlayingVariant = nil
-        self.playKey, self.playStarted, self.playDuration = nil, nil, nil
+        self.playKey, self.playStarted, self.playDuration, self.playFile = nil, nil, nil, nil
         if bookTimer then
             bookTimer:Cancel()
             bookTimer = nil
@@ -1558,6 +1560,7 @@ local function BuildUI()
         activeDebugSound = handle
         activeBook, activeBookPage, activeBookWhole = book, page, whole
         frame.playKey, frame.playStarted, frame.playDuration = "b:" .. book.base .. ":" .. page, GetTime(), tonumber(duration)
+        frame.playFile = soundPath
         if view.book == book then
             view.index = index
             frame:RefreshBook()
@@ -1626,6 +1629,7 @@ local function BuildUI()
             activePlayingQuestID = questID
             activePlayingType = audioType
             self.playKey, self.playStarted, self.playDuration = "q:" .. questID .. ":" .. audioType, GetTime(), tonumber(length)
+            self.playFile = soundPath
             self:UpdateList()
         end
     end
@@ -1659,6 +1663,7 @@ local function BuildUI()
             activePlayingNPCID = npcID
             activePlayingVariant = variant
             self.playKey, self.playStarted, self.playDuration = "g:" .. npcID .. ":" .. variant, GetTime(), tonumber(length)
+            self.playFile = soundPath
             self:UpdateList()
         end
     end

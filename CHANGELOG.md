@@ -1,5 +1,16 @@
 # Changelog
 
+## 5.0.0 (November 2026)
+
+A new language model has been yet again used (3rd time lucky) for voice generation across SpeakStone!
+
+### Highlights
+- **Emotions for NPC Voices**: Characters now express emotion fitting the context of their dialogue (anger, sorrow, joy, fear, surprise, whisper, and more). Please note: some emotions might be incorrect as it's using sentiment analysis and emotion predictions via a script.
+- **Stage Directions**: In-game stage directions and narrative descriptions are now voiced, e.g. *"[Susan looks at her feet and see's they are full of mud, on closer inspection, it's not mud, its cow poo]"*.
+- **Voice Overhaul**: Thousands of lines regenerated with the new voice engine for improved quality, emotion, and character depth across Retail and WoW Forever.
+
+Unofficial; not affiliated with Blizzard Entertainment. The voices are similar to the in-game characters.
+
 ## 4.1.2 (2026-10-31)
 
 Voices similar to the in-game characters. Unofficial; not affiliated with Blizzard Entertainment.
