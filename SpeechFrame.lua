@@ -52,7 +52,7 @@ local lingerUntil = nil
 local pausing = false  -- our own Pause is the one calling StopCurrentSound
 
 local function DB()
-    return SpeakStone_MainDB or {}
+    return SpeakStone_ForeverMainDB or SpeakStone_MainDB or {}
 end
 
 local function Readable(value)
@@ -136,7 +136,8 @@ local function SavePosition()
     local point, _, relativePoint, x, y = frame:GetPoint(1)
     local scale = frame:GetScale()
     -- Stored in UIParent units, so changing the size keeps it in place.
-    SpeakStone_MainDB.speechFramePos = { point, relativePoint, x * scale, y * scale }
+    local db = DB()
+    db.speechFramePos = { point, relativePoint, x * scale, y * scale }
 end
 
 local function ApplyPosition()
@@ -322,8 +323,9 @@ local function Build()
 
     frame.measure = frame:CreateFontString(nil, "ARTWORK")
     frame.measure:SetFontObject(textFont)
-    frame.measure:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", 0, -60)
+    frame.measure:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
     frame.measure:SetAlpha(0)
+    frame.measure:Hide()
     frame.measure.ssRole = false
     addon.SpeechFrameApplyFont()
 
@@ -351,10 +353,13 @@ function addon.SpeechFrameApplyFont()
     end
     local spacing = custom and 4 or 2
     frame.textFont:SetSpacing(spacing)
+    frame.measure:Show()
     frame.measure:SetText("A")
     local one = frame.measure:GetStringHeight() or 0
     frame.measure:SetText("A\nA")
     local two = frame.measure:GetStringHeight() or 0
+    frame.measure:SetText("")
+    frame.measure:Hide()
     frame.lineHeight = (two - one > 4) and (two - one) or ((custom and 12 or 13) + spacing)
     frame.scroll:SetHeight(frame.lineHeight * TEXT_LINES)
     frame.filledFor = nil
@@ -795,7 +800,7 @@ end
 
 function OpenMenu(owner)
     Build()
-    local db = SpeakStone_MainDB
+    local db = DB()
     if not (MenuUtil and MenuUtil.CreateContextMenu) then
         -- No menu API on this client: step through the sizes instead.
         local index = 1

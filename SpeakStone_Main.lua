@@ -509,12 +509,28 @@ local questButtonFrame = CreateFrame("Frame")
 questButtonFrame:RegisterEvent("ADDON_LOADED")
 
 -- Kept so the settings toggle can show and hide them after creation.
+local function GetCurrentSound()
+    return addon.activeSound
+end
+addon.GetCurrentSound = GetCurrentSound
+
 addon.questButtons = {}
 
 local function UpdateQuestButtonVisibility()
     local show = SpeakStone_MainDB.showQuestButton
     for _, button in ipairs(addon.questButtons) do
         if show then button:Show() else button:Hide() end
+    end
+    if addon.questLogButton then
+        if QuestMapFrame and QuestMapFrame.DetailsFrame and QuestMapFrame.DetailsFrame.BackButton then
+            addon.questLogButton:SetFrameLevel(QuestMapFrame.DetailsFrame.BackButton:GetFrameLevel() + 1)
+            addon.questLogButton:ClearAllPoints()
+            addon.questLogButton:SetPoint("LEFT", QuestMapFrame.DetailsFrame.BackButton, "RIGHT", 6, 0)
+        end
+        local cur = addon.activeSound
+        local qid = (C_QuestLog and C_QuestLog.GetSelectedQuest and C_QuestLog.GetSelectedQuest()) or GetQuestID()
+        local isPlaying = cur and cur.questID == qid and cur.isPlaying
+        addon.questLogButton:SetText(isPlaying and "Stop" or "Play")
     end
 end
 addon.UpdateQuestButtonVisibility = UpdateQuestButtonVisibility
@@ -534,16 +550,37 @@ local function InitializeQuestFrameButtons()
     -- Create the button for the Quest Log (QuestMapFrame)
     if QuestMapFrame and QuestMapFrame.DetailsFrame then
         local questLogButton = CreateFrame("Button", "QuestLogReaderButtonFrame", QuestMapFrame.DetailsFrame, "UIPanelButtonTemplate")
-        questLogButton:SetSize(90, 21)
-        questLogButton:SetText("Read Quest")
-        -- Position it at the top left of the details frame, offset to the right to be next to Back button
-        questLogButton:SetPoint("TOPLEFT", QuestMapFrame.DetailsFrame, "TOPLEFT", 105, -10)
+        questLogButton:SetSize(75, 22)
+        questLogButton:SetText("Play")
+        if QuestMapFrame.DetailsFrame.BackButton then
+            questLogButton:SetFrameLevel(QuestMapFrame.DetailsFrame.BackButton:GetFrameLevel() + 1)
+            questLogButton:SetPoint("LEFT", QuestMapFrame.DetailsFrame.BackButton, "RIGHT", 6, 0)
+            questLogButton:SetHeight(QuestMapFrame.DetailsFrame.BackButton:GetHeight() or 22)
+        else
+            questLogButton:SetFrameLevel(QuestMapFrame.DetailsFrame:GetFrameLevel() + 10)
+            questLogButton:SetPoint("TOPLEFT", QuestMapFrame.DetailsFrame, "TOPLEFT", 105, -10)
+        end
 
         questLogButton:SetScript("OnClick", function()
-            PlayQuestAudio("description", true)
+            local cur = GetCurrentSound()
+            local qid = (C_QuestLog and C_QuestLog.GetSelectedQuest and C_QuestLog.GetSelectedQuest()) or GetQuestID()
+            if cur and cur.questID == qid and cur.isPlaying then
+                StopCurrentSound()
+            else
+                PlayQuestAudio("description", true)
+            end
         end)
         table.insert(addon.questButtons, questLogButton)
         addon.questLogButton = questLogButton
+
+        QuestMapFrame.DetailsFrame:HookScript("OnShow", function()
+            if addon.questLogButton and QuestMapFrame.DetailsFrame.BackButton then
+                addon.questLogButton:SetFrameLevel(QuestMapFrame.DetailsFrame.BackButton:GetFrameLevel() + 1)
+                addon.questLogButton:ClearAllPoints()
+                addon.questLogButton:SetPoint("LEFT", QuestMapFrame.DetailsFrame.BackButton, "RIGHT", 6, 0)
+            end
+            if UpdateQuestButtonVisibility then UpdateQuestButtonVisibility() end
+        end)
     end
     addon.questFrameButton = questFrameButton
 
@@ -2120,9 +2157,9 @@ local function PlayItemAudioDirect(itemLink, page, immediate)
         return false
     end
 
-    -- Also clears a clip still waiting out the autoplay delay; see the quest
-    -- path above.
-    StopCurrentSound()
+    local cur = GetCurrentSound()
+    local queueing = SpeakStone_MainDB.queueQuestSpeech and not immediate and cur
+        and cur.questID and cur.textType ~= "gossip" and (cur.isPlaying or cur.nextSoundTimer)
 
     local soundData = {
         questID = baseNames[1],
@@ -2157,6 +2194,16 @@ local function PlayItemAudioDirect(itemLink, page, immediate)
             soundData.text = t
         end
     end
+    if queueing then
+        table.insert(addon.speechQueue, soundData)
+        addon.queueTotal = (addon.queueTotal or 0) + 1
+        if addon.queuePos == 0 then addon.queuePos = 1 end
+        DebugPrint("SpeakStone: queued item " .. (itemID and ("item " .. itemID) or ("'" .. itemLink .. "'")) .. " (page " .. page .. ")")
+        return true
+    end
+
+    -- Clear current sound but preserve the quest queue
+    StopCurrentSound(true)
     addon.activeSound = soundData
     DebugPrint("SpeakStone: playing " .. (itemID and ("item " .. itemID) or ("'" .. itemLink .. "'")) .. " (page " .. page .. ")")
 
@@ -2170,6 +2217,9 @@ local function PlayItemAudioDirect(itemLink, page, immediate)
             if bookReading and bookReading.link == itemLink and bookReading.page == page then
                 if not PlayItemAudioDirect(itemLink, page + 1, true) then
                     bookReading = nil
+                    if addon.PlayNextQueued and addon.speechQueue and #addon.speechQueue > 0 then
+                        addon.PlayNextQueued()
+                    end
                 end
                 if UpdateBookButton then UpdateBookButton() end
             end
@@ -2426,7 +2476,7 @@ questEventFrame:SetScript("OnEvent", function(self, event, ...)
         -- actually being read carries on; anything else stops as before.
         local keepGoing = SpeakStone_MainDB.keepReadingBooks ~= false and BookIsReading()
         if SpeakStone_MainDB.stopDialogueOnClose and not keepGoing then
-            StopCurrentSound()
+            StopCurrentSound(true)
             bookReading = nil
         end
         return
@@ -2463,9 +2513,9 @@ questEventFrame:SetScript("OnEvent", function(self, event, ...)
         -- quest line already playing finishes. Anything else stops as before.
         local cur = GetCurrentSound()
         local questLine = cur and (cur.textType == "description" or cur.textType == "progress"
-            or cur.textType == "completion") and (cur.isPlaying or cur.autoAccepted)
-        if not (SpeakStone_MainDB.keepReadingQuests ~= false and questLine) then
-            StopCurrentSound() -- Stop sound when the quest dialog finishes
+            or cur.textType == "completion") and (cur.isPlaying or cur.nextSoundTimer or cur.autoAccepted)
+        if not ((SpeakStone_MainDB.keepReadingQuests ~= false and questLine) or QuestQueueHolds()) then
+            StopCurrentSound(QuestQueueHolds()) -- Stop sound when the quest dialog finishes
         end
     end
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## 5.0.1 (November 2026)
+
+### Highlights
+- **Speech Frame / Dialogue Box Visibility**: Resolved an issue on WoW Forever where settings database referencing prevented the speech frame popup with quest text and character portrait from displaying when walking away from NPCs.
+- **Quest Log Play Button**: Replaced unstyled text with a properly framed, themed "Play/Stop" button next to the Back button on the map quest details view.
+- **Scroll & Book Text Queueing**: Opening an in-game scroll or readable book now cleanly queues behind active quest narration rather than interrupting it.
+- **Initialization & Display Polish**: Fixed an initialization ordering error during addon load and cleaned up off-screen FontString text metrics measurement.
+
 ## 5.0.0 (November 2026)
 
 A new language model has been yet again used (3rd time lucky) for voice generation across SpeakStone!
