@@ -57,6 +57,7 @@ local function Store()
     -- now only a statistic -- and a soft one, since a quest with no audio is as
     -- likely to have been removed from the game as to be waiting for a voice.
     h.missingIDs = h.missingIDs or {}
+    h.bugs = h.bugs or {}
     -- Hashes of everything already submitted (see HarvestMarkSent). Without
     -- it the store only ever grew: every export resent everything ever
     -- captured, the reminder kept counting lines long since sent, and the
@@ -284,6 +285,12 @@ local function ScrubStore(h)
     end
     for _, entry in pairs(h.itemText or {}) do
         for page, t in pairs(entry.pages or {}) do entry.pages[page] = Detokenize(t) end
+    end
+    for _, entry in pairs(h.bugs or {}) do
+        if type(entry) == "table" then
+            entry.text = Detokenize(entry.text)
+            if IsSelfName(entry.npcName) then entry.npcName = nil end
+        end
     end
 end
 
@@ -535,6 +542,52 @@ local function RecordItemText(itemID, itemName, page, text)
     entry.pages[page] = text
 end
 
+-- Per-line bug reports from the in-game Report button (owner, 2026-11-06).
+-- Stored in h.bugs alongside unvoiced quest/gossip captures so they travel out
+-- in the same SpeakStone_MainExport payload.
+local function RecordBug(sd, reason, note)
+    if type(sd) ~= "table" or not sd.soundFile or sd.soundFile == "" or sd.preview then
+        return false
+    end
+    local h = Store()
+    reason = (type(reason) == "string" and reason ~= "") and reason or "reported"
+    local key = tostring(sd.soundFile) .. ":" .. reason
+    local text = Detokenize(sd.text)
+    if h.sent[SentKey("b", key, text or "")] then
+        return false
+    end
+    local speaker = CurrentSpeaker()
+    local npcID = sd.npcID or CreatureIDFromGUID(sd.npcGUID) or speaker.id
+    local npcName = sd.npcName or speaker.name
+    if IsSelfName(npcName) then npcName = nil end
+    local entry = {
+        soundFile = tostring(sd.soundFile),
+        reason = reason,
+        questID = sd.questID,
+        passage = sd.textType,
+        npcID = npcID,
+        npcName = npcName,
+        title = sd.title,
+        text = text,
+        note = (type(note) == "string" and note ~= "") and Detokenize(note) or nil,
+        timestamp = time(),
+        char = CurrentCharIndex(),
+    }
+    if npcID and speaker.id == npcID then
+        NoteNPC(h, npcID, {
+            npcName = npcName,
+            npcSex = speaker.sex,
+            npcRace = speaker.race,
+            npcRaceToken = speaker.raceToken,
+            npcModelFileID = speaker.modelFileID,
+            npcCreatureType = speaker.creatureType,
+        })
+    end
+    h.bugs[key] = entry
+    return true
+end
+addon.HarvestRecordBug = RecordBug
+
 -- --------------------------------------------------------------------------
 -- Events
 -- --------------------------------------------------------------------------
@@ -645,6 +698,7 @@ function addon.HarvestEntryCount()
     for _ in pairs(h.gossip) do count = count + 1 end
     for _ in pairs(h.itemText) do count = count + 1 end
     for _ in pairs(h.npcChat) do count = count + 1 end
+    for _ in pairs(h.bugs) do count = count + 1 end
     return count
 end
 
@@ -749,7 +803,9 @@ function addon.HarvestCounts()
     end
     local sent = 0
     for _ in pairs(h.sent) do sent = sent + 1 end
-    return quests, passages, unvoiced, npcs, lines, items, pages, missing, chatNPCs, chatLines, sent
+    local bugs = 0
+    for _ in pairs(h.bugs) do bugs = bugs + 1 end
+    return quests, passages, unvoiced, npcs, lines, items, pages, missing, chatNPCs, chatLines, sent, bugs
 end
 
 -- Minimal Lua-table serialiser. The website's parser only cares about the
@@ -913,6 +969,7 @@ function addon.HarvestExportBatches(maxBytes)
     for key, entry in pairs(h.gossip) do plan[#plan + 1] = { "gossip", key, entry } end
     for key, entry in pairs(h.itemText) do plan[#plan + 1] = { "itemText", key, entry } end
     for key, entry in pairs(h.npcChat) do plan[#plan + 1] = { "npcChat", key, entry } end
+    for key, entry in pairs(h.bugs) do plan[#plan + 1] = { "bugs", key, entry } end
 
     local batches = {}
     local out, size, openKind, inBatch
@@ -1025,6 +1082,9 @@ function addon.HarvestSnapshot()
             snap[SentKey("c", key, text)] = true
         end
     end
+    for key, entry in pairs(h.bugs) do
+        snap[SentKey("b", key, entry.text or "")] = true
+    end
     return snap
 end
 
@@ -1100,6 +1160,11 @@ function addon.HarvestMarkSent(snap)
             entry.texts = kept
         end
     end
+    for key, entry in pairs(h.bugs) do
+        if Take(SentKey("b", key, entry.text or "")) then
+            h.bugs[key] = nil
+        end
+    end
     -- An NPC nobody remaining points at has nothing left to describe.
     local referenced = {}
     for _, entry in pairs(h.quests) do
@@ -1107,6 +1172,9 @@ function addon.HarvestMarkSent(snap)
             local captured = entry[passage]
             if captured and captured.npcID then referenced[captured.npcID] = true end
         end
+    end
+    for _, entry in pairs(h.bugs) do
+        if entry.npcID then referenced[entry.npcID] = true end
     end
     for npcID in pairs(h.npcs) do
         if not referenced[npcID] then h.npcs[npcID] = nil end
@@ -1117,7 +1185,7 @@ end
 
 function addon.HarvestWipe()
     local h = Store()
-    h.quests, h.gossip, h.itemText, h.missingIDs, h.npcChat = {}, {}, {}, {}, {}
+    h.quests, h.gossip, h.itemText, h.missingIDs, h.npcChat, h.bugs = {}, {}, {}, {}, {}, {}
     h.npcs = {}
     -- Nothing left to submit, so nothing to be reminded about: an empty store
     -- should not sit silently through the interval before it can prompt again.

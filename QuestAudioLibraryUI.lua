@@ -953,7 +953,8 @@ local function BuildUI()
         end
         if DB_NoReadAlong and DB_NoReadAlong() then return end
         if not target.tokens then
-            target.tokens, target.spoken, target.words = ReadTokens(target.plain)
+            target.tokens, target.spoken, target.words = ReadTokens(target.plain,
+                addon.ClipNarrated and addon.ClipNarrated(self.playFile))
             target.times, target.starts = addon.SubtitleTiming(target.words, duration, self.playFile)
         end
         local elapsed = GetTime() - started
@@ -963,8 +964,9 @@ local function BuildUI()
         local litKey = index .. (span and (":" .. span[1]) or "")
         if target.lastIndex ~= litKey then
             target.lastIndex = litKey
+            local light = target.light or addon.ThemeIsLight()
             target.fs:SetText(Lit(target.plain, target.tokens, target.spoken, index,
-                addon.HighlightCode(target.light or addon.ThemeIsLight()), span))
+                addon.HighlightCode(light), span, addon.FadeCode and addon.FadeCode(light)))
             -- Long text: keep the place in view.
             if target.scroll and target.child and index > 0 then
                 local range = target.scroll:GetVerticalScrollRange()
@@ -1993,7 +1995,9 @@ local function BuildUI()
             local info = self.infoView
             info.title:SetText("SpeakStone Guide")
             Ink(info.title, ui.title)
-            info.body:SetText("Open an expansion on the left and pick a quest, greeting or book to hear it. "
+            -- Forever has no expansions: its Guide groups by pack (Audio Pack 1, Audio Pack 2, Chatter).
+            info.body:SetText("Open " .. (addon.IS_FOREVER and "a pack" or "an expansion")
+                .. " on the left and pick a quest, greeting or book to hear it. "
                 .. "The bar under each name shows how much of it you have heard.")
             Ink(info.body, ui.text)
             info.barTrack:Hide()

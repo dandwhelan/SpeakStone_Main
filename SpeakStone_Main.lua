@@ -101,7 +101,10 @@ if type(_G.SpeakStonePendingSentenceTimings) == "table" then
     _G.SpeakStonePendingSentenceTimings = nil
 end
 
--- Start times (seconds) of sentence 2, 3, ... of a clip, or nil when no installed pack has timings for it.
+-- Start times (seconds) of sentence 2, 3, ... of a clip, or nil when no installed pack has timings for it. Second
+-- return: true when the clip's stage directions are read aloud by the narrator (value starts "n", e.g. "n31,65" or a
+-- bare "n"; tools/build_sentence_timings.py). Those words then take time like any other; an addon older than this
+-- reads the marks only and, its sentence count not matching, keeps its estimate.
 function addon.SentenceTimesFor(soundFile)
     if type(soundFile) ~= "string" then
         return nil
@@ -114,10 +117,19 @@ function addon.SentenceTimesFor(soundFile)
             for number in raw:gmatch("%d+") do
                 marks[#marks + 1] = tonumber(number) / source.unit
             end
-            return marks
+            return marks, raw:sub(1, 1) == "n"
         end
     end
     return nil
+end
+
+-- Whether a clip reads its <stage directions> aloud (the narrator's parts stitched in, since 2026-11-04).
+function addon.ClipNarrated(soundFile)
+    if type(soundFile) ~= "string" then
+        return false
+    end
+    local ok, _, narrated = pcall(addon.SentenceTimesFor, soundFile:match("[^/\\]+$") or soundFile)
+    return ok and narrated == true
 end
 
 -- Legacy mechanism, kept for the existing TWW language packs: explicitly
@@ -259,6 +271,22 @@ local defaultSettings = {
     -- A small muted-speaker icon on the quest window when the passage on
     -- screen has no voice yet.
     showMissingVoiceIcon = true,
+    -- Optional Report button on the speech frame and quest window to flag a
+    -- line (wrong voice, audio glitch, pronunciation) into your capture export.
+    showReportButton = false,
+    -- A small report flag in the top-right corner of Dialogue UI's window, on
+    -- a voiced quest or greeting (DialogueUIVoice.lua). Owner, 2026-11-06.
+    showDialogueReportFlag = true,
+    -- SpeakStone's theme follows Dialogue UI's Brown / Dark when that addon
+    -- is installed (Theme.lua). Picking a theme by hand turns this off.
+    followDialogueUITheme = true,
+    -- While a line is read, the paragraphs (or, in the Lore Book, the
+    -- sentences) not being read are drawn dimmer.
+    fadeOtherParagraphs = true,
+    -- The speech frame shows the NPC as a moving 3D head that talks with the
+    -- voice (SpeechFrame.lua); off: the still picture in a thin ring. Off by
+    -- default (owner, 2026-11-07); the tutorial's look page offers both.
+    speechPortrait3D = false,
 }
 
 -- Autoplay for one kind of text. The master switch gates all three, so
@@ -514,12 +542,92 @@ local function GetCurrentSound()
 end
 addon.GetCurrentSound = GetCurrentSound
 
+local REPORT_REASONS = {
+    { key = "wrong_voice", label = "Wrong voice / sex" },
+    { key = "bad_take", label = "Audio glitch / bad take" },
+    { key = "mispronounced", label = "Wrong pronunciation" },
+    { key = "cut_off", label = "Cut off / too long" },
+    { key = "wrong_text", label = "Text doesn't match" },
+    { key = "other", label = "Other issue" },
+}
+addon.REPORT_REASONS = REPORT_REASONS
+
+function addon.GetReportableSound()
+    if addon.activeSound and not addon.activeSound.preview then
+        return addon.activeSound
+    end
+    if addon.lastPlayedSound and not addon.lastPlayedSound.preview then
+        return addon.lastPlayedSound
+    end
+    if QuestFrame and QuestFrame:IsVisible() then
+        local qid = GetQuestID()
+        local ptype = nil
+        if QuestFrameDetailPanel and QuestFrameDetailPanel:IsVisible() then ptype = "description"
+        elseif QuestFrameProgressPanel and QuestFrameProgressPanel:IsVisible() then ptype = "progress"
+        elseif QuestFrameRewardPanel and QuestFrameRewardPanel:IsVisible() then ptype = "completion"
+        end
+        if type(qid) == "number" and qid > 0 and ptype then
+            local sf = addon.FindSound and addon.FindSound({ qid .. "_" .. ptype })
+            if sf then
+                local text, title
+                if addon.CaptureQuestText then text, title = addon.CaptureQuestText(qid, ptype) end
+                return {
+                    questID = qid,
+                    textType = ptype,
+                    soundFile = sf,
+                    npcGUID = UnitGUID("npc"),
+                    npcName = UnitName("npc"),
+                    text = text,
+                    title = title,
+                }
+            end
+        end
+    end
+    return nil
+end
+
+function addon.OpenReportMenu(owner, sd)
+    sd = sd or addon.GetReportableSound()
+    if not sd or not sd.soundFile then
+        print("|cffffd100SpeakStone:|r No voiced line is playing or active to report.")
+        return
+    end
+    local function DoReport(reasonKey, reasonLabel)
+        if addon.HarvestRecordBug and addon.HarvestRecordBug(sd, reasonKey) then
+            print("|cffffd100SpeakStone:|r Reported |cff00ccff" .. tostring(sd.soundFile) .. "|r (" .. reasonLabel .. ") -- added to your capture export (/ssharvest export).")
+            if addon.RefreshSettingsStatus then addon.RefreshSettingsStatus() end
+        else
+            print("|cffffd100SpeakStone:|r Already reported |cff00ccff" .. tostring(sd.soundFile) .. "|r (" .. reasonLabel .. ").")
+        end
+    end
+    if MenuUtil and MenuUtil.CreateContextMenu then
+        MenuUtil.CreateContextMenu(owner, function(_, root)
+            root:CreateTitle("Report line: " .. tostring(sd.soundFile))
+            for _, r in ipairs(REPORT_REASONS) do
+                root:CreateButton(r.label, function()
+                    DoReport(r.key, r.label)
+                end)
+            end
+        end)
+    else
+        DoReport("reported", "Reported")
+    end
+end
+
 addon.questButtons = {}
 
 local function UpdateQuestButtonVisibility()
     local show = SpeakStone_MainDB.showQuestButton
     for _, button in ipairs(addon.questButtons) do
         if show then button:Show() else button:Hide() end
+    end
+    if addon.UpdateGossipButton then addon.UpdateGossipButton() end
+    if addon.questReportButton then
+        if SpeakStone_MainDB.showReportButton then
+            addon.questReportButton:Show()
+        else
+            addon.questReportButton:Hide()
+        end
     end
     if addon.questLogButton then
         if QuestMapFrame and QuestMapFrame.DetailsFrame and QuestMapFrame.DetailsFrame.BackButton then
@@ -535,6 +643,91 @@ local function UpdateQuestButtonVisibility()
 end
 addon.UpdateQuestButtonVisibility = UpdateQuestButtonVisibility
 
+-- The quest giver window's passage, from whichever panel is up.
+local function QuestFramePassage()
+    if QuestFrameDetailPanel and QuestFrameDetailPanel:IsVisible() then return "description" end
+    if QuestFrameProgressPanel and QuestFrameProgressPanel:IsVisible() then return "progress" end
+    if QuestFrameRewardPanel and QuestFrameRewardPanel:IsVisible() then return "completion" end
+    return nil
+end
+
+-- --------------------------------------------------------------------------
+-- Play buttons (Read Quest, the quest log's Play, the book and gossip Play):
+-- one tooltip that says what the button does and what state things are in,
+-- and right-click to turn autoplay for that kind of text on or off. The idea
+-- is Dialogue UI's play button's; the code is ours.
+-- --------------------------------------------------------------------------
+local AUTOPLAY_KINDS = {
+    quest = { key = "autoPlayQuests", noun = "quests" },
+    gossip = { key = "autoPlayGossip", noun = "NPC greetings" },
+    book = { key = "autoPlayItemText", noun = "books" },
+}
+
+local function AutoPlayOn(kind)
+    return SpeakStone_MainDB.autoPlayEnabled and SpeakStone_MainDB[AUTOPLAY_KINDS[kind].key] ~= false
+end
+
+-- Off turns off this kind only; on also turns the master switch on, or the
+-- kind's own switch would do nothing.
+local function ToggleAutoPlay(kind)
+    local key = AUTOPLAY_KINDS[kind].key
+    if AutoPlayOn(kind) then
+        SpeakStone_MainDB[key] = false
+    else
+        SpeakStone_MainDB.autoPlayEnabled = true
+        SpeakStone_MainDB[key] = true
+    end
+    if addon.RefreshSettingChecks then
+        addon.RefreshSettingChecks()
+    end
+    print("|cffffd100SpeakStone:|r autoplay for " .. AUTOPLAY_KINDS[kind].noun .. " "
+        .. (AutoPlayOn(kind) and "|cff19ff19on|r" or "|cffff2020off|r"))
+end
+
+local function ShowPlayTooltip(button, spec)
+    GameTooltip:SetOwner(button, "ANCHOR_TOP")
+    local title = spec.title
+    local key = spec.binding and GetBindingKey and GetBindingKey(spec.binding)
+    if key then
+        title = title .. " |cffffd100(" .. key .. ")|r"
+    end
+    GameTooltip:AddLine(title, 1, 1, 1)
+    local on = AutoPlayOn(spec.kind)
+    GameTooltip:AddDoubleLine("Autoplay " .. AUTOPLAY_KINDS[spec.kind].noun, on and "On" or "Off",
+        1, 1, 1, on and 0.1 or 1, on and 1 or 0.13, on and 0.1 or 0.13)
+    local voiced
+    if spec.voiced then
+        local ok, result = pcall(spec.voiced)
+        voiced = ok and result
+    end
+    if voiced == true then
+        GameTooltip:AddLine("SpeakStone has a voice for this text.", 1, 0.82, 0)
+    elseif voiced == false then
+        GameTooltip:AddLine("No voice for this text yet.", 1, 0.13, 0.13)
+    end
+    GameTooltip:AddLine(spec.hint or "Left-click: read it from the top.", 0.7, 0.7, 0.7)
+    GameTooltip:AddLine("Right-click: turn autoplay for " .. AUTOPLAY_KINDS[spec.kind].noun .. " on or off.", 0.7, 0.7, 0.7)
+    GameTooltip:Show()
+end
+
+-- spec: kind ("quest" | "gossip" | "book"), title, onClick(button), and
+-- optionally binding (a Bindings.xml name), voiced() -> true / false / nil, hint.
+function addon.SetUpPlayButton(button, spec)
+    button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    button:SetScript("OnClick", function(self, mouseButton)
+        if mouseButton == "RightButton" then
+            ToggleAutoPlay(spec.kind)
+        else
+            spec.onClick(self)
+        end
+        if self:IsMouseOver() then
+            ShowPlayTooltip(self, spec)
+        end
+    end)
+    button:HookScript("OnEnter", function(self) ShowPlayTooltip(self, spec) end)
+    button:HookScript("OnLeave", function() GameTooltip:Hide() end)
+end
+
 local function InitializeQuestFrameButtons()
     -- Create the button for the QuestFrame
     local questFrameButton = CreateFrame("Button", "SpeakStoneButtonFrame", QuestFrame, "UIPanelButtonTemplate")
@@ -542,10 +735,32 @@ local function InitializeQuestFrameButtons()
     questFrameButton:SetText("Read Quest")
     questFrameButton:SetPoint("BOTTOMRIGHT", QuestFrame, "BOTTOMRIGHT", -120, 4)
 
-    questFrameButton:SetScript("OnClick", function()
-        PlayQuestAudio(nil, true)
-    end)
+    addon.SetUpPlayButton(questFrameButton, {
+        kind = "quest", title = "Read Quest", binding = "PLAYACTIVEQUEST",
+        onClick = function() PlayQuestAudio(nil, true) end,
+        voiced = function()
+            local passage = QuestFramePassage()
+            if not passage then return nil end
+            return addon.QuestClipFor(GetQuestID(), passage) ~= nil
+        end,
+    })
     table.insert(addon.questButtons, questFrameButton)
+
+    local questReportButton = CreateFrame("Button", "SpeakStoneReportButtonFrame", QuestFrame, "UIPanelButtonTemplate")
+    questReportButton:SetSize(58, 21)
+    questReportButton:SetText("Report")
+    questReportButton:SetPoint("RIGHT", questFrameButton, "LEFT", -4, 0)
+    questReportButton:SetScript("OnClick", function(self)
+        addon.OpenReportMenu(self)
+    end)
+    questReportButton:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:AddLine("Report this voice line", 1, 0.82, 0)
+        GameTooltip:AddLine("Flag a wrong voice, audio glitch or pronunciation issue. Added to your capture export.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    questReportButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    addon.questReportButton = questReportButton
 
     -- Create the button for the Quest Log (QuestMapFrame)
     if QuestMapFrame and QuestMapFrame.DetailsFrame then
@@ -561,15 +776,22 @@ local function InitializeQuestFrameButtons()
             questLogButton:SetPoint("TOPLEFT", QuestMapFrame.DetailsFrame, "TOPLEFT", 105, -10)
         end
 
-        questLogButton:SetScript("OnClick", function()
-            local cur = GetCurrentSound()
-            local qid = (C_QuestLog and C_QuestLog.GetSelectedQuest and C_QuestLog.GetSelectedQuest()) or GetQuestID()
-            if cur and cur.questID == qid and cur.isPlaying then
-                StopCurrentSound()
-            else
-                PlayQuestAudio("description", true)
-            end
-        end)
+        local function SelectedQuest()
+            return (C_QuestLog and C_QuestLog.GetSelectedQuest and C_QuestLog.GetSelectedQuest()) or GetQuestID()
+        end
+        addon.SetUpPlayButton(questLogButton, {
+            kind = "quest", title = "Read the quest description",
+            hint = "Left-click: play it, or stop it while it plays.",
+            onClick = function()
+                local cur = GetCurrentSound()
+                if cur and cur.questID == SelectedQuest() and cur.isPlaying then
+                    StopCurrentSound()
+                else
+                    PlayQuestAudio("description", true)
+                end
+            end,
+            voiced = function() return addon.QuestClipFor(SelectedQuest(), "description") ~= nil end,
+        })
         table.insert(addon.questButtons, questLogButton)
         addon.questLogButton = questLogButton
 
@@ -586,6 +808,7 @@ local function InitializeQuestFrameButtons()
 
     UpdateQuestButtonVisibility()
     if addon.InitMissingVoiceIcons then addon.InitMissingVoiceIcons() end
+    if addon.InitGossipButton then addon.InitGossipButton() end
 end
 
 -- --------------------------------------------------------------------------
@@ -613,14 +836,6 @@ local function MakeMissingIcon(parent)
     return b
 end
 
--- The quest giver window's passage, from whichever panel is up.
-local function QuestFramePassage()
-    if QuestFrameDetailPanel and QuestFrameDetailPanel:IsVisible() then return "description" end
-    if QuestFrameProgressPanel and QuestFrameProgressPanel:IsVisible() then return "progress" end
-    if QuestFrameRewardPanel and QuestFrameRewardPanel:IsVisible() then return "completion" end
-    return nil
-end
-
 local function ShowIfMissing(icon, questID, textType)
     if not icon then return end
     local show = SpeakStone_MainDB and SpeakStone_MainDB.showMissingVoiceIcon ~= false
@@ -631,6 +846,11 @@ end
 
 function addon.UpdateMissingVoiceIcons()
     if QuestFrame and QuestFrame:IsVisible() then
+        if missingIcons.quest then
+            missingIcons.quest:ClearAllPoints()
+            local anchor = (addon.questReportButton and addon.questReportButton:IsShown()) and addon.questReportButton or addon.questFrameButton
+            missingIcons.quest:SetPoint("RIGHT", anchor, "LEFT", -4, 0)
+        end
         ShowIfMissing(missingIcons.quest, GetQuestID(), QuestFramePassage())
     elseif missingIcons.quest then
         missingIcons.quest:Hide()
@@ -1134,6 +1354,13 @@ local function AlreadyHeard(questID, textType)
 end
 
 local function NotifySpeechFrame(event, soundData)
+    -- The Play / Stop buttons' labels follow the clip too.
+    if addon.RefreshPlayLabels then
+        local ok, err = pcall(addon.RefreshPlayLabels)
+        if not ok then
+            geterrorhandler()(err)
+        end
+    end
     if not addon.SpeechFrameNotify then
         return
     end
@@ -1183,6 +1410,15 @@ local function SexTakeCandidates(baseName)
     if sex == 3 then return { baseName .. "_f", baseName } end
     if sex == 2 then return { baseName .. "_m", baseName } end
     return { baseName }
+end
+
+-- The clip a quest passage would play, or nil: Dialogue UI asks before it
+-- draws its play button (DialogueUIVoice.lua).
+function addon.QuestClipFor(questID, textType)
+    if not questID or not textType then
+        return nil
+    end
+    return FindSound(SexTakeCandidates(questID .. "_" .. textType))
 end
 
 -- The clip has run its course, or never started. Distinct from
@@ -1280,6 +1516,7 @@ local function DoPlaySound(soundData)
     -- Nothing reports a clip's position either, so the speech frame works
     -- it out from when it started.
     soundData.startedAt = GetTime()
+    addon.lastPlayedSound = soundData
     NotifySpeechFrame("start", soundData)
 end
 
@@ -1542,10 +1779,14 @@ end
 
 -- Global on purpose: Bindings.xml calls this by name. Everything else that
 -- used to sit in the global namespace alongside it now lives on addon.
-function PlayQuestAudio(textType, skipDelay)
+-- forQuestID: the caller already knows the quest (Dialogue UI's play button),
+-- so the windows are not asked which one is showing.
+function PlayQuestAudio(textType, skipDelay, forQuestID)
     -- Get quest ID from Quest Log if it's open, otherwise from quest giver
     local questID
-    if QuestFrame and QuestFrame:IsVisible() then
+    if forQuestID then
+        questID = forQuestID
+    elseif QuestFrame and QuestFrame:IsVisible() then
         questID = GetQuestID()
     elseif QuestMapFrame and QuestMapFrame:IsVisible() then
         questID = C_QuestLog.GetSelectedQuest()
@@ -1938,6 +2179,8 @@ local function CreatureIDFromGUID(guid)
     end
     return nil
 end
+-- The speech frame's 3D head loads the NPC by creature ID once it is out of reach.
+addon.CreatureIDFromGUID = CreatureIDFromGUID
 
 -- Queue mode: a quest line being read (or waiting) is not cut off by an
 -- NPC's greeting, and closing the gossip window does not stop it.
@@ -1950,7 +2193,39 @@ local function QuestQueueHolds()
         or #addon.speechQueue > 0
 end
 
-local function PlayGossipAudio()
+-- Which gossip clip an NPC's live text calls for. Returns the variant number,
+-- or nil, and which tier decided: "matched", "nomatch", "suppressed", "blind".
+-- The rules are explained in PlayGossipAudio below.
+local function ResolveGossipVariant(npcID, liveText)
+    local knownTexts = SpeakStone_GossipTexts and SpeakStone_GossipTexts[npcID]
+    if knownTexts then
+        local variant
+        if type(liveText) == "string" and not IsSecret(liveText) then
+            variant = LookupGossipVariant(knownTexts, liveText,
+                SpeakStone_GossipTranscribed and SpeakStone_GossipTranscribed[npcID])
+        end
+        if variant then
+            return variant, "matched"
+        end
+        return nil, "nomatch"
+    elseif SpeakStone_DynamicGossipNPCs and SpeakStone_DynamicGossipNPCs[npcID] then
+        return nil, "suppressed"
+    end
+    return 1, "blind"
+end
+
+-- The clip an NPC's gossip would play, or nil (DialogueUIVoice.lua).
+function addon.GossipClipFor(npcID, liveText)
+    local variant = npcID and ResolveGossipVariant(npcID, liveText)
+    if not variant then
+        return nil
+    end
+    return FindSound(SexTakeCandidates("npc" .. npcID .. "_gossip" .. variant))
+end
+
+-- skipDelay: a play button, not the window opening. Plays now, and plays a
+-- blind-tier greeting again even if this window already heard it.
+local function PlayGossipAudio(skipDelay)
     local guid = UnitGUID("npc")
     if not guid or IsSecret(guid) then
         return
@@ -1975,24 +2250,23 @@ local function PlayGossipAudio()
     --
     -- All three only govern AUTOPLAY. Every clip stays reachable by hand
     -- from the Audio Library's Gossip tab, which bypasses this.
-    local variant
-    local knownTexts = SpeakStone_GossipTexts and SpeakStone_GossipTexts[npcID]
-    if knownTexts then
-        local ok, liveText = pcall(C_GossipInfo.GetText)
-        if ok and liveText and not IsSecret(liveText) then
-            variant = LookupGossipVariant(knownTexts, liveText,
-                SpeakStone_GossipTranscribed and SpeakStone_GossipTranscribed[npcID])
+    local liveText
+    do
+        local ok, text = pcall(C_GossipInfo.GetText)
+        if ok then
+            liveText = text
         end
-        if not variant then
-            local key = "gossip-nomatch-" .. npcID
-            if not addon.reportedMissing[key] then
-                addon.reportedMissing[key] = true
-                DebugPrint("SpeakStone: NPC " .. npcID .. " is showing gossip text that was never captured -- not autoplaying")
-            end
-            YieldToSilentWindow()
-            return
+    end
+    local variant, tier = ResolveGossipVariant(npcID, liveText)
+    if tier == "nomatch" then
+        local key = "gossip-nomatch-" .. npcID
+        if not addon.reportedMissing[key] then
+            addon.reportedMissing[key] = true
+            DebugPrint("SpeakStone: NPC " .. npcID .. " is showing gossip text that was never captured -- not autoplaying")
         end
-    elseif SpeakStone_DynamicGossipNPCs and SpeakStone_DynamicGossipNPCs[npcID] then
+        YieldToSilentWindow()
+        return
+    elseif tier == "suppressed" then
         if not addon.reportedMissing["gossip-suppressed-" .. npcID] then
             addon.reportedMissing["gossip-suppressed-" .. npcID] = true
             DebugPrint("SpeakStone: gossip autoplay suppressed for NPC " .. npcID
@@ -2000,17 +2274,17 @@ local function PlayGossipAudio()
         end
         YieldToSilentWindow()
         return
-    else
+    elseif tier == "blind" then
         -- Blind tier: nothing proves gossip1 matches what is on screen. Picking
         -- a gossip option re-fires GOSSIP_SHOW with the NPC's reply, which would
         -- replay the greeting over it. So it plays once per open window; the
-        -- latch is cleared on GOSSIP_CLOSED.
-        if addon.blindGossipPlayedGUID == guid then
+        -- latch is cleared on GOSSIP_CLOSED. A play button is asked for, so it
+        -- is not latched out.
+        if addon.blindGossipPlayedGUID == guid and not skipDelay then
             YieldToSilentWindow()
             return
         end
         addon.blindGossipPlayedGUID = guid
-        variant = 1
     end
 
     local baseName = "npc" .. npcID .. "_gossip" .. variant
@@ -2050,7 +2324,7 @@ local function PlayGossipAudio()
 
     -- Same autoplay delay as the quest path above -- this was missing here,
     -- so gossip always narrated instantly regardless of the slider.
-    if SpeakStone_MainDB.autoPlayEnabled and not SpeakStone_MainDB.muteGossip then
+    if SpeakStone_MainDB.autoPlayEnabled and not skipDelay and not SpeakStone_MainDB.muteGossip then
         ScheduleSound(soundData, tonumber(SpeakStone_MainDB.autoPlayDelay) or 1.0)
     else
         DoPlaySound(soundData)
@@ -2359,6 +2633,90 @@ addon.PlayQuestAudio = PlayQuestAudio
 addon.PlayGossipAudio = PlayGossipAudio
 addon.PlayItemAudio = PlayItemAudio
 
+-- --------------------------------------------------------------------------
+-- Play button on Blizzard's gossip window, beside Goodbye. Shown and hidden
+-- with Read Quest (showQuestButton). Dialogue UI and Immersion hide this
+-- window; Dialogue UI's own play button covers greetings there.
+-- --------------------------------------------------------------------------
+local gossipButton
+
+local function CurrentGossipNPC()
+    local guid = UnitGUID("npc")
+    if not guid or IsSecret(guid) then
+        return nil
+    end
+    return CreatureIDFromGUID(guid)
+end
+
+local function GossipClipShowing()
+    local npcID = CurrentGossipNPC()
+    if not npcID then
+        return nil
+    end
+    local ok, text = pcall(C_GossipInfo.GetText)
+    return addon.GossipClipFor(npcID, ok and text or nil)
+end
+
+local function GossipPlaying()
+    local cur = GetCurrentSound()
+    local npcID = CurrentGossipNPC()
+    return cur and npcID and cur.textType == "gossip" and cur.questID == "npc" .. npcID and cur.isPlaying
+end
+
+addon.CurrentGossipNPC = CurrentGossipNPC
+
+function addon.UpdateGossipButton()
+    if not gossipButton then
+        return
+    end
+    gossipButton:SetShown(SpeakStone_MainDB.showQuestButton ~= false)
+    gossipButton:SetText(GossipPlaying() and "Stop" or "Play")
+end
+
+function addon.InitGossipButton()
+    if gossipButton or not GossipFrame then
+        return
+    end
+    gossipButton = CreateFrame("Button", "SpeakStoneGossipButton", GossipFrame, "UIPanelButtonTemplate")
+    gossipButton:SetSize(64, 22)
+    local panel = GossipFrame.GreetingPanel
+    local goodbye = (panel and panel.GoodbyeButton) or _G.GossipFrameGreetingGoodbyeButton
+    if goodbye then
+        gossipButton:SetPoint("RIGHT", goodbye, "LEFT", -6, 0)
+    else
+        gossipButton:SetPoint("BOTTOMRIGHT", GossipFrame, "BOTTOMRIGHT", -110, 4)
+    end
+    addon.SetUpPlayButton(gossipButton, {
+        kind = "gossip", title = "Read this greeting",
+        hint = "Left-click: play it, or stop it while it plays.",
+        onClick = function()
+            if GossipPlaying() then
+                StopCurrentSound()
+            elseif GossipClipShowing() then
+                PlayGossipAudio(true)
+            else
+                print("|cffffd100SpeakStone:|r no voice for this greeting yet.")
+            end
+            addon.UpdateGossipButton()
+        end,
+        voiced = function() return GossipClipShowing() ~= nil end,
+    })
+    GossipFrame:HookScript("OnShow", addon.UpdateGossipButton)
+    addon.UpdateGossipButton()
+end
+
+function addon.RefreshPlayLabels()
+    addon.UpdateGossipButton()
+    if UpdateBookButton then
+        UpdateBookButton()
+    end
+    if addon.questLogButton and addon.questLogButton:IsVisible() then
+        local cur = GetCurrentSound()
+        local qid = (C_QuestLog and C_QuestLog.GetSelectedQuest and C_QuestLog.GetSelectedQuest()) or GetQuestID()
+        addon.questLogButton:SetText((cur and cur.questID == qid and cur.isPlaying) and "Stop" or "Play")
+    end
+end
+
 -- Play/Stop on the book window itself (owner, 2026-09-28). Play reads from
 -- the page on screen to the end of the book; Stop ends the reading, open or
 -- closed. Built lazily: ItemTextFrame belongs to Blizzard's UI.
@@ -2376,23 +2734,27 @@ local function EnsureBookButton()
     bookButton:SetSize(64, 22)
     bookButton:SetPoint("TOPRIGHT", ItemTextFrame, "TOPRIGHT", -30, -28)
     bookButton:SetFrameStrata("HIGH")
-    bookButton:SetScript("OnClick", function()
-        if BookIsReading() then
-            StopBook()
-            return
-        end
-        local link = ItemTextGetItem()
-        if link and link ~= "" then
-            local page = ItemTextGetPage() or 1
-            if page == 1 then RememberBookSlug(link) end
-            currentItemName = link
-            currentItemPage = page
-            if not PlayItemAudioDirect(link, page, true) then
-                DebugPrint("SpeakStone: no audio for this page.")
+    addon.SetUpPlayButton(bookButton, {
+        kind = "book", title = "Read this book",
+        hint = "Left-click: read from this page on, or stop it while it reads.",
+        onClick = function()
+            if BookIsReading() then
+                StopBook()
+                return
             end
-        end
-        UpdateBookButton()
-    end)
+            local link = ItemTextGetItem()
+            if link and link ~= "" then
+                local page = ItemTextGetPage() or 1
+                if page == 1 then RememberBookSlug(link) end
+                currentItemName = link
+                currentItemPage = page
+                if not PlayItemAudioDirect(link, page, true) then
+                    DebugPrint("SpeakStone: no audio for this page.")
+                end
+            end
+            UpdateBookButton()
+        end,
+    })
     bookButton:SetScript("OnShow", UpdateBookButton)
     UpdateBookButton()
 end
@@ -2769,28 +3131,25 @@ local function EnsureExportFrame()
         return exportFrame, exportEditBox
     end
 
-    local frame = CreateFrame("Frame", "SpeakStoneMissingCopyFrame", UIParent, "BasicFrameTemplateWithInset")
-    frame:SetSize(560, 440)
-    frame:SetPoint("CENTER")
-    frame:SetMovable(true)
-    frame:EnableMouse(true)
-    frame:RegisterForDrag("LeftButton")
-    frame:SetScript("OnDragStart", frame.StartMoving)
-    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
-    frame:SetFrameStrata("DIALOG")
-    frame:SetClampedToScreen(true)
-    frame:Hide()
+    -- Drawn with UIKit like the settings window and the Guide, so it takes the
+    -- theme (Parchment / Stone / Midnight, or Dialogue UI's) instead of
+    -- Blizzard's grey frame and red buttons (owner, 2026-11-07).
+    local UIK = addon.UIK
+    local frame = UIK.Window("SpeakStoneMissingCopyFrame", 560, 440, "Captured Text -- Export to Submit")
     -- Escape closes it like every other addon window. Previously only the edit
     -- box handled Escape, so clicking anywhere else in the frame first left the
     -- player with no way out but the X.
     tinsert(UISpecialFrames, "SpeakStoneMissingCopyFrame")
 
-    frame.TitleText:SetText("Captured Text -- Export to Submit")
-
     local scrollFrame = CreateFrame("ScrollFrame", nil, frame, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetPoint("TOPLEFT", frame.InsetBg, "TOPLEFT", 5, -5)
+    scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 20, -44)
     -- The scroll area has to end above the button row, or the two overlap.
-    scrollFrame:SetPoint("BOTTOMRIGHT", frame.InsetBg, "BOTTOMRIGHT", -27, 54)
+    scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -38, 66)
+
+    -- The box the export sits in: the theme's inset colour behind the text.
+    local well = frame:CreateTexture(nil, "BORDER")
+    well:SetPoint("TOPLEFT", scrollFrame, "TOPLEFT", -6, 6)
+    well:SetPoint("BOTTOMRIGHT", scrollFrame, "BOTTOMRIGHT", 26, -6)
 
     local editBox = CreateFrame("EditBox", nil, scrollFrame)
     editBox:SetSize(scrollFrame:GetSize())
@@ -2803,36 +3162,40 @@ local function EnsureExportFrame()
     editBox:SetScript("OnEscapePressed", function() frame:Hide() end)
     scrollFrame:SetScrollChild(editBox)
 
+    -- The edit box draws its own text, which the theme's recolouring does not
+    -- reach: white on parchment could not be read.
+    local function PaintBox()
+        local ui = addon.Theme().ui
+        well:SetColorTexture(ui.inset[1], ui.inset[2], ui.inset[3], ui.inset[4] or 1)
+        editBox:SetTextColor(ui.text[1], ui.text[2], ui.text[3])
+        addon.ThemeShadow(editBox)
+    end
+    frame:HookScript("OnShow", PaintBox)
+    addon.ThemeRegister(function() if frame:IsShown() then PaintBox() end end)
+
     -- One-click re-select, for when the highlight has been lost to a click in
     -- the box. Ctrl+A still works; this is just discoverable.
-    local selectAllButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    selectAllButton:SetSize(110, 22)
-    selectAllButton:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 12, 8)
-    selectAllButton:SetText("Select All")
-    selectAllButton:SetScript("OnClick", function()
+    local selectAllButton = UIK.Button(frame, "Select All", 110, 22, function()
         editBox:SetFocus()
         editBox:HighlightText()
     end)
+    selectAllButton:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 16, 14)
 
     -- A long-running capture serialises to more than one edit box should be
     -- asked to hold, so the payload arrives in pieces and these step between
     -- them. Each piece is a complete export on its own -- see
     -- HarvestExportBatches -- so a player who pastes only the first has still
     -- sent something whole.
-    local nextButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    nextButton:SetSize(58, 22)
-    nextButton:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -12, 8)
-    nextButton:SetText("Next >")
+    local nextButton = UIK.Button(frame, "Next >", 58, 22)
+    nextButton:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -16, 14)
 
     local partText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     partText:SetWidth(96)
     partText:SetJustifyH("CENTER")
     partText:SetPoint("RIGHT", nextButton, "LEFT", -4, 0)
 
-    local prevButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    prevButton:SetSize(58, 22)
+    local prevButton = UIK.Button(frame, "< Prev", 58, 22)
     prevButton:SetPoint("RIGHT", partText, "LEFT", -4, 0)
-    prevButton:SetText("< Prev")
 
     -- Its own line above the buttons now that the row holds four of them.
     local copyHintText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -2843,20 +3206,18 @@ local function EnsureExportFrame()
     -- Clears what was exported from the saved capture once it has been
     -- pasted in -- see HarvestMarkSent. Only on the last part, so it can't
     -- be clicked with pieces still unsent.
-    local sentButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    sentButton:SetSize(150, 22)
-    sentButton:SetPoint("LEFT", selectAllButton, "RIGHT", 8, 0)
-    sentButton:SetText("Submitted -- clear it")
-    sentButton:SetScript("OnClick", function()
+    local sentButton = UIK.Button(frame, "Submitted -- clear it", 150, 22, function()
         StaticPopup_Show("SPEAKSTONE_HARVEST_MARK_SENT")
     end)
-    sentButton:SetScript("OnEnter", function(self)
+    sentButton:SetPoint("LEFT", selectAllButton, "RIGHT", 8, 0)
+    -- Hooked: the button's own OnEnter / OnLeave paint its hover look.
+    sentButton:HookScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText("Submitted -- clear it")
         GameTooltip:AddLine("Once everything here is pasted in at the site, this removes it from your saved capture so it isn't sent twice, and stops the same lines being captured again. Keeps the file small.", 1, 1, 1, true)
         GameTooltip:Show()
     end)
-    sentButton:SetScript("OnLeave", GameTooltip_Hide)
+    sentButton:HookScript("OnLeave", GameTooltip_Hide)
 
     -- Put one piece in the box, ready to copy.
     function frame:ShowBatch(index)

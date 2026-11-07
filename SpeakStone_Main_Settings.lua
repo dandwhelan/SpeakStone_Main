@@ -101,6 +101,220 @@ local DUCK_SLIDER = {
 
 local SETTINGS_TABS = {
     {
+        title = "General",
+        sections = {
+            {
+                title = "Interface",
+                options = {
+                    {
+                        option = "showMinimapButton",
+                        label = "Show the minimap button",
+                        tooltip = "Left-click opens these settings, right-click exports captured text, middle-click toggles debug messages.",
+                        onChange = function() if addon.UpdateMinimapButtonVisibility then addon.UpdateMinimapButtonVisibility() end end,
+                    },
+                    {
+                        option = "showQuestButton",
+                        label = "Show the Read Quest button",
+                        tooltip = "The button at the bottom of the quest window, in the quest log and beside Goodbye on the greeting window. Right-click any of them to turn autoplay on or off. Hide them if your quest UI already covers that spot -- narration still works.",
+                        onChange = function() if addon.UpdateQuestButtonVisibility then addon.UpdateQuestButtonVisibility() end end,
+                    },
+                    {
+                        option = "showMissingVoiceIcon",
+                        label = "Show the missing-voice icon",
+                        tooltip = "A small muted speaker beside Read Quest when the text on screen has no voice yet.",
+                        onChange = function() if addon.UpdateMissingVoiceIcons then addon.UpdateMissingVoiceIcons() end end,
+                    },
+                    {
+                        option = "showReportButton",
+                        label = "Show the Report button on the quest window",
+                        tooltip = "Adds a Report button beside Read Quest on Blizzard's quest window so you can flag a voice line (wrong voice, audio glitch, pronunciation) directly into your capture export. The speech bar always has its own: the faint warning sign beside Replay.",
+                        onChange = function()
+                            if addon.UpdateQuestButtonVisibility then addon.UpdateQuestButtonVisibility() end
+                            if addon.UpdateMissingVoiceIcons then addon.UpdateMissingVoiceIcons() end
+                        end,
+                    },
+                    {
+                        option = "showDialogueReportFlag",
+                        label = "Show a report flag on Dialogue UI's window",
+                        tooltip = "A small warning flag in the top-right corner of Dialogue UI's quest and greeting window, on lines SpeakStone voices. Click it to report the line (wrong voice, audio glitch, pronunciation) into your capture export.",
+                        onChange = function() if addon.UpdateDialogueReportFlag then addon.UpdateDialogueReportFlag() end end,
+                    },
+                    {
+                        option = "harvestEnabled",
+                        label = "Capture quest text to help voice missing quests",
+                        tooltip = "Records the text of quests, greetings and books you encounter, so unvoiced ones can be queued up. Your character's name is replaced with $n before anything is stored.",
+                        onChange = function() if addon.RefreshSettingsStatus then addon.RefreshSettingsStatus() end end,
+                    },
+                },
+            },
+            {
+                title = "Help and community",
+                extrasFirst = true,
+                extras = { "links" },
+                options = {
+                    {
+                        option = "showDebugMessages",
+                        label = "Advanced: show debug messages in chat",
+                        small = true,
+                        tooltip = "Prints which clip was chosen, and says so when a quest has no audio installed. Useful when reporting a problem.",
+                    },
+                },
+            },
+        },
+    },
+    {
+        title = "Sound",
+        sections = {
+            {
+                title = "Blizzard's voice lines",
+                options = {
+                    {
+                        option = "muteGossip",
+                        label = "Silence Blizzard's own voice lines",
+                        tooltip = "Off: where Blizzard has voiced a line, that recording plays and SpeakStone waits its turn. On: the game's Dialog channel is muted instead, so narration starts immediately and nothing plays over it.",
+                    },
+                },
+                slider = DELAY_SLIDER,
+            },
+            {
+                title = "Other sounds",
+                options = {
+                    {
+                        option = "duckOtherSounds",
+                        label = "Lower music and ambience while speaking",
+                        tooltip = "WoW cannot set a volume for one sound, so this turns music and ambience down while a line is read instead, and back up when it ends.",
+                    },
+                },
+                slider = DUCK_SLIDER,
+            },
+        },
+    },
+    {
+        title = "On screen",
+        sections = {
+            {
+                title = "Subtitles",
+                info = "A small bar over the world that shows who is speaking and the words as the voice reaches them once you walk "
+                    .. "away from the NPC. Drag it to move it, right-click it for more, Ctrl and the mouse wheel resize it.",
+                options = {
+                    {
+                        option = "showSubtitles",
+                        label = "Show subtitles instead of the speech bar",
+                        tooltip = "A small bar over the world shows who is speaking and the words as the voice reaches them, even while the quest window is open. Drag it to move it; right-click for more. Ctrl and the mouse wheel resize it.",
+                    },
+                    {
+                        option = "subtitlesWhileOpen",
+                        label = "Also show them while the quest window is open",
+                        indent = true,
+                        parent = "showSubtitles",
+                        tooltip = "The quest window already shows the text, so by default the subtitles appear once you walk away or the window closes. Turn this on to have them over the world even while the window is open.",
+                    },
+                    {
+                        option = "subtitleTypeOut",
+                        label = "Type the words out",
+                        indent = true,
+                        parent = "showSubtitles",
+                        tooltip = "The words appear as the voice reaches them. Off: the whole line shows and the row being read stays in view. The timing is an estimate: the recordings do not mark where each word falls.",
+                    },
+                    {
+                        option = "subtitleHighlight",
+                        label = "Highlight the word being read in gold",
+                        indent = true,
+                        parent = "showSubtitles",
+                        tooltip = "Lights the word being read and the one before it.",
+                    },
+                    {
+                        option = "subtitleLocked",
+                        label = "Lock the subtitles in place",
+                        indent = true,
+                        parent = "showSubtitles",
+                        tooltip = "The bar no longer catches the mouse: it cannot be dragged or resized, and clicks pass through to the game.",
+                    },
+                },
+            },
+            {
+                title = "Speech bar",
+                info = SPEECH_FRAME_INFO,
+                options = {
+                    {
+                        option = "showSpeechFrame",
+                        label = "Show the speech bar when you walk away",
+                        tooltip = "When you close the quest window while it is still being read, a bar shows who is speaking and what they are saying, with Pause, Stop, Replay and a faded warning sign to report the line. Right-click it to change its size or lock it. /ss frame shows a sample to place it with.",
+                    },
+                    {
+                        option = "speechPortrait3D",
+                        label = "Show the speaker as a moving 3D head",
+                        indent = true,
+                        parent = "showSpeechFrame",
+                        tooltip = "The NPC's own model beside the text, with nothing behind it, talking sentence by sentence as the voice reads and still when it pauses. Off: a still picture in a thin ring. Books and narrated lines always show their icon.",
+                        onChange = function() if addon.SpeechFrameRefreshPortrait then addon.SpeechFrameRefreshPortrait() end end,
+                    },
+                    {
+                        option = "speechAutoScroll",
+                        label = "Auto-scroll the text",
+                        indent = true,
+                        parent = "showSpeechFrame",
+                        tooltip = "Scroll the text along with the voice so the line being spoken stays in view. Off: the text stays put and the mouse wheel scrolls it.",
+                    },
+                    {
+                        option = "speechFitText",
+                        label = "Grow to show all the text",
+                        indent = true,
+                        parent = "showSpeechFrame",
+                        tooltip = "Make the frame taller so the whole passage shows without scrolling (very long text still scrolls). Pair with the Extra large size on the frame's gear menu.",
+                    },
+                },
+            },
+            {
+                title = "In other windows",
+                options = {
+                    {
+                        option = "syncDialogueText",
+                        label = "Reveal quest text as it is spoken (Dialogue UI)",
+                        tooltip = "With the Dialogue UI addon, the quest text follows the voice: words appear as it reaches them and the word being read is gold (set under Subtitles: Type the words out, Highlight). The timing is an estimate. Off: the full text shows straight away.",
+                    },
+                    {
+                        option = "talkingHeadHighlight",
+                        label = "Light the word being read in talking heads",
+                        tooltip = "Blizzard's talking head shows its words whole. This lights the word being read as the line plays, in the highlight colour. The timing is an estimate.",
+                    },
+                },
+                extras = { "previews" },
+            },
+        },
+    },
+    {
+        title = "Look",
+        sections = {
+            {
+                title = "Theme",
+                extras = { "theme" },
+                extrasFirst = true,
+                options = {
+                    {
+                        option = "followDialogueUITheme",
+                        label = "Match Dialogue UI's theme",
+                        tooltip = "With the Dialogue UI addon installed, SpeakStone's windows take its look: Parchment with its Brown theme, Stone on its dark frame with its Dark theme, changing when you change it there. Picking a theme above turns this off.",
+                        onChange = function() if addon.ThemeFollowChanged then addon.ThemeFollowChanged() end end,
+                    },
+                    {
+                        option = "fadeOtherParagraphs",
+                        label = "Dim the text not being read",
+                        tooltip = "While a line is read aloud, the paragraphs before and after the one being read are drawn fainter, so your eye stays on the voice: in the speech bar, the Guide, Dialogue UI's quest text (with Reveal quest text on) and the Lore Book (which dims the other sentences).",
+                    },
+                },
+            },
+            {
+                title = "Font and colours",
+                info = "How the words SpeakStone shows are drawn: the font, its size and the colours, in the subtitle bar, the "
+                    .. "speech bar and the Guide. A font made to be easier on the eye can help readers with dyslexia; which one "
+                    .. "works best is personal, so there are several to try.",
+                extras = { "font", "fontpreview", "fontsize", "subback", "subtext", "colour" },
+                options = {},
+            },
+        },
+    },
+    {
         title = "Playback",
         sections = {
             {
@@ -149,12 +363,12 @@ local SETTINGS_TABS = {
                     {
                         option = "queueQuestSpeech",
                         label = "Queue quests instead of interrupting",
-                        tooltip = "Talking to another quest giver while a quest is still being read adds the new quest to a queue instead of cutting the first one off. The speech frame shows where you are (1/2) and a Next button to skip ahead. Stop clears the queue.",
+                        tooltip = "Talking to another quest giver while a quest is still being read adds the new quest to a queue instead of cutting the first one off. The speech bar shows where you are (1/2) and a Next button to skip ahead. Stop clears the queue.",
                     },
                     {
                         option = "autoAcceptQuests",
                         label = "Auto-accept quests (hold Shift to skip)",
-                        tooltip = "Accept quests as soon as they are offered and hear them in the speech frame instead. Hold Shift while talking to the quest giver to skip it for that quest.",
+                        tooltip = "Accept quests as soon as they are offered and hear them in the speech bar instead. Hold Shift while talking to the quest giver to skip it for that quest.",
                     },
                     {
                         option = "waitForCombatEnd",
@@ -175,184 +389,6 @@ local SETTINGS_TABS = {
                         option = "stopDialogueOnClose",
                         label = "Stop narration when the window closes",
                         tooltip = "Walking away mid-sentence stops the audio instead of leaving a disembodied voice following you. Off: the line finishes after the window closes, and plays at your Master volume rather than the Dialog slider.",
-                    },
-                },
-            },
-        },
-    },
-    {
-        title = "Sound",
-        sections = {
-            {
-                title = "Blizzard's voice lines",
-                options = {
-                    {
-                        option = "muteGossip",
-                        label = "Silence Blizzard's own voice lines",
-                        tooltip = "Off: where Blizzard has voiced a line, that recording plays and SpeakStone waits its turn. On: the game's Dialog channel is muted instead, so narration starts immediately and nothing plays over it.",
-                    },
-                },
-                slider = DELAY_SLIDER,
-            },
-            {
-                title = "Other sounds",
-                options = {
-                    {
-                        option = "duckOtherSounds",
-                        label = "Lower music and ambience while speaking",
-                        tooltip = "WoW cannot set a volume for one sound, so this turns music and ambience down while a line is read instead, and back up when it ends.",
-                    },
-                },
-                slider = DUCK_SLIDER,
-            },
-        },
-    },
-    {
-        title = "On screen",
-        sections = {
-            {
-                title = "Subtitles",
-                info = "A small bar over the world that shows who is speaking and the words as the voice reaches them once you walk "
-                    .. "away from the NPC. Drag it to move it, right-click it for more, Ctrl and the mouse wheel resize it.",
-                options = {
-                    {
-                        option = "showSubtitles",
-                        label = "Show subtitles instead of the speech frame",
-                        tooltip = "A small bar over the world shows who is speaking and the words as the voice reaches them, even while the quest window is open. Drag it to move it; right-click for more. Ctrl and the mouse wheel resize it.",
-                    },
-                    {
-                        option = "subtitlesWhileOpen",
-                        label = "Also show them while the quest window is open",
-                        indent = true,
-                        parent = "showSubtitles",
-                        tooltip = "The quest window already shows the text, so by default the subtitles appear once you walk away or the window closes. Turn this on to have them over the world even while the window is open.",
-                    },
-                    {
-                        option = "subtitleTypeOut",
-                        label = "Type the words out",
-                        indent = true,
-                        parent = "showSubtitles",
-                        tooltip = "The words appear as the voice reaches them. Off: the whole line shows and the row being read stays in view. The timing is an estimate: the recordings do not mark where each word falls.",
-                    },
-                    {
-                        option = "subtitleHighlight",
-                        label = "Highlight the word being read in gold",
-                        indent = true,
-                        parent = "showSubtitles",
-                        tooltip = "Lights the word being read and the one before it.",
-                    },
-                    {
-                        option = "subtitleLocked",
-                        label = "Lock the subtitles in place",
-                        indent = true,
-                        parent = "showSubtitles",
-                        tooltip = "The bar no longer catches the mouse: it cannot be dragged or resized, and clicks pass through to the game.",
-                    },
-                },
-            },
-            {
-                title = "Speech bar",
-                info = SPEECH_FRAME_INFO,
-                options = {
-                    {
-                        option = "showSpeechFrame",
-                        label = "Show the speech frame when you walk away",
-                        tooltip = "When you close the quest window while it is still being read, a bar shows who is speaking and what they are saying, with Pause, Stop, Replay and a favourite star. Right-click it to change its size or lock it. /ss frame shows a sample to place it with.",
-                    },
-                    {
-                        option = "speechAutoScroll",
-                        label = "Auto-scroll the text",
-                        indent = true,
-                        parent = "showSpeechFrame",
-                        tooltip = "Scroll the text along with the voice so the line being spoken stays in view. Off: the text stays put and the mouse wheel scrolls it.",
-                    },
-                    {
-                        option = "speechFitText",
-                        label = "Grow to show all the text",
-                        indent = true,
-                        parent = "showSpeechFrame",
-                        tooltip = "Make the frame taller so the whole passage shows without scrolling (very long text still scrolls). Pair with the Extra large size on the frame's gear menu.",
-                    },
-                },
-            },
-            {
-                title = "In other windows",
-                options = {
-                    {
-                        option = "syncDialogueText",
-                        label = "Reveal quest text as it is spoken (Dialogue UI)",
-                        tooltip = "With the Dialogue UI addon, the quest text follows the voice: words appear as it reaches them and the word being read is gold (set under Subtitles: Type the words out, Highlight). The timing is an estimate. Off: the full text shows straight away.",
-                    },
-                    {
-                        option = "talkingHeadHighlight",
-                        label = "Light the word being read in talking heads",
-                        tooltip = "Blizzard's talking head shows its words whole. This lights the word being read as the line plays, in the highlight colour. The timing is an estimate.",
-                    },
-                },
-                extras = { "previews" },
-            },
-        },
-    },
-    {
-        title = "Look",
-        sections = {
-            {
-                title = "Theme",
-                extras = { "theme" },
-                options = {},
-            },
-            {
-                title = "Font and colours",
-                info = "How the words SpeakStone shows are drawn: the font, its size and the colours, in the subtitle bar, the "
-                    .. "speech frame and the Guide. A font made to be easier on the eye can help readers with dyslexia; which one "
-                    .. "works best is personal, so there are several to try.",
-                extras = { "font", "fontpreview", "fontsize", "subback", "subtext", "colour" },
-                options = {},
-            },
-        },
-    },
-    {
-        title = "General",
-        sections = {
-            {
-                title = "Interface",
-                options = {
-                    {
-                        option = "showMinimapButton",
-                        label = "Show the minimap button",
-                        tooltip = "Left-click opens these settings, right-click exports captured text, middle-click toggles debug messages.",
-                        onChange = function() if addon.UpdateMinimapButtonVisibility then addon.UpdateMinimapButtonVisibility() end end,
-                    },
-                    {
-                        option = "showQuestButton",
-                        label = "Show the Read Quest button",
-                        tooltip = "The button at the bottom of the quest window and in the quest log. Hide it if your quest UI already covers that spot -- narration still works.",
-                        onChange = function() if addon.UpdateQuestButtonVisibility then addon.UpdateQuestButtonVisibility() end end,
-                    },
-                    {
-                        option = "showMissingVoiceIcon",
-                        label = "Show the missing-voice icon",
-                        tooltip = "A small muted speaker beside Read Quest when the text on screen has no voice yet.",
-                        onChange = function() if addon.UpdateMissingVoiceIcons then addon.UpdateMissingVoiceIcons() end end,
-                    },
-                    {
-                        option = "harvestEnabled",
-                        label = "Capture quest text to help voice missing quests",
-                        tooltip = "Records the text of quests, greetings and books you encounter, so unvoiced ones can be queued up. Your character's name is replaced with $n before anything is stored.",
-                        onChange = function() if addon.RefreshSettingsStatus then addon.RefreshSettingsStatus() end end,
-                    },
-                },
-            },
-            {
-                title = "Help and community",
-                extrasFirst = true,
-                extras = { "links" },
-                options = {
-                    {
-                        option = "showDebugMessages",
-                        label = "Advanced: show debug messages in chat",
-                        small = true,
-                        tooltip = "Prints which clip was chosen, and says so when a quest has no audio installed. Useful when reporting a problem.",
                     },
                 },
             },
@@ -540,6 +576,14 @@ local ACCENT_NEUTRAL = { 0.85, 0.75, 0.45 }
 -- What's new (owner, 2026-10-18: "Add a What's new button ... up to 20 items with the dates"). Newest first; keep
 -- at most 20 and drop the oldest when adding a release. Player wording only (CLAUDE.md public wording rules).
 local WHATS_NEW = {
+    { "5.0.2", "2026-11-07", {
+        "The speech bar shows who is speaking: a picture in a ring in your theme's colour, or a moving 3D head that talks with the voice (choose in the tutorial or /ss, On screen).",
+        "Report a line where you hear it: a faint warning sign on Dialogue UI's window and on the speech bar. Reports go out with your captured text.",
+        "Dialogue UI's play button and R key play SpeakStone's voice, and its own text-to-speech no longer talks over a voiced line.",
+        "Reading along keeps better time with lines the narrator reads, and the text not being read is dimmed.",
+        "SpeakStone can match Dialogue UI's Brown or Dark theme; the speech bar's buttons follow your theme and stay faint; the subtitles have a close X.",
+        "Play buttons show whether autoplay is on (right-click to switch it), and the greeting window has a Play button.",
+        "The tutorial has pages for the speaker and for reporting a line, and reminds you to export what you capture." } },
     { "4.0.1", "2026-10-20", {
         "Narration finishes after you close the quest or gossip window when \"Stop narration when the window closes\" is off. It plays at your Master volume, since the game cuts the Dialog volume channel when a window closes.",
         "The Guide names the character you hear giving each quest instead of a different one (Thrall's quests now show Princess Moira Bronzebeard and Greatmother Geyah where they speak).",
@@ -701,9 +745,14 @@ function SpeakStone:CreateWindow()
     guideHint:SetWidth(CARD_WIDTH - 4)
     guideHint:SetJustifyH("LEFT")
     guideHint:SetText("Quests, gossip, books, favourites and recent, with the text and a read-along.")
+    -- Captured text and reported lines leave the game only through this export, so it sits on the
+    -- left with the Guide rather than only at the bottom of the General tab (owner, 2026-11-06).
+    local exportButton = addon.UIK.Button(frame, "Export captured text", CARD_WIDTH, 26, ExportHarvest)
+    exportButton:SetPoint("TOPLEFT", guideHint, "BOTTOMLEFT", -2, -12)
+    AttachTooltip(exportButton, "Export captured text", "Everything recorded -- NPC greetings, books, quest text and the lines you reported -- in one payload to paste at speakstone.beanw.co.uk. Also /ssharvest export.")
     local setupButton = addon.UIK.Button(frame, "Tutorial", CARD_WIDTH, 26, function() if addon.ShowTutorial then addon.ShowTutorial(1) end end)
     setupButton:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", LEFT_X, 48)
-    AttachTooltip(setupButton, "Tutorial", "Walk through the choices again: profile, how it looks, and how it behaves while you play. Also /ss tutorial.")
+    AttachTooltip(setupButton, "Tutorial", "Walk through the choices again: profile, how the words show, the speaker, and how it behaves while you play. Also /ss tutorial.")
     local newButton = addon.UIK.Button(frame, "What's new", CARD_WIDTH, 26, function() addon.ShowWhatsNew() end)
     newButton:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", LEFT_X, 16)
     AttachTooltip(newButton, "What's new", "The changes in each release, newest first, with dates. Also /ss whatsnew.")
@@ -725,6 +774,14 @@ function SpeakStone:CreateWindow()
     -- The same goes for the speech frame's own options under its switch, and
     -- the "lower by" slider under its own.
     local dependentButtons = {}
+    -- Every tickbox, so a setting changed elsewhere (picking a theme turns
+    -- "Match Dialogue UI's theme" off) shows at once.
+    local allChecks = {}
+    function addon.RefreshSettingChecks()
+        for _, check in ipairs(allChecks) do
+            check:SetChecked(SpeakStone_MainDB[check.optionKey])
+        end
+    end
     local function RefreshOptionStates()
         for _, button in ipairs(dependentButtons) do
             local master = SpeakStone_MainDB[button.parentOption]
@@ -770,6 +827,8 @@ function SpeakStone:CreateWindow()
         checkButton:SetScript("OnShow", function(self)
             self:SetChecked(SpeakStone_MainDB[info.option])
         end)
+        allChecks[#allChecks + 1] = checkButton
+        checkButton.optionKey = info.option
 
         if info.indent then
             checkButton.parentOption = info.parent or "autoPlayEnabled"
@@ -1087,7 +1146,8 @@ function SpeakStone:CreateWindow()
         end
 
         if addon.HarvestCounts then
-            local capturedQuests, passages, _, npcs, glines, items, pages = addon.HarvestCounts()
+            local capturedQuests, passages, _, npcs, glines, items, pages, _, _, _, _, bugs = addon.HarvestCounts()
+            bugs = bugs or 0
             -- Greetings and books lead. Neither has a table in the client nor
             -- a scrapeable equivalent, so capture is the only way they can
             -- ever be obtained; quest text can be sourced other ways.
@@ -1106,22 +1166,25 @@ function SpeakStone:CreateWindow()
             if capturedQuests > 0 then
                 table.insert(parts, Count(passages, "passage", "passages") .. " from " .. Count(capturedQuests, "quest", "quests"))
             end
+            if bugs > 0 then
+                table.insert(parts, Count(bugs, "reported line", "reported lines"))
+            end
             local summary = #parts > 0 and table.concat(parts, "\n") or "Nothing captured yet."
             -- Once there is a real amount sitting here, the card stops being a
             -- statistic and starts asking for something. Capture that nobody
             -- submits helps nobody.
             -- The top-level entry total is exactly what HarvestCounts just
             -- counted, so it is handed over rather than walked for again.
-            local entries = capturedQuests + npcs + items
+            local entries = capturedQuests + npcs + items + bugs
             local recording = SpeakStone_MainDB.harvestEnabled
             local good = addon.Theme().light and "|cff1b6b2a" or "|cff00ff00"
             if not recording then
                 summary = summary .. "\n|cffff6b5eCapture is off (General tab).|r"
             end
             if addon.HarvestShouldSubmit and addon.HarvestShouldSubmit(entries) then
-                SetCardState(cards.captured, ACCENT_GOOD, glines, summary .. "\n" .. good .. "Ready to submit -- click to export.|r")
+                SetCardState(cards.captured, ACCENT_GOOD, glines > 0 and glines or entries, summary .. "\n" .. good .. "Ready to submit -- click to export.|r")
             else
-                SetCardState(cards.captured, recording and ACCENT_NEUTRAL or ACCENT_BAD, glines, summary)
+                SetCardState(cards.captured, recording and ACCENT_NEUTRAL or ACCENT_BAD, glines > 0 and glines or entries, summary)
             end
         end
     end
@@ -1199,19 +1262,19 @@ function SpeakStone:CreateSettings()
     speechFrame.topPadding = 14
     local speechTitle = speechFrame:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     speechTitle:SetPoint("TOPLEFT", speechFrame, "TOPLEFT", 7, 0)
-    speechTitle:SetText("Speech frame")
-    CreateInfoIcon(speechFrame, "Speech frame", SPEECH_FRAME_INFO):SetPoint("LEFT", speechTitle, "RIGHT", 6, 0)
+    speechTitle:SetText("Speech bar")
+    CreateInfoIcon(speechFrame, "Speech bar", SPEECH_FRAME_INFO):SetPoint("LEFT", speechTitle, "RIGHT", 6, 0)
 
     local previous = speechTitle
     for _, spec in ipairs({
-        { "showSpeechFrame", "Show the speech frame when you walk away" },
-        { "speechAutoScroll", "Auto-scroll the speech frame text" },
+        { "showSpeechFrame", "Show the speech bar when you walk away" },
+        { "speechAutoScroll", "Auto-scroll the speech bar text" },
         { "waitForCombatEnd", "Wait for combat to end before reading a quest" },
-        { "showSubtitles", "Show subtitles instead of the speech frame" },
+        { "showSubtitles", "Show subtitles instead of the speech bar" },
         { "subtitleTypeOut", "Type the subtitle words out" },
         { "subtitleHighlight", "Highlight the word being read" },
         { "syncDialogueText", "Reveal quest text as it is spoken (Dialogue UI)" },
-        { "speechFitText", "Grow the speech frame to show all the text" },
+        { "speechFitText", "Grow the speech bar to show all the text" },
         { "queueQuestSpeech", "Queue quests instead of interrupting" },
         { "autoAcceptQuests", "Auto-accept quests (hold Shift to skip)" },
     }) do
@@ -1268,6 +1331,15 @@ SlashCmdList.SPEAKSTONE = function(msg)
         return
     elseif msg == "frame" then
         if addon.SpeechFramePreview then addon.SpeechFramePreview() end
+        return
+    elseif msg:match("^face") then
+        -- /ss face [zoom]: how close the speech bar's 3D head is (1 = the game's portrait framing, higher = further).
+        local zoom = msg:match("^face%s+([%d%.]+)")
+        if addon.SpeechFrameFace then
+            local z = addon.SpeechFrameFace(tonumber(zoom))
+            print(string.format("SpeakStone: head zoom %.2f (the default is 1.35; lower = closer). "
+                .. "/ss frame shows your own head to try it on.", z))
+        end
         return
     elseif msg == "whatsnew" or msg == "new" then
         addon.ShowWhatsNew()

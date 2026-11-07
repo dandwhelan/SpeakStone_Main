@@ -41,7 +41,8 @@ function addon.LoreBookText(entry)
     local t = TimingFor(entry, sd)
     local index = addon.SubtitleWordAt(t.times, GetTime() - sd.startedAt)
     local span = addon.SubtitleSpan(t.starts, index, t.words, false)
-    return addon.SubtitleRender(t.words, index, false, true, addon.HighlightCode(true), span)
+    return addon.SubtitleRender(t.words, index, false, true, addon.HighlightCode(true), span,
+        addon.FadeCode and addon.FadeCode(true))
 end
 
 local function Refresh()

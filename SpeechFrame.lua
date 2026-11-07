@@ -34,7 +34,7 @@ local LINGER_SECONDS = 2
 local UPDATE_INTERVAL = 0.1
 local DEFAULT_POINT = { "BOTTOM", "BOTTOM", 0, 190 }
 
-local PREVIEW_TEXT = "This is the SpeakStone speech frame. It appears when you walk away from a quest giver while "
+local PREVIEW_TEXT = "This is the SpeakStone speech bar. It appears when you walk away from a quest giver while "
     .. "narration is still going, or when a quest is auto-accepted, so you can read along and pause or stop the "
     .. "voice. Drag it where you want it. Right-click it, or use the gear, to change its size, lock it in place or "
     .. "reset its position. Scroll with the mouse wheel when a quest has more text than fits. Close it with the X "
@@ -148,21 +148,38 @@ local function ApplyPosition()
     frame:SetPoint(pos[1], UIParent, pos[2], pos[3] / scale, pos[4] / scale)
 end
 
+-- The bar's buttons take the theme's colours (UIKit, as the settings window and the Guide) and stay faint until the
+-- mouse is on them, so the bar sits in the game instead of in front of it (owner, 2026-11-07: "better for immersion,
+-- also make them faint"). Blizzard's red buttons were used before.
+local BUTTON_FAINT = 0.55
+
 local function MakeButton(parent, label, width, onClick, tooltip)
-    local button = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    button:SetSize(width, 20)
-    button:SetText(label)
-    button:SetNormalFontObject("GameFontNormalSmall")
-    button:SetHighlightFontObject("GameFontHighlightSmall")
-    button:SetDisabledFontObject("GameFontDisableSmall")
-    button:SetScript("OnClick", onClick)
+    local UIK = addon.UIK
+    local button
+    if UIK and UIK.Button then
+        button = UIK.Button(parent, label, width, 20, onClick)
+        button.label:SetFontObject("GameFontNormalSmall")
+        button.Paint()            -- SetFontObject resets the label's colour
+        button:SetAlpha(BUTTON_FAINT)
+        -- Hooked: the kit's own OnEnter / OnLeave paint the hover.
+        button:HookScript("OnEnter", function(self) self:SetAlpha(1) end)
+        button:HookScript("OnLeave", function(self) self:SetAlpha(BUTTON_FAINT) end)
+    else
+        button = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+        button:SetSize(width, 20)
+        button:SetText(label)
+        button:SetNormalFontObject("GameFontNormalSmall")
+        button:SetHighlightFontObject("GameFontHighlightSmall")
+        button:SetDisabledFontObject("GameFontDisableSmall")
+        button:SetScript("OnClick", onClick)
+    end
     if tooltip then
-        button:SetScript("OnEnter", function(self)
+        button:HookScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
             GameTooltip:AddLine(tooltip, 1, 1, 1, true)
             GameTooltip:Show()
         end)
-        button:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        button:HookScript("OnLeave", function() GameTooltip:Hide() end)
     end
     return button
 end
@@ -211,22 +228,54 @@ local function Build()
     lineBottom:SetHeight(1)
     frame.lineTop, frame.lineBottom = lineTop, lineBottom
 
-    frame.portrait = frame:CreateTexture(nil, "ARTWORK")
-    frame.portrait:SetSize(PORTRAIT, PORTRAIT)
-    -- Pinned to the top (same spot as centred at the base height), so the
-    -- text below it stays inside the frame when "show all the text" grows it.
-    frame.portrait:SetPoint("TOPLEFT", frame, "TOPLEFT", 12, -(HEIGHT - PORTRAIT) / 2)
-    local mask = frame:CreateMaskTexture()
-    mask:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask",
-        "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-    mask:SetAllPoints(frame.portrait)
-    frame.portrait:AddMaskTexture(mask)
+    -- The portrait's square: pinned to the top (same spot as centred at the
+    -- base height), so the text below stays inside the frame when "show all
+    -- the text" grows it. Everything the portrait draws sits in it.
+    frame.portraitArea = CreateFrame("Frame", nil, frame)
+    frame.portraitArea:SetSize(PORTRAIT, PORTRAIT)
+    frame.portraitArea:SetPoint("TOPLEFT", frame, "TOPLEFT", 12, -(HEIGHT - PORTRAIT) / 2)
+
+    -- The still picture (speechPortrait3D off, or no model to show): the
+    -- game draws it on black, which cannot be taken out, so it sits a little
+    -- inside a thin ring in the theme's colour with a soft halo round that
+    -- (owner, 2026-11-07).
+    local function Disc(layer, sub, size)
+        local t = frame:CreateTexture(nil, layer, nil, sub)
+        t:SetSize(size, size)
+        t:SetPoint("CENTER", frame.portraitArea, "CENTER")
+        local m = frame:CreateMaskTexture()
+        m:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        m:SetAllPoints(t)
+        t:AddMaskTexture(m)
+        return t, m
+    end
+    frame.ringHalo = Disc("BORDER", 0, PORTRAIT + 4)
+    frame.ring = Disc("BORDER", 1, PORTRAIT - 2)
+    local mask
+    frame.portrait, mask = Disc("ARTWORK", 0, PORTRAIT - 6)
     frame.portraitMask = mask
 
-    frame.close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
-    frame.close:SetSize(22, 22)
-    frame.close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -2, -2)
-    frame.close:SetScript("OnClick", function() Dismiss() end)
+    -- The moving head (speechPortrait3D, the default): the NPC's own model,
+    -- framed on its face, nothing behind it, so the bar shows through; it
+    -- talks sentence by sentence with the voice (UpdateTalk).
+    frame.model = CreateFrame("PlayerModel", nil, frame.portraitArea)
+    frame.model:SetAllPoints(frame.portraitArea)
+    frame.model:Hide()
+    -- Some animations play once: a talk that ends mid-sentence starts again.
+    frame.model:SetScript("OnAnimFinished", function(self)
+        if self.talkAnim then
+            self:SetAnimation(self.talkAnim)
+        end
+    end)
+    -- The camera is set again once the model has loaded: set before that, the
+    -- game frames the whole body (owner, 2026-11-07: "zoom in on the face").
+    frame.model:SetScript("OnModelLoaded", function(self)
+        if frame.ApplyFace then frame.ApplyFace(self) end
+    end)
+
+    -- A themed X, faint like the other buttons (was Blizzard's red-and-gold close button).
+    frame.close = MakeButton(frame, "X", 20, function() Dismiss() end)
+    frame.close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -6, -6)
 
     -- Controls, right to left from the close button.
     local controls = CreateFrame("Frame", nil, frame)
@@ -248,23 +297,36 @@ local function Build()
     controls.gear:SetScript("OnLeave", function() GameTooltip:Hide() end)
     controls.time = controls:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     controls.time:SetPoint("RIGHT", controls.gear, "LEFT", -8, 0)
-    -- Favourite: adds what is being read to the Audio Library's Favourites.
+    -- Report: a faded warning sign that opens the report menu for the line
+    -- being read (owner, 2026-11-07: in place of the favourite star, which
+    -- the Guide still has). The same sign as the flag on Dialogue UI's window.
     controls.star = CreateFrame("Button", nil, controls)
     controls.star:SetSize(16, 16)
     controls.star:SetPoint("RIGHT", controls.time, "LEFT", -8, 0)
-    controls.star:SetNormalTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcon_1")
-    controls.star:SetScript("OnClick", function()
-        local key = current and addon.ClipItemKey and addon.ClipItemKey(current.soundFile)
-        if key and addon.ToggleFavourite then addon.ToggleFavourite(key) end
-        addon.SpeechFrameRefreshStar()
+    controls.star:SetNormalTexture("Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew")
+    -- Grey and faint until the mouse is on it, so it does not stand out (owner, 2026-11-07).
+    local function Quiet(self, on)
+        local tex = self:GetNormalTexture()
+        if tex then tex:SetDesaturated(not on) end
+        self:SetAlpha(on and 1 or 0.3)
+    end
+    Quiet(controls.star, false)
+    controls.star:SetScript("OnClick", function(self)
+        if current and addon.OpenReportMenu then
+            addon.OpenReportMenu(self, current)
+        end
     end)
     controls.star:SetScript("OnEnter", function(self)
+        Quiet(self, true)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:AddLine("Favourite", 1, 1, 1)
-        GameTooltip:AddLine("Keep this in the SpeakStone Guide's Favourites tab.", 0.7, 0.7, 0.7)
+        GameTooltip:AddLine("Report this voice line", 1, 0.82, 0)
+        GameTooltip:AddLine("Wrong voice, audio glitch, pronunciation, text that doesn't match: click to pick what is wrong. It goes into your capture export.", 1, 1, 1, true)
         GameTooltip:Show()
     end)
-    controls.star:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    controls.star:SetScript("OnLeave", function(self)
+        Quiet(self, false)
+        GameTooltip:Hide()
+    end)
     controls.replay = MakeButton(controls, "Replay", 56, function() Replay() end, "Hear the line again from the start.")
     controls.replay:SetPoint("RIGHT", controls.star, "LEFT", -6, 0)
     controls.stop = MakeButton(controls, "Stop", 46, function() StopNarration() end, "Stop the narration and close.")
@@ -280,11 +342,13 @@ local function Build()
     end, "Skip to the next queued quest.")
     controls.next:SetPoint("RIGHT", controls.pause, "LEFT", -4, 0)
     controls.next:Hide()
+    -- No Report button here any more: the warning sign beside Replay does the same (owner, 2026-11-07: "we have
+    -- two"). showReportButton now only puts one on Blizzard's quest window.
 
     frame.name = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     -- Its own row under the buttons, full width, so the quest title is not
     -- cut short by Pause/Stop/Replay/Next.
-    frame.name:SetPoint("LEFT", frame.portrait, "RIGHT", 14, 0)
+    frame.name:SetPoint("LEFT", frame.portraitArea, "RIGHT", 14, 0)
     frame.name:SetPoint("TOP", frame, "TOP", 0, -32)
     frame.name:SetPoint("RIGHT", frame, "RIGHT", -16, 0)
     frame.name:SetJustifyH("LEFT")
@@ -386,6 +450,9 @@ function addon.SpeechFramePaint()
     frame.controls.time:SetTextColor(unpack(theme.sub))
     frame.progress:SetStatusBarColor(theme.accent[1], theme.accent[2], theme.accent[3], 0.9)
     frame.track:SetColorTexture(unpack(theme.track))
+    -- The still picture's thin ring and its soft halo, in the theme's accent.
+    frame.ring:SetColorTexture(theme.accent[1], theme.accent[2], theme.accent[3], 1)
+    frame.ringHalo:SetColorTexture(theme.accent[1], theme.accent[2], theme.accent[3], 0.25)
     frame.filledFor = nil          -- the header carries the theme's colour for the title
 end
 if addon.ThemeRegister then
@@ -434,7 +501,155 @@ function addon.SpeechFrameCapturePortrait(sd)
     end
 end
 
-local function SetPortrait(sd)
+-- --------------------------------------------------------------------------
+-- The moving head (speechPortrait3D, on by default; owner, 2026-11-07)
+-- --------------------------------------------------------------------------
+-- The NPC's model in a PlayerModel: SetUnit("npc") while it is still the one
+-- the player is talking to (its exact look), else SetCreature by the ID in its
+-- GUID (the speech frame mostly shows after the player has walked away).
+-- Nothing to load (books, narrator lines, game objects) or a model that never
+-- arrives: the still picture instead.
+-- One talk for every sentence: the question (65) and exclamation (64) talks
+-- wave the arms about, and with the camera on the face the plain talk reads as
+-- the mouth and head moving (owner, 2026-11-07: "just see its face moving").
+local TALK, STAND = 60, 0
+local MODEL_GRACE = 1.0        -- seconds a model gets to load before the still picture takes over
+local SENTENCE_REST = 0.3      -- seconds still at the end of each sentence but the last
+-- The face framing: the portrait zoom (SetPortraitZoom(1), as 3D unit-frame portraits do), which aims at the model's
+-- own face whatever its height, at its natural distance, with nothing moved. Tried and dropped on 2026-11-07 (owner's
+-- screenshots): a fixed up/down offset in model units (right for one NPC's height, wrong for the next), a closer
+-- default distance of 0.8 (cut off the top of the head), and SetCamera(0) (it framed the middle of the whole body).
+-- speechHeadZoom scales the distance (1 = natural, under 1 = closer); /ss face <zoom> tunes it live. The default,
+-- 1.35, is the owner's pick in game (2026-11-07: 1.1 first, then the crown was cut off on Gornek; 1.35 frames the
+-- whole head). A screen-space shift down (SetViewTranslation) was tried for that and did nothing in game: removed.
+local HEAD_ZOOM = 1.35
+
+local function ApplyFace(m)
+    pcall(m.SetPosition, m, 0, 0, 0)
+    pcall(m.SetPortraitZoom, m, 1)
+    pcall(m.SetCamDistanceScale, m, tonumber(DB().speechHeadZoom) or HEAD_ZOOM)
+end
+-- The tutorial's moving-head example frames the player's head the same way, so it looks as it will in play.
+addon.ApplySpeakerFace = ApplyFace
+
+-- /ss face [zoom]: how close the head is; shown on the head on screen now.
+function addon.SpeechFrameFace(zoom)
+    local db = DB()
+    if zoom then db.speechHeadZoom = zoom end
+    if frame and frame.model and frame.model:IsShown() then
+        ApplyFace(frame.model)
+    end
+    return tonumber(db.speechHeadZoom) or HEAD_ZOOM
+end
+
+local function ShowModel(sd)
+    local m = frame.model
+    -- The preview (/ss frame) shows the player's own head, so /ss face can be tried anywhere.
+    -- Only when chosen: the still picture is the default (owner, 2026-11-07).
+    if not (m and sd and (sd.npcGUID or sd.preview)) or sd.textType == "item" or DB().speechPortrait3D ~= true then
+        return false
+    end
+    local shown = false
+    pcall(function()
+        m:ClearModel()
+        if sd.preview then
+            m:SetUnit("player")
+            shown = true
+        elseif UnitExists("npc") and UnitGUID("npc") == sd.npcGUID then
+            m:SetUnit("npc")
+            shown = true
+        elseif m.SetCreature and addon.CreatureIDFromGUID then
+            local id = addon.CreatureIDFromGUID(sd.npcGUID)
+            if id then
+                m:SetCreature(id)
+                shown = true
+            end
+        end
+    end)
+    if not shown then
+        return false
+    end
+    frame.ApplyFace = ApplyFace
+    ApplyFace(m)
+    m.talkAnim, m.plan, m.planFor, m.current = nil, nil, nil, nil
+    m.shownAt = GetTime()
+    m:Show()
+    return true
+end
+
+-- When each sentence of the line is spoken (the pack's sentence timings when it
+-- has them, the word estimate otherwise). A sentence that is a stage direction
+-- the narrator reads leaves the NPC still.
+function addon.SpeechTalkPlan(text, duration, soundFile)
+    if not (addon.SubtitleWords and addon.SubtitleTiming and duration and duration > 0) then
+        return nil
+    end
+    local narrated = addon.ClipNarrated and addon.ClipNarrated(soundFile)
+    local words = addon.SubtitleWords(text or "", narrated)
+    if #words == 0 then
+        return nil
+    end
+    local times, starts = addon.SubtitleTiming(words, duration, soundFile)
+    starts = starts or addon.SubtitleSentences(words)
+    local plan = {}
+    for s, first in ipairs(starts) do
+        local nextFirst = starts[s + 1]
+        plan[#plan + 1] = {
+            from = times[first] or 0,
+            to = nextFirst and times[nextFirst] or duration,
+            anim = TALK,
+            quiet = narrated and words[first]:sub(1, 1) == "<",
+            -- The breath between sentences: the head stops for it, so it follows the voice line by line.
+            rest = nextFirst and SENTENCE_REST or 0,
+        }
+    end
+    return plan
+end
+
+-- The talk to play at `elapsed` seconds into the line: an animation ID, or STAND.
+function addon.SpeechTalkAt(plan, elapsed)
+    for _, p in ipairs(plan or {}) do
+        if elapsed >= p.from and elapsed < p.to then
+            if p.quiet or elapsed >= p.to - p.rest then
+                return STAND
+            end
+            return p.anim
+        end
+    end
+    return STAND
+end
+
+local function UpdateTalk(sd, elapsed, duration, playing)
+    local m = frame.model
+    if not (m and m:IsShown()) then
+        return
+    end
+    -- A model that never loaded (an NPC the client has no data for): the still picture.
+    if m.GetModelFileID and GetTime() - (m.shownAt or 0) > MODEL_GRACE then
+        local ok, file = pcall(m.GetModelFileID, m)
+        if ok and (not file or file == 0) then
+            m:Hide()
+            if frame.ShowStill then frame.ShowStill(sd) end
+            return
+        end
+    end
+    if not m.SetAnimation then
+        return
+    end
+    if m.planFor ~= sd then
+        m.plan, m.planFor = addon.SpeechTalkPlan(sd.text, duration, sd.soundFile), sd
+    end
+    local want = (playing and m.plan) and addon.SpeechTalkAt(m.plan, elapsed) or STAND
+    if want ~= m.current then
+        m.current = want
+        m.talkAnim = want ~= STAND and want or nil
+        pcall(m.SetAnimation, m, want)
+    end
+end
+
+local function ShowStill(sd)
+    frame.ring:Show()
+    frame.ringHalo:Show()
     HideCapturedPortraits()
     frame.portrait:Show()
     if sd.portraitTex and sd.portraitTex.owner == sd then
@@ -457,6 +672,27 @@ local function SetPortrait(sd)
     end
 end
 
+-- The moving head when there is one to show, else the still picture in its ring.
+local function SetPortrait(sd)
+    frame.ShowStill = ShowStill
+    if ShowModel(sd) then
+        HideCapturedPortraits()
+        frame.portrait:Hide()
+        frame.ring:Hide()
+        frame.ringHalo:Hide()
+        return
+    end
+    frame.model:Hide()
+    ShowStill(sd)
+end
+
+-- The setting changed: show the clip on screen the new way.
+function addon.SpeechFrameRefreshPortrait()
+    if frame and current then
+        SetPortrait(current)
+    end
+end
+
 local function HeaderText(sd)
     local name = Readable(sd.npcName)
     local title = Readable(sd.title)
@@ -470,23 +706,11 @@ local function HeaderText(sd)
     return name
 end
 
--- The star shows whether the clip on show is a favourite. Hidden for the
--- preview and anything the library cannot list.
+-- The report sign (it took the favourite star's place and name): shown for a
+-- real clip, hidden for the preview, which has nothing to report.
 function addon.SpeechFrameRefreshStar()
     if not frame or not frame.controls.star then return end
-    local star = frame.controls.star
-    local key = current and not current.preview and addon.ClipItemKey and addon.ClipItemKey(current.soundFile)
-    if not key then
-        star:Hide()
-        return
-    end
-    star:Show()
-    local on = addon.IsFavourite and addon.IsFavourite(key)
-    local tex = star:GetNormalTexture()
-    if tex then
-        tex:SetDesaturated(not on)
-        tex:SetAlpha(on and 1 or 0.35)
-    end
+    frame.controls.star:SetShown(current ~= nil and not current.preview and current.soundFile ~= nil)
 end
 
 -- Text and header, once per clip.
@@ -527,6 +751,8 @@ local function Refresh()
     end
     local elapsed = Elapsed(sd)
     local duration = Duration(sd)
+    -- The moving head talks while the voice does, sentence by sentence; still when paused or done.
+    UpdateTalk(sd, elapsed, duration, duration ~= nil and not paused and sd.isPlaying == true)
     -- Read along: the word being spoken lit in the text, when the player has that on.
     if frame.plain and addon.ReadTokens then
         local playing = duration and not paused and sd.isPlaying and (DB().subtitleHighlight ~= false)
@@ -535,7 +761,8 @@ local function Refresh()
             local key = frame.plain .. "#" .. duration
             if frame.readKey ~= key then
                 frame.readKey = key
-                frame.readTokens, frame.readSpoken, frame.readWords = addon.ReadTokens(frame.plain)
+                frame.readTokens, frame.readSpoken, frame.readWords = addon.ReadTokens(frame.plain,
+                    addon.ClipNarrated and addon.ClipNarrated(sd.soundFile))
                 frame.readTimes, frame.readStarts = addon.SubtitleTiming(frame.readWords, duration, sd.soundFile)
                 frame.litIndex = nil
             end
@@ -545,7 +772,7 @@ local function Refresh()
             if frame.litIndex ~= litKey then
                 frame.litIndex = litKey
                 frame.text:SetText(addon.LitText(frame.plain, frame.readTokens, frame.readSpoken, index,
-                    addon.HighlightCode(addon.ThemeIsLight()), span))
+                    addon.HighlightCode(addon.ThemeIsLight()), span, addon.FadeCode(addon.ThemeIsLight())))
             end
         elseif frame.litIndex then
             frame.litIndex = nil
@@ -812,7 +1039,7 @@ function OpenMenu(owner)
         return
     end
     MenuUtil.CreateContextMenu(owner, function(_, root)
-        root:CreateTitle("SpeakStone speech frame")
+        root:CreateTitle("SpeakStone speech bar")
         local sizeMenu = root:CreateButton("Size")
         for _, size in ipairs(SIZES) do
             sizeMenu:CreateRadio(size.label,
@@ -847,15 +1074,28 @@ function OpenMenu(owner)
             ApplyPosition()
         end)
         root:CreateDivider()
+        if current and not current.preview and addon.OpenReportMenu then
+            local reportSub = root:CreateButton("Report this voice line")
+            for _, r in ipairs(addon.REPORT_REASONS or {}) do
+                reportSub:CreateButton(r.label, function()
+                    if addon.HarvestRecordBug and addon.HarvestRecordBug(current, r.key) then
+                        print("|cffffd100SpeakStone:|r Reported |cff00ccff" .. tostring(current.soundFile) .. "|r (" .. r.label .. ") -- added to your capture export (/ssharvest export).")
+                        if addon.RefreshSettingsStatus then addon.RefreshSettingsStatus() end
+                    else
+                        print("|cffffd100SpeakStone:|r Already reported |cff00ccff" .. tostring(current.soundFile) .. "|r (" .. r.label .. ").")
+                    end
+                end)
+            end
+        end
         root:CreateCheckbox("Auto-accept quests",
             function() return db.autoAcceptQuests end,
             function() db.autoAcceptQuests = not db.autoAcceptQuests end)
         root:CreateButton("SpeakStone settings...", function()
             if addon.ShowSettings then addon:ShowSettings() end
         end)
-        root:CreateButton("Turn the speech frame off", function()
+        root:CreateButton("Turn the speech bar off", function()
             db.showSpeechFrame = false
-            print("|cff33ff99SpeakStone:|r speech frame off. Turn it back on in /ss.")
+            print("|cff33ff99SpeakStone:|r speech bar off. Turn it back on in /ss.")
             Clear()
         end)
     end)
@@ -879,6 +1119,10 @@ function addon.SpeechSettingChanged(key)
     end
     if key == "speechFitText" and frame then
         frame.filledFor = nil
+    elseif key == "showReportButton" then
+        if addon.UpdateQuestButtonVisibility then addon.UpdateQuestButtonVisibility() end
+        if addon.UpdateMissingVoiceIcons then addon.UpdateMissingVoiceIcons() end
+        if frame and frame:IsShown() then Refresh() end
     elseif (key == "speechSize" or key == "speechFramePos") and frame then
         ApplyPosition()
     elseif key == "queueQuestSpeech" and not DB().queueQuestSpeech and addon.ClearSpeechQueue then

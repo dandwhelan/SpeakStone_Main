@@ -116,14 +116,17 @@ end
 -- The words the voice reads. Stage directions in angle brackets are not read
 -- ("<Kinduru stretches out a wing.>"), unless the brackets wrap the whole
 -- passage, which is object text that is read with the brackets dropped.
-function addon.SubtitleWords(text)
+-- narrated (addon.ClipNarrated): this clip's narrator reads the directions,
+-- so their words stay, brackets and all, as ReadTokens keeps them.
+-- tools/build_sentence_timings.py split_words mirrors this.
+function addon.SubtitleWords(text, narrated)
     text = tostring(text or "")
     text = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|T.-|t", "")
     text = text:gsub("|H.-|h(.-)|h", "%1")
     local inner = text:match("^%s*<(.*)>%s*$")
     if inner and not inner:find("[<>]") then
         text = inner
-    else
+    elseif not narrated then
         text = text:gsub("<[^<>]*>", " ")
     end
     local words = {}
@@ -133,11 +136,12 @@ function addon.SubtitleWords(text)
     return words
 end
 
+-- ">" closes like a quote: a narrated direction ends "...whisper.>".
 local function Weight(word)
     local weight = #word + 2
-    if word:find("[%.!%?][\"')%]]*$") then
+    if word:find("[%.!%?][\"')%]>]*$") then
         weight = weight + 8
-    elseif word:find("[,;:][\"')]*$") then
+    elseif word:find("[,;:][\"')>]*$") then
         weight = weight + 4
     elseif word:find("%-%-$") or word:find("%.%.%.") then
         weight = weight + 3
@@ -189,7 +193,7 @@ local ABBREV = {
 }
 
 local function EndsSentence(word)
-    local core = word
+    local core = word:gsub(">+$", "")             -- "...whisper.>": a narrated direction's end
     while true do
         local s = core:gsub("\226\128[\153\157]$", "")
         if s == core then break end
@@ -209,7 +213,7 @@ end
 
 local function FirstLetter(word)
     while true do
-        local s = word:gsub("^[\"'%(%[%-]", "", 1)
+        local s = word:gsub("^[\"'%(%[%-<]", "", 1)
         if s == word then s = word:gsub("^\226\128[\152\156]", "", 1) end
         if s == word then break end
         word = s
@@ -326,8 +330,28 @@ function addon.HighlightCode(onLightBackground)
     return onLightBackground and "|cffb01e1e" or GOLD
 end
 
-function addon.SubtitleRender(words, index, typeOut, highlight, code, span)
+-- The colour the text not being read fades to (fadeOtherParagraphs), on a light or a dark background; nil
+-- when the player has the fading off. A colour rather than a transparency because the speech frame, the Guide
+-- and the Lore Book draw a whole passage in one FontString.
+function addon.FadeCode(onLightBackground)
+    if SpeakStone_MainDB and SpeakStone_MainDB.fadeOtherParagraphs == false then
+        return nil
+    end
+    -- Light: about halfway between parchment ink and paper (the first try, 9a8668, washed out in game).
+    return onLightBackground and "|cff7d6749" or "|cff7d7d7d"
+end
+
+-- dimCode (the Lore Book): with the whole text shown and a sentence lit, the other sentences in that colour.
+function addon.SubtitleRender(words, index, typeOut, highlight, code, span, dimCode)
     code = code or GOLD
+    if dimCode and span and highlight and not typeOut and index > 0 then
+        local before = table.concat(words, " ", 1, span[1] - 1)
+        local after = table.concat(words, " ", span[2] + 1)
+        local out = code .. table.concat(words, " ", span[1], span[2]) .. "|r"
+        if before ~= "" then out = dimCode .. before .. "|r " .. out end
+        if after ~= "" then out = out .. " " .. dimCode .. after .. "|r" end
+        return out
+    end
     local parts = {}
     for k = 1, #words do
         if typeOut and k > index then
@@ -471,8 +495,20 @@ local function Build()
     frame.name:SetJustifyH("LEFT")
     frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     frame.title:SetPoint("LEFT", frame.name, "RIGHT", 10, 0)
+    -- A faint X in the subtitle text's colour closes the bar for this line; the voice carries on, as with the
+    -- speech bar's close button (owner, 2026-11-07). Brighter under the mouse.
+    frame.close = CreateFrame("Button", nil, frame)
+    frame.close:SetSize(18, 18)
+    frame.close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -6, -6)
+    frame.close.label = frame.close:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    frame.close.label:SetPoint("CENTER")
+    frame.close.label:SetText("X")
+    frame.close:SetAlpha(0.4)
+    frame.close:SetScript("OnEnter", function(self) self:SetAlpha(1) end)
+    frame.close:SetScript("OnLeave", function(self) self:SetAlpha(0.4) end)
+    frame.close:SetScript("OnClick", function() Clear() end)
     frame.status = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    frame.status:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -16, -9)
+    frame.status:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -30, -9)
     frame.status:SetJustifyH("RIGHT")
     frame.headerHeight = 28
 
@@ -564,6 +600,8 @@ function addon.SubtitlePaint()
     frame.status:SetTextColor(unpack(colours.accent))
     frame.text:SetTextColor(unpack(colours.text))
     frame.measure:SetTextColor(unpack(colours.text))
+    frame.close.label:SetTextColor(unpack(colours.text))
+    frame.close.label:SetShadowColor(0, 0, 0, colours.light and 0 or 1)
     frame.font:SetShadowColor(0, 0, 0, colours.light and 0 or 1)
     -- Dark ink on a light background: no drop shadow on the speaker, title or status either (it reads as bold).
     for _, fs in ipairs({ frame.name, frame.title, frame.status }) do
@@ -797,7 +835,7 @@ function addon.SubtitleNotify(event, sd)
         if not addon.SubtitlesEnabled() or not sd or sd.preview then
             return
         end
-        local words = addon.SubtitleWords(sd.text)
+        local words = addon.SubtitleWords(sd.text, addon.ClipNarrated and addon.ClipNarrated(sd.soundFile))
         if #words == 0 then
             return
         end
@@ -840,7 +878,9 @@ local function BuildDemo()
     demo = CreateFrame("Frame", "SpeakStonePreviewWindow", UIParent)
     demo:SetSize(520, 160)
     demo:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
-    demo:SetFrameStrata("DIALOG")
+    -- Above the settings window its button sits in: on the same layer it came up behind it, since clicking the
+    -- button raises that window ("preview talking heads didn't work", owner, 2026-11-07).
+    demo:SetFrameStrata("FULLSCREEN_DIALOG")
     demo:SetMovable(true)
     demo:EnableMouse(true)
     demo:RegisterForDrag("LeftButton")
@@ -859,23 +899,161 @@ local function BuildDemo()
     demo.text:SetJustifyH("LEFT")
     demo.text:SetJustifyV("TOP")
     demo.text:SetWordWrap(true)
-    demo.close = CreateFrame("Button", nil, demo, "UIPanelCloseButton")
-    demo.close:SetPoint("TOPRIGHT", demo, "TOPRIGHT", 2, 2)
-    demo.close:SetScript("OnClick", function() demo:Hide() end)
+    -- A faint themed X, as on the speech bar (Blizzard's red-and-gold one where the kit is missing).
+    if addon.UIK and addon.UIK.Button then
+        demo.close = addon.UIK.Button(demo, "X", 20, 20, function() demo:Hide() end)
+        demo.close:SetPoint("TOPRIGHT", demo, "TOPRIGHT", -6, -6)
+        demo.close:SetAlpha(0.55)
+        demo.close:HookScript("OnEnter", function(self) self:SetAlpha(1) end)
+        demo.close:HookScript("OnLeave", function(self) self:SetAlpha(0.55) end)
+    else
+        demo.close = CreateFrame("Button", nil, demo, "UIPanelCloseButton")
+        demo.close:SetPoint("TOPRIGHT", demo, "TOPRIGHT", 2, 2)
+        demo.close:SetScript("OnClick", function() demo:Hide() end)
+    end
     demo:SetScript("OnHide", function(self) self:SetScript("OnUpdate", nil) end)
+    -- Dialogue UI's own look (PreviewWindow "dialogue" with it installed): a quest title over a rule.
+    demo.heading = demo:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    demo.heading:SetPoint("TOPLEFT", demo, "TOPLEFT", 30, -34)
+    demo.rule = demo:CreateTexture(nil, "ARTWORK")
+    demo.rule:SetHeight(1)
+    demo.rule:SetPoint("TOPLEFT", demo.heading, "BOTTOMLEFT", 0, -8)
+    demo.rule:SetPoint("RIGHT", demo, "RIGHT", -30, 0)
+    -- The talking head's speaker (PreviewWindow "talkinghead"): the player's own head, talking, on the left.
+    demo.model = CreateFrame("PlayerModel", nil, demo)
+    demo.model:SetSize(104, 104)
+    demo.model:SetPoint("LEFT", demo, "LEFT", 14, 0)
+    demo.model:SetScript("OnModelLoaded", function(self)
+        if addon.ApplySpeakerFace then addon.ApplySpeakerFace(self) end
+        pcall(self.SetAnimation, self, 60)
+    end)
+    demo.model:SetScript("OnAnimFinished", function(self) pcall(self.SetAnimation, self, 60) end)
+    demo.model:Hide()
+end
+
+-- A talking head as Blizzard draws one: the speaker's moving portrait on the left, the name in gold over white words,
+-- on a dark band (owner, 2026-11-07: the plain dark box "looks totally wrong"; the speech bar is how it should look).
+local function TalkingHeadLook()
+    demo:SetSize(580, 136)
+    demo:ClearAllPoints()
+    -- Where Blizzard's talking heads come up: low in the middle, above the action bars.
+    demo:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 190)
+    -- In SpeakStone's theme, as the speech bar is drawn (owner, 2026-11-07: "needs to follow the theme").
+    local art = addon.ThemeSlice(demo, "bar")
+    demo.back:SetShown(not art)
+    addon.ThemeBackground(demo.back, false)
+    demo.heading:Hide()
+    demo.rule:Hide()
+    demo.model:Show()
+    pcall(demo.model.ClearModel, demo.model)
+    pcall(demo.model.SetUnit, demo.model, "player")
+    demo.title:Show()
+    demo.title:ClearAllPoints()
+    demo.title:SetPoint("TOPLEFT", demo, "TOPLEFT", 132, -16)
+    demo.title:SetFontObject("GameFontNormalLarge")
+    demo.text:ClearAllPoints()
+    demo.text:SetPoint("TOPLEFT", demo.title, "BOTTOMLEFT", 0, -6)
+    demo.text:SetWidth(430)
+    demo.note:ClearAllPoints()
+    demo.note:SetPoint("BOTTOMLEFT", demo, "BOTTOMLEFT", 132, 10)
+    demo.note:SetWidth(0)
+end
+
+-- Dialogue UI is installed: the sample is its window as near as SpeakStone can draw it -- its own frame art in its
+-- current theme and its own fonts (read at run time, never copied), its size and its place on the right. Until
+-- 2026-11-07 it was a flat brown box with game fonts, and the owner rightly said Dialogue UI does not look like that.
+local function DialogueUILook(duiTheme)
+    local dark = duiTheme == 2
+    demo:SetSize(380, 330)
+    demo:ClearAllPoints()
+    demo:SetPoint("RIGHT", UIParent, "RIGHT", -220, 40)
+    local drawn = addon.ThemeSlice(demo, "window", dark and "Theme_Dark" or "Theme_Brown", { 1, 1, 1 })
+    demo.back:SetShown(not drawn)
+    demo.back:SetColorTexture(0.82, 0.72, 0.55, 0.97)
+    local function Use(fs, fontObject, fallback)
+        fs:SetFontObject(fontObject or fallback)
+        local r, g, b = (fontObject or _G[fallback]):GetTextColor()
+        fs:SetTextColor(r, g, b)
+        fs:SetShadowColor(0, 0, 0, dark and 1 or 0)
+        return r, g, b
+    end
+    local r, g, b = Use(demo.heading, _G.DUIFont_Quest_Title_18, "GameFontNormalLarge")
+    demo.heading:SetText("You Remind Me of the Bird")
+    demo.heading:Show()
+    demo.rule:SetColorTexture(r, g, b, 0.45)
+    demo.rule:Show()
+    Use(demo.text, _G.DUIFont_Quest_Paragraph, "GameFontHighlight")
+    demo.text:ClearAllPoints()
+    demo.text:SetPoint("TOPLEFT", demo.rule, "BOTTOMLEFT", 0, -14)
+    demo.text:SetWidth(320)
+    demo.title:Hide()
+    demo.model:Hide()
+    Use(demo.note, _G.DUIFont_Quest_Paragraph, "GameFontHighlightSmall")
+    demo.note:SetFontObject("GameFontHighlightSmall")
+    demo.note:ClearAllPoints()
+    demo.note:SetPoint("BOTTOMLEFT", demo, "BOTTOMLEFT", 30, 26)
+    demo.note:SetWidth(320)
+    demo.note:SetJustifyH("LEFT")
+    demo.note:SetText("Dialogue UI's window: the words type out as the voice reaches them and the one being read is lit. "
+        .. "Drag to move.")
+    return not dark
+end
+
+-- Back to the plain sample (no Dialogue UI, or the talking head).
+local function PlainLook()
+    demo:SetSize(520, 160)
+    demo:ClearAllPoints()
+    demo:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
+    if demo.ssSlice then demo.ssSlice:Hide() end
+    demo.back:Show()
+    demo.heading:Hide()
+    demo.rule:Hide()
+    demo.model:Hide()
+    demo.title:Show()
+    demo.title:ClearAllPoints()
+    demo.title:SetPoint("TOPLEFT", demo, "TOPLEFT", 14, -10)
+    demo.title:SetFontObject("GameFontNormal")
+    demo.text:ClearAllPoints()
+    demo.text:SetPoint("TOPLEFT", demo, "TOPLEFT", 14, -34)
+    demo.text:SetWidth(492)
+    demo.note:ClearAllPoints()
+    demo.note:SetPoint("BOTTOMLEFT", demo, "BOTTOMLEFT", 14, 8)
+    demo.note:SetWidth(0)
 end
 
 -- kind "dialogue": Dialogue UI's parchment page with its words typed out and lit.
 -- kind "talkinghead": a talking head's text box, the word being read lit.
+-- A sample that cannot be drawn says so in chat; with Lua errors hidden it used to look like a button that did
+-- nothing.
+local DrawPreview
 function addon.PreviewWindow(kind)
+    local ok, err = pcall(DrawPreview, kind)
+    if not ok then
+        print("|cffffd100SpeakStone:|r the preview could not be shown (" .. tostring(err) .. ").")
+    end
+end
+
+function DrawPreview(kind)
     BuildDemo()
     local words = addon.SubtitleWords(SAMPLE_TEXT)
     local times = addon.SubtitleWordTimes(words, SAMPLE_SECONDS)
     local light = kind == "dialogue"
-    if not (addon.ApplyReadingFont and addon.ApplyReadingFont(demo.text, 15, "")) then
-        demo.text:SetFontObject("GameFontHighlight")
+    local duiTheme = light and addon.DialogueUIThemeID and addon.DialogueUIThemeID()
+    if duiTheme then
+        light = DialogueUILook(duiTheme)
     end
-    if light then
+    local paper = light      -- the highlight colour's background: light paper or dark
+    if duiTheme then
+        -- drawn above
+    else
+        if kind == "talkinghead" then TalkingHeadLook() else PlainLook() end
+        if not (addon.ApplyReadingFont and addon.ApplyReadingFont(demo.text, 15, "")) then
+            demo.text:SetFontObject("GameFontHighlight")
+        end
+    end
+    if duiTheme then
+        -- Colours and words set by DialogueUILook.
+    elseif light then
         demo.back:SetColorTexture(0.82, 0.72, 0.55, 0.97)
         demo.title:SetText("Dialogue UI (preview)")
         demo.title:SetTextColor(0.25, 0.15, 0.08)
@@ -883,12 +1061,18 @@ function addon.PreviewWindow(kind)
         demo.note:SetTextColor(0.35, 0.25, 0.15)
         demo.text:SetTextColor(0.2, 0.12, 0.06)
     else
-        demo.back:SetColorTexture(0.04, 0.06, 0.09, 0.92)
-        demo.title:SetText("Talking head (preview)")
-        demo.title:SetTextColor(0.94, 0.82, 0.48)
-        demo.note:SetText("The word being read is lit as the line plays. Drag to move.")
-        demo.note:SetTextColor(0.7, 0.72, 0.75)
-        demo.text:SetTextColor(1, 1, 1)
+        -- The talking head, in the theme's ink (TalkingHeadLook drew the theme's background). `paper` only picks the
+        -- highlight colour; `light` stays false, as a talking head lights words but does not type them out.
+        local theme = addon.Theme()
+        paper = theme.light == true
+        demo.title:SetText("Kinduru")
+        demo.title:SetTextColor(unpack(theme.title))
+        demo.note:SetText("A talking head (preview): the word being read is lit as the line plays. Drag to move.")
+        demo.note:SetTextColor(unpack(theme.sub))
+        demo.text:SetTextColor(unpack(theme.text))
+        for _, fs in ipairs({ demo.title, demo.note, demo.text }) do
+            addon.ThemeShadow(fs)
+        end
     end
     local started, loops = GetTime(), 3
     demo:Show()
@@ -909,7 +1093,7 @@ function addon.PreviewWindow(kind)
         local db = DB()
         local typeOut = light and db.subtitleTypeOut ~= false
         local highlight = (not light) or db.subtitleHighlight ~= false
-        self.text:SetText(addon.SubtitleRender(words, index, typeOut, highlight, addon.HighlightCode(light)))
+        self.text:SetText(addon.SubtitleRender(words, index, typeOut, highlight, addon.HighlightCode(paper)))
     end)
 end
 
@@ -919,7 +1103,8 @@ end
 -- The text keeps its own line breaks; only the word being read, and the one before it, are wrapped in the
 -- highlight colour. Stage directions ("<Kinduru nods.>") are shown but not read, so they take no time.
 
-function addon.ReadTokens(plain)
+-- narrated (addon.ClipNarrated): the clip's narrator reads the directions, so they are spoken words too.
+function addon.ReadTokens(plain, narrated)
     local tokens, spoken = {}, {}
     local inDirection = false
     for s, e in plain:gmatch("()%S+()") do
@@ -927,6 +1112,7 @@ function addon.ReadTokens(plain)
         local silent = inDirection
         if word:sub(1, 1) == "<" then inDirection, silent = true, true end
         if inDirection and word:sub(-1) == ">" then inDirection = false end
+        if narrated then silent = false end
         tokens[#tokens + 1] = { s = s, e = e - 1 }
         if not silent then spoken[#spoken + 1] = #tokens end
     end
@@ -935,18 +1121,43 @@ function addon.ReadTokens(plain)
     return tokens, spoken, words
 end
 
-function addon.LitText(plain, tokens, spoken, index, code, span)
+-- The paragraph (text between blank lines) holding position pos: its first and last character.
+local function ParagraphAround(plain, pos)
+    local first, last = 1, #plain
+    for s, e in plain:gmatch("()\n[ \t]*\n()") do
+        if e <= pos then
+            first = e
+        elseif s > pos then
+            last = s - 1
+            break
+        end
+    end
+    return first, last
+end
+
+-- dimCode (fadeOtherParagraphs): the paragraphs other than the one being read in that colour. Those hold no
+-- lit word, so no colour code is ever opened inside another.
+function addon.LitText(plain, tokens, spoken, index, code, span, dimCode)
     local marks = {}
     for k = span and span[1] or math.max(1, index - 1), span and span[2] or index do
         if spoken[k] then marks[#marks + 1] = tokens[spoken[k]] end
     end
     if #marks == 0 then return plain end
-    local out, from = {}, 1
-    for _, t in ipairs(marks) do
-        out[#out + 1] = plain:sub(from, t.s - 1)
-        out[#out + 1] = code .. plain:sub(t.s, t.e) .. "|r"
-        from = t.e + 1
+    local first, last = 1, #plain
+    if dimCode and spoken[index] then
+        first, last = ParagraphAround(plain, tokens[spoken[index]].s)
     end
-    out[#out + 1] = plain:sub(from)
+    local out, from = {}, first
+    for _, t in ipairs(marks) do
+        if t.s >= first and t.e <= last then
+            out[#out + 1] = plain:sub(from, t.s - 1)
+            out[#out + 1] = code .. plain:sub(t.s, t.e) .. "|r"
+            from = t.e + 1
+        end
+    end
+    out[#out + 1] = plain:sub(from, last)
+    local before, after = plain:sub(1, first - 1), plain:sub(last + 1)
+    if before ~= "" then table.insert(out, 1, dimCode .. before .. "|r") end
+    if after ~= "" then out[#out + 1] = dimCode .. after .. "|r" end
     return table.concat(out)
 end

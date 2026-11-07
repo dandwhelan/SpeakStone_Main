@@ -1,5 +1,21 @@
 # Changelog
 
+## 5.0.2 (November 2026)
+
+### Highlights
+- **See who is speaking**: the speech bar shows the speaker beside the words, as a picture in a ring in your theme's colour or, if you choose it, a moving 3D head that talks sentence by sentence with the voice. Pick one in the tutorial or in /ss under On screen.
+- **Report a line where you hear it**: a faint warning sign on Dialogue UI's window (top right) and on the speech bar (beside Replay). Click it and pick what is wrong: wrong voice or sex, an audio glitch, a name said wrong, cut off, or words that do not match. Reports go out with your captured text.
+- **Dialogue UI**: its play button and R key now play SpeakStone's voice, its tooltip says SpeakStone is handling the voiceover, and its own text-to-speech no longer talks over a voiced line.
+- **Reading along keeps better time**: stage directions read by the narrator are now counted, and the text not being read is dimmed (speech bar, Guide, Dialogue UI and Lore Book). Update your voice packs too for the freshest timings.
+- **Looks that fit in**: SpeakStone can match Dialogue UI's Brown or Dark theme; the speech bar's buttons take your theme's colours and stay faint until you point at them; the subtitles have a faint close X; the capture window and the previews follow your theme.
+
+### Also
+- Play buttons say whether autoplay is on and whether a line has a voice; right-click one to turn autoplay on or off. A new Play button sits beside Goodbye on the greeting window.
+- The tutorial has new pages for the speaker and for reporting a line, shows a real example, and reminds you to export what you capture so missing lines can be voiced, usually by the next day.
+- Settings open on General, with Export captured text on the left.
+
+Unofficial; not affiliated with Blizzard Entertainment. The voices are similar to the in-game characters.
+
 ## 5.0.1 (November 2026)
 
 ### Highlights

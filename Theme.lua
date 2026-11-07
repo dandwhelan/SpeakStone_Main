@@ -82,14 +82,45 @@ addon.Themes = {
 }
 addon.ThemeOrder = { "parchment", "stone", "midnight" }
 
-function addon.Theme()
-    local key = SpeakStone_MainDB and SpeakStone_MainDB.uiTheme or "stone"
-    return addon.Themes[key] or addon.Themes.stone
-end
-
 local function PaperAvailable()
     local loaded = C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("DialogueUI")
     return loaded or (IsAddOnLoaded and IsAddOnLoaded("DialogueUI"))
+end
+
+-- Following Dialogue UI's theme (followDialogueUITheme, on by default): its
+-- Brown theme is Parchment; its Dark theme is Stone drawn on Dialogue UI's own
+-- dark frame instead of the brown one tinted charcoal, so the two windows
+-- match side by side. Its choice is its saved variable DialogueUI_DB.Theme
+-- (1 Brown, 2 Dark), read as it is, never written. Picking a theme in
+-- SpeakStone stops the following (SetTheme).
+local followDark = {}
+for k, v in pairs(addon.Themes.stone) do
+    followDark[k] = v
+end
+followDark.art, followDark.tint = "Theme_Dark", { 1, 1, 1 }
+
+local function DialogueUITheme()
+    if not PaperAvailable() then
+        return nil
+    end
+    local db = _G.DialogueUI_DB
+    return (type(db) == "table" and tonumber(db.Theme) == 2) and 2 or 1
+end
+
+-- Dialogue UI's theme as it stands (1 Brown, 2 Dark), or nil when it is not installed.
+addon.DialogueUIThemeID = function() return DialogueUITheme() end
+
+function addon.ThemeFollowsDialogueUI()
+    return SpeakStone_MainDB ~= nil and SpeakStone_MainDB.followDialogueUITheme ~= false
+        and DialogueUITheme() ~= nil
+end
+
+function addon.Theme()
+    if addon.ThemeFollowsDialogueUI() then
+        return DialogueUITheme() == 2 and followDark or addon.Themes.parchment
+    end
+    local key = SpeakStone_MainDB and SpeakStone_MainDB.uiTheme or "stone"
+    return addon.Themes[key] or addon.Themes.stone
 end
 
 -- Paint a background texture in the theme, flat (or a left-to-right fade when
@@ -120,10 +151,13 @@ local SLICE_KINDS = {
     bar = { scale = 0.3, outset = 13 },
 }
 
-function addon.ThemeSlice(frame, kind)
+-- art / tint: a given Dialogue UI art folder and colour instead of the theme's (the settings' Dialogue UI preview
+-- draws Dialogue UI's own frame, untinted, in its current Brown or Dark).
+function addon.ThemeSlice(frame, kind, art, tint)
     local theme = addon.Theme()
+    art, tint = art or theme.art, tint or theme.tint
     local slice = frame.ssSlice
-    if not (theme.art and PaperAvailable()) then
+    if not (art and PaperAvailable()) then
         if slice then
             slice:Hide()
         end
@@ -138,8 +172,8 @@ function addon.ThemeSlice(frame, kind)
         pcall(slice.tex.SetTextureSliceMargins, slice.tex, 80, 80, 80, 80)
         pcall(slice.tex.SetTextureSliceMode, slice.tex, 1)
     end
-    slice.tex:SetTexture(DUI_ART .. theme.art .. "\\GenericFrame-Tiled-Large.png")
-    slice.tex:SetVertexColor(theme.tint[1], theme.tint[2], theme.tint[3], 1)
+    slice.tex:SetTexture(DUI_ART .. art .. "\\GenericFrame-Tiled-Large.png")
+    slice.tex:SetVertexColor(tint[1], tint[2], tint[3], 1)
     slice:SetScale(spec.scale)
     slice:ClearAllPoints()
     local o = spec.outset / spec.scale
@@ -172,15 +206,57 @@ function addon.ThemeChanged()
     end
 end
 
+local function Repaint()
+    addon.ThemeChanged()
+    if addon.SubtitleSettingChanged then
+        addon.SubtitleSettingChanged("highlightColour")
+    end
+end
+
 function addon.SetTheme(key)
     if addon.Themes[key] then
         SpeakStone_MainDB.uiTheme = key
-        addon.ThemeChanged()
-        if addon.SubtitleSettingChanged then
-            addon.SubtitleSettingChanged("highlightColour")
+        -- A theme picked by hand is the player's choice: stop following
+        -- Dialogue UI's, or the pick would not show.
+        if SpeakStone_MainDB.followDialogueUITheme ~= false and DialogueUITheme() then
+            SpeakStone_MainDB.followDialogueUITheme = false
+            if addon.RefreshSettingChecks then
+                addon.RefreshSettingChecks()
+            end
         end
+        Repaint()
     end
 end
+
+-- The "follow Dialogue UI" tickbox changed.
+function addon.ThemeFollowChanged()
+    Repaint()
+end
+
+-- Dialogue UI says nothing when its theme changes, so look every two seconds
+-- (one table read) while following it.
+local lastDialogueUITheme
+local watchFrame = CreateFrame("Frame")
+watchFrame:RegisterEvent("PLAYER_LOGIN")
+watchFrame:SetScript("OnEvent", function(self)
+    self:UnregisterEvent("PLAYER_LOGIN")
+    if not DialogueUITheme() then
+        return
+    end
+    lastDialogueUITheme = DialogueUITheme()
+    if addon.ThemeFollowsDialogueUI() then
+        Repaint()
+    end
+    C_Timer.NewTicker(2, function()
+        local now = DialogueUITheme()
+        if now ~= lastDialogueUITheme then
+            lastDialogueUITheme = now
+            if addon.ThemeFollowsDialogueUI() then
+                Repaint()
+            end
+        end
+    end)
+end)
 
 -- The word being read, in "auto": deep red on the parchment theme.
 function addon.ThemeIsLight()

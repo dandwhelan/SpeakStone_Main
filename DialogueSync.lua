@@ -46,9 +46,22 @@ local function Enabled()
     return DB().syncDialogueText == true
 end
 
+-- Paragraphs dimmed while another was read (fadeOtherParagraphs) back to full.
+-- Unconditional on the text, unlike Restore: Dialogue UI reuses its
+-- FontStrings, and one left faint would carry into the next page.
+local function Undim(paras)
+    for _, para in ipairs(paras or {}) do
+        if para.dimmed then
+            para.fs:SetAlpha(1)
+            para.dimmed = nil
+        end
+    end
+end
+
 -- Put every paragraph back as Dialogue UI wrote it. A paragraph whose text is
 -- no longer what we last set belongs to a page built since: left alone.
 local function Restore(s)
+    Undim(s.paras)
     for _, para in ipairs(s.paras or {}) do
         if para.fs:GetText() == para.shown then
             para.fs:SetText(para.orig)
@@ -81,16 +94,18 @@ local function Bind(sd)
     if spoken == "" then
         return nil
     end
+    -- A clip whose narrator reads the stage directions (addon.ClipNarrated): their paragraphs are read too.
+    local narrated = addon.ClipNarrated and addon.ClipNarrated(sd.soundFile)
     local found = {}
     for _, fs in ui.fontStringPool:EnumerateActive() do
         local orig = fs:GetText()
         local t = Norm(orig)
         if t ~= "" and fs:IsShown() and spoken:find(t, 1, true) then
-            local direction = t:match("^<.*>$")           -- a stage direction is on screen but not read
+            local direction = t:match("^<.*>$") and not narrated   -- on screen but not read
             local linked = orig:find("|H", 1, true)       -- never split a link
             found[#found + 1] = {
                 fs = fs, orig = orig, shown = orig, top = fs:GetTop() or 0, chars = #t,
-                words = (not direction and not linked) and addon.SubtitleWords(orig) or {},
+                words = (not direction and not linked) and addon.SubtitleWords(orig, narrated) or {},
             }
             -- Dark text means light paper (the parchment theme).
             local r, g, b = fs:GetTextColor()
@@ -125,6 +140,7 @@ local function Draw(s, index)
     local db = DB()
     local typeOut = db.subtitleTypeOut ~= false
     local highlight = db.subtitleHighlight ~= false
+    local fade = db.fadeOtherParagraphs ~= false
     local span = highlight and addon.SubtitleSpan(s.starts, index, s.words, typeOut) or nil
     for _, para in ipairs(s.paras) do
         if #para.words > 0 then
@@ -157,6 +173,15 @@ local function Draw(s, index)
             if para.shown ~= want then
                 para.fs:SetText(want)
                 para.shown = want
+            end
+            -- The paragraphs not being read, fainter (fadeOtherParagraphs).
+            local dim = fade and index > 0 and (index < para.a or index > para.b)
+            if dim and not para.dimmed then
+                para.fs:SetAlpha(0.4)
+                para.dimmed = true
+            elseif not dim and para.dimmed then
+                para.fs:SetAlpha(1)
+                para.dimmed = nil
             end
         end
     end
@@ -208,6 +233,7 @@ local function Tick()
     -- A page rebuilt under us is no longer ours.
     for _, para in ipairs(s.paras) do
         if #para.words > 0 and para.fs:GetText() ~= para.shown then
+            Undim(s.paras)
             s.paras = nil
             return
         end
@@ -284,6 +310,7 @@ function addon.QuestTextSyncHook()
             addon.dialogueSyncHooked = true
             hooksecurefunc(ui, name, function()
                 if sync then
+                    Undim(sync.paras)
                     sync.paras = nil
                     Tick()
                 end

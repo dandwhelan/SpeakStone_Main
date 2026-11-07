@@ -7,16 +7,20 @@ local addonName, addon = ...
 --   1. Welcome and voice packs  -- is there audio to play?
 --   2. How to listen            -- a profile: what is read, and how much
 --   3. When you walk away      -- nothing, subtitles or the text box, each with a live sample
---   4. How it looks             -- theme, font, size and the subtitle colours
+--   3b. The speaker            -- the text box's portrait: a still picture or a moving 3D head
+--   (How it looks -- theme, font, subtitle colours -- was a page until 2026-11-07; the owner took it out: not
+--   everyone uses subtitles, and the text box with the speaker is the way to follow along. It is all in /ss > Look.)
 --   5. While you play           -- combat, instances, queueing
 --   6. Where things are         -- the Guide, the buttons, the keys
+--   7a. Report a voice         -- the report sign, with a real example
 --   7. Help the project         -- capture and the website (optional)
 --   8. Done
--- Players who saw an older setup get a short run instead: what's new, how it looks, done.
+-- Players who saw an older setup get a short run instead: what's new, the speaker, reporting, done.
 
 -- Bump to show the setup once more to everyone, e.g. after adding a page.
 -- 2: the speech bar page. 3: the flow rebuilt (look, behaviour, the Guide); players who saw version 2 get the short run.
-local TUTORIAL_VERSION = 3
+-- 4: the speaker and report pages (2026-11-07); everyone who saw 3 gets the short run with them once.
+local TUTORIAL_VERSION = 4
 
 local CURSEFORGE_URL = "https://www.curseforge.com/members/dandwhelan/projects"
 local WEBSITE_URL = "https://speakstone.beanw.co.uk"
@@ -149,7 +153,7 @@ end
 
 local DEFAULTS_LIST = {
     "Full narration: quests, NPC greetings and books are read aloud",
-    "When you walk away: the text box with the whole passage, and the word being said lit",
+    "When you walk away: the speech bar with the whole passage, and the word being said lit",
     "The words are lit on Blizzard's talking heads",
     "Quests queue instead of cutting each other off",
 }
@@ -237,10 +241,11 @@ local CONTENT = WIDTH - 60
 local frame, pages, pageIndex
 local order, pageByName
 local ShowPage
-local FULL_ORDER = { "welcome", "listen", "words", "look", "play", "where", "help", "done" }
-local SHORT_ORDER = { "whatsnew", "look", "done" }
+local FULL_ORDER = { "welcome", "listen", "words", "head", "play", "where", "report", "help", "done" }
+local SHORT_ORDER = { "whatsnew", "head", "report", "done" }
 local STEP_TITLES = {
-    welcome = "Welcome", listen = "How to listen", words = "When you walk away", look = "How it looks", play = "While you play",
+    welcome = "Welcome", listen = "How to listen", words = "When you walk away", head = "The speaker",
+    play = "While you play", report = "Report a voice",
     where = "Where things are", help = "Help the project", done = "Done", whatsnew = "What's new",
 }
 local selectedProfile
@@ -365,7 +370,7 @@ local function BuildWelcome()
     page:SetScript("OnShow", function()
         body:SetText("SpeakStone reads quests, NPC greetings and books aloud, with voices similar to the in-game NPCs. "
             .. "Unofficial; not affiliated with Blizzard Entertainment.\n\nThis takes about a minute: how to listen, how the words "
-            .. "show, how it looks, how it behaves while you play, and where things are. You can come back to it any time with "
+            .. "show, who is speaking, how it behaves while you play, and where things are. You can come back to it any time with "
             .. Gold() .. "/ss tutorial|r.")
         if HasAnyAudioPack() then
             local missing, have, total = MissingPackNames()
@@ -443,7 +448,27 @@ local function BuildListen()
     end
 end
 
--- 3. When you walk away: nothing, subtitles, or the text box -- each with a live sample
+-- A round portrait in a ring of the theme's accent, as the speech bar draws its still picture. Returns the ring and the
+-- picture (call SetPortraitTexture on it when the page shows).
+local function SpeakerDisc(parent, size, x, y)
+    local holder = CreateFrame("Frame", nil, parent)
+    holder:SetSize(size, size)
+    holder:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
+    holder:EnableMouse(false)
+    local function Disc(layer, sub, s)
+        local t = holder:CreateTexture(nil, layer, nil, sub)
+        t:SetSize(s, s)
+        t:SetPoint("CENTER", holder, "CENTER")
+        local m = holder:CreateMaskTexture()
+        m:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        m:SetAllPoints(t)
+        t:AddMaskTexture(m)
+        return t
+    end
+    return Disc("BORDER", 1, size), Disc("ARTWORK", 0, size - 6)
+end
+
+-- 3. When you walk away: nothing, subtitles, or the speech bar -- each with a live sample
 local function BuildWords()
     local page = NewPage("words")
     local title = Title(page, "Once you walk away, what do you want to see?")
@@ -456,11 +481,15 @@ local function BuildWords()
         { key = "nothing", name = "A.  Just listen",
           desc = "Nothing appears. You only hear the voice.",
           apply = function(db) db.showSubtitles = false; db.showSpeechFrame = false end },
+        -- preview: the real thing for a few seconds, because the three samples look alike (owner, 2026-11-07).
         { key = "subtitles", name = "B.  Subtitles", style = "bar",
-          desc = "A few words at a time in a small bar over the game, as the voice says them. You choose its colours on the next page.",
+          desc = "A few words at a time in a small bar over the game, as the voice says them.",
+          preview = function() if addon.PreviewSubtitles then addon.PreviewSubtitles() end end,
           apply = function(db) db.showSubtitles = true end },
-        { key = "box", name = "C.  Text box", style = "box",
-          desc = "The whole passage at once in one box, with Pause, Stop and Replay. The word being said is lit as it goes.",
+        { key = "box", name = "C.  Text box with the speaker", style = "box",
+          desc = "Recommended. The whole passage beside the speaker's head, with Pause, Stop and Replay; the word being said "
+              .. "is lit. (The speech bar in /ss.)",
+          preview = function() if addon.SpeechFramePreview then addon.SpeechFramePreview() end end,
           apply = function(db) db.showSubtitles = false; db.showSpeechFrame = true; db.speechFitText = true; db.speechAutoScroll = true end },
     }
     local function Current()
@@ -484,11 +513,18 @@ local function BuildWords()
                 fs:SetTextColor(ink[1], ink[2], ink[3])
                 addon.ThemeShadow(fs)
             end
+            if button.ring then
+                local a = addon.Theme().accent
+                button.ring:SetColorTexture(a[1], a[2], a[3], 1)
+                pcall(SetPortraitTexture, button.speaker, "player")
+            end
         end
     end
     local previous = hint
     for _, choice in ipairs(CHOICES) do
-        local button = addon.UIK.Button(page, "", CONTENT, 84, function()
+        -- Room for a Preview button only where there is one: three tall choices pushed the last tick box onto Back
+        -- (owner, 2026-11-07).
+        local button = addon.UIK.Button(page, "", CONTENT, choice.preview and 90 or 80, function()
             local db = DB()
             choice.apply(db)
             if addon.SpeechSettingChanged then
@@ -503,6 +539,18 @@ local function BuildWords()
             local preview = addon.UIK.WordPreview(button, 236, 72, choice.style)
             preview:SetPoint("TOPLEFT", button, "TOPLEFT", 6, -6)
             preview:EnableMouse(false)
+            if choice.style == "box" then
+                -- Like the real speech bar: the speaker in a ring on the left (the player's own face here), the
+                -- name and the words beside it (owner, 2026-11-07).
+                button.ring, button.speaker = SpeakerDisc(preview, 54, 8, -9)
+                preview.name:ClearAllPoints()
+                preview.name:SetPoint("TOPLEFT", preview, "TOPLEFT", 70, -6)
+                -- Name and quest title on one line that stops at the box's edge (it ran on into the choice's own
+                -- name beside it).
+                preview.name:SetPoint("RIGHT", preview, "RIGHT", -8, 0)
+                preview.name:SetJustifyH("LEFT")
+                preview.name:SetWordWrap(false)
+            end
         else
             local blank = CreateFrame("Frame", nil, button)
             blank:SetSize(236, 72)
@@ -534,6 +582,12 @@ local function BuildWords()
         desc:SetSpacing(2)
         desc:SetText(choice.desc)
         button.nameText, button.descText = name, desc
+        if choice.preview then
+            -- On top of the choice: clicking it shows the real thing and does not pick the choice.
+            local show = addon.UIK.Button(button, "Preview", 80, 20, choice.preview)
+            show:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", 254, 6)
+            show:SetFrameLevel(button:GetFrameLevel() + 2)
+        end
         buttons[#buttons + 1] = button
         previous = button
     end
@@ -574,67 +628,121 @@ local function BuildWords()
     addon.ThemeRegister(function() if page:IsShown() then Refresh() end end)
 end
 
--- 4. How it looks: theme, font, size
-local function BuildLook()
-    local page = NewPage("look")
-    local title = Title(page, "Make it easy to read")
-    local body = Text(page, "GameFontHighlightSmall", CONTENT)
-    body:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
-    body:SetText("Choose how SpeakStone's windows and subtitles look. A font made to be easier on the eye can help readers with dyslexia; try them. More colours are in /ss under Look.")
+-- 3b. Who is speaking: the text box's portrait, a still picture or the moving 3D head (owner, 2026-11-07: "add an
+-- option in the tutorial for people to pick 2d or 3d heads"; the picture is the default). Each choice shows the
+-- player's own character the way it would show an NPC.
+local function BuildHead()
+    local page = NewPage("head")
+    local title = Title(page, "How should the speaker look?")
+    local hint = Text(page, "GameFontHighlightSmall", CONTENT)
+    hint:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
+    hint:SetText("The speech bar shows who is speaking beside their words. Here it is with your own character; you can "
+        .. "change it any time in /ss under On screen.")
 
-    local themeLabel = Text(page, "GameFontNormal")
-    themeLabel:SetPoint("TOPLEFT", body, "BOTTOMLEFT", 0, -14)
-    themeLabel:SetText("Theme")
-    local themes = addon.UIK.ThemeButtons(page, CONTENT - 120)
-    themes:SetPoint("LEFT", themeLabel, "LEFT", 120, 0)
-
-    local fontLabel = Text(page, "GameFontNormal")
-    fontLabel:SetPoint("TOPLEFT", themeLabel, "BOTTOMLEFT", 0, -24)
-    fontLabel:SetText("Reading font")
-    local drop = addon.UIK.FontDropdown(page, 240)
-    drop:SetPoint("LEFT", fontLabel, "LEFT", 120, 0)
-
-    local sizeLabel = Text(page, "GameFontNormal")
-    sizeLabel:SetPoint("TOPLEFT", fontLabel, "BOTTOMLEFT", 0, -26)
-    sizeLabel:SetText("Text size")
-    local slider = addon.UIK.Slider(page, 240)
-    slider:SetPoint("LEFT", sizeLabel, "LEFT", 124, 0)
-    slider:SetMinMaxValues(14, 36)
-    slider:SetValueStep(2)
-    slider:SetObeyStepOnDrag(true)
-    slider.low:SetText("14")
-    slider.high:SetText("36")
-    slider:SetScript("OnValueChanged", function(self, value)
-        value = math.floor(value / 2 + 0.5) * 2
-        DB().subtitleFontSize = value
-        self.caption:SetText(tostring(value))
-        if addon.SpeechSettingChanged then addon.SpeechSettingChanged("subtitleFontSize") end
-    end)
-    slider.caption:ClearAllPoints()
-    slider.caption:SetPoint("LEFT", slider, "RIGHT", 12, 0)
-
-    local preview = addon.UIK.FontPreview(page, CONTENT, 66)
-    preview:SetPoint("TOPLEFT", sizeLabel, "BOTTOMLEFT", 0, -42)
-
-    -- The subtitle colours: background, text, and the word being read.
-    local back = addon.UIK.SwatchRow(page, "Subtitle background", "subtitleBack", addon.SubtitleBackColours, "theme",
-        { "The theme's own background.", "The colour behind the subtitle text. Soft cream, yellow, blue or green with dark text is easier on the eyes for many readers with dyslexia." }, 150)
-    back:SetPoint("TOPLEFT", preview, "BOTTOMLEFT", 0, -14)
-    local ink = addon.UIK.SwatchRow(page, "Subtitle text", "subtitleText", addon.SubtitleTextColours, "theme",
-        { "The theme's own text colour.", "The colour of the subtitle text. Dark blue or dark brown on a light background, or white or yellow on a dark one." }, 150)
-    ink:SetPoint("TOPLEFT", back, "BOTTOMLEFT", 0, -6)
-    local colour = addon.UIK.SwatchRow(page, "Word being read", "highlightColour", addon.HighlightColours, "auto",
-        { "Gold, or deep red on light paper.", "The colour of the word being read." }, 150)
-    colour:SetPoint("TOPLEFT", ink, "BOTTOMLEFT", 0, -6)
-    local try = addon.UIK.Button(page, "Preview the subtitles over the world", 270, 26, function()
-        if addon.PreviewSubtitles then addon.PreviewSubtitles() end
-    end)
-    try:SetPoint("TOPLEFT", colour, "BOTTOMLEFT", 0, -12)
+    local CHOICES = {
+        { key = false, name = "A.  A picture",
+          desc = "A still portrait in a thin ring, in the theme's colour. Quiet, and easy on older computers." },
+        { key = true, name = "B.  A moving head",
+          desc = "The speaker's own 3D model with nothing behind it, talking sentence by sentence as the voice reads, "
+              .. "and still when it pauses." },
+    }
+    local buttons, model = {}, nil
+    local function Refresh()
+        local ui = addon.Theme().ui
+        local current = DB().speechPortrait3D == true
+        for _, button in ipairs(buttons) do
+            local selected = button.key == current
+            button:SetSelected(selected)
+            button.tick:SetShown(selected)
+            button.pick:SetText(selected and "Chosen" or "Click to choose")
+            local ink = selected and ui.button.textSel or ui.button.text
+            for _, fs in ipairs({ button.nameText, button.descText, button.pick }) do
+                fs:SetTextColor(ink[1], ink[2], ink[3])
+                addon.ThemeShadow(fs)
+            end
+            if button.ring then
+                local a = addon.Theme().accent
+                button.ring:SetColorTexture(a[1], a[2], a[3], 1)
+            end
+        end
+    end
+    local function Disc(parent, layer, sub, size)
+        local t = parent:CreateTexture(nil, layer, nil, sub)
+        t:SetSize(size, size)
+        t:SetPoint("CENTER", parent, "CENTER")
+        local m = parent:CreateMaskTexture()
+        m:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        m:SetAllPoints(t)
+        t:AddMaskTexture(m)
+        return t
+    end
+    local previous = hint
+    for _, choice in ipairs(CHOICES) do
+        local button = addon.UIK.Button(page, "", CONTENT, 110, function()
+            DB().speechPortrait3D = choice.key
+            if addon.SpeechFrameRefreshPortrait then addon.SpeechFrameRefreshPortrait() end
+            Refresh()
+        end)
+        button:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", 0, previous == hint and -12 or -8)
+        button.key = choice.key
+        button.label:Hide()
+        local holder = CreateFrame("Frame", nil, button)
+        holder:SetSize(96, 96)
+        holder:SetPoint("LEFT", button, "LEFT", 70, 0)
+        holder:EnableMouse(false)
+        if choice.key then
+            -- The moving head, talking on a loop.
+            model = CreateFrame("PlayerModel", nil, holder)
+            model:SetAllPoints(holder)
+            -- Framed exactly as the speech bar frames a speaker (SpeechFrame.lua ApplySpeakerFace: the owner's zoom,
+            -- 1.35 by default), so the example looks as it will in play (owner, 2026-11-07).
+            model:SetScript("OnModelLoaded", function(self)
+                if addon.ApplySpeakerFace then
+                    addon.ApplySpeakerFace(self)
+                else
+                    pcall(self.SetPortraitZoom, self, 1)
+                    pcall(self.SetCamDistanceScale, self, 1.35)
+                end
+                pcall(self.SetAnimation, self, 60)
+            end)
+            model:SetScript("OnAnimFinished", function(self) pcall(self.SetAnimation, self, 60) end)
+        else
+            button.ring = Disc(holder, "BORDER", 1, 92)
+            button.portrait = Disc(holder, "ARTWORK", 0, 86)
+        end
+        button.tick = button:CreateTexture(nil, "OVERLAY")
+        button.tick:SetSize(22, 22)
+        button.tick:SetPoint("TOPRIGHT", button, "TOPRIGHT", -8, -8)
+        button.tick:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
+        button.pick = Text(button, "GameFontHighlightSmall", 140, "RIGHT")
+        button.pick.ssRole = false
+        button.pick:SetJustifyH("RIGHT")
+        button.pick:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -10, 8)
+        local name = Text(button, "GameFontNormal", CONTENT - 290)
+        name.ssRole = false
+        name:SetPoint("TOPLEFT", button, "TOPLEFT", 254, -14)
+        name:SetText(choice.name)
+        local desc = Text(button, "GameFontHighlightSmall", CONTENT - 290)
+        desc.ssRole = false
+        desc:SetPoint("TOPLEFT", name, "BOTTOMLEFT", 0, -6)
+        desc:SetSpacing(2)
+        desc:SetText(choice.desc)
+        button.nameText, button.descText = name, desc
+        buttons[#buttons + 1] = button
+        previous = button
+    end
 
     page:SetScript("OnShow", function()
-        slider:SetValue(tonumber(DB().subtitleFontSize) or 18)
-        slider.caption:SetText(tostring(tonumber(DB().subtitleFontSize) or 18))
+        Refresh()
+        for _, button in ipairs(buttons) do
+            if button.portrait then pcall(SetPortraitTexture, button.portrait, "player") end
+        end
+        if model then
+            pcall(model.ClearModel, model)
+            pcall(model.SetUnit, model, "player")
+        end
     end)
+    addon.ThemeRegister(function() if page:IsShown() then Refresh() end end)
 end
 
 -- 4. While you play
@@ -691,6 +799,38 @@ local function BuildWhere()
 end
 
 -- 7. Help the project
+-- 7a. Report a voice: where the report sign is, and what clicking it does -- with a real example, the owner's own
+-- screenshot of the menu on Dialogue UI's window (Art/TutorialReport.png, 370x256 on a 512x256 canvas; owner,
+-- 2026-11-07: "show an example of how to report an issue on a played clip").
+local REPORT_PICTURE = "Interface\\AddOns\\" .. addonName .. "\\Art\\TutorialReport.png"
+local ALERT = "|TInterface\\DialogFrame\\UI-Dialog-Icon-AlertNew:15:15|t"
+
+local function BuildReport()
+    local page = NewPage("report")
+    local title = Title(page, "Something sounds wrong? Report it")
+    local body = Body(page, title, "", 8)
+    local W, H = 315, 218            -- the screenshot at 85%, so the page fits above Back / Next
+    local picture = page:CreateTexture(nil, "ARTWORK")
+    picture:SetSize(W, H)
+    picture:SetTexture(REPORT_PICTURE)
+    picture:SetTexCoord(0, 370 / 512, 0, 1)
+    picture:SetPoint("TOPLEFT", body, "BOTTOMLEFT", math.floor((CONTENT - W) / 2), -12)
+    local caption = Text(page, "GameFontDisableSmall", W)
+    caption:SetPoint("TOP", picture, "BOTTOM", 0, -4)
+    caption:SetPoint("LEFT", picture, "LEFT", 0, 0)
+    caption:SetText("The sign on Dialogue UI's window, clicked: the line it is about, and what can be wrong with it.")
+    page:SetScript("OnShow", function()
+        local g = Gold()
+        body:SetText("Every voiced line can be reported from where you hear it. Look for the faint " .. ALERT
+            .. " sign: it lights up when you point at it.\n\n"
+            .. "  " .. g .. "Dialogue UI's window|r: top-right corner.\n"
+            .. "  " .. g .. "The speech bar|r (after you walk away): beside Replay.\n\n"
+            .. "Click it and pick what is wrong: the wrong voice or sex, an audio glitch, a name said wrong, "
+            .. "cut off, or words that do not match. It goes into your captured text, so it reaches us with the next "
+            .. "export (last page).")
+    end)
+end
+
 local function BuildHelp()
     local page = NewPage("help")
     local title = Title(page, "Help SpeakStone grow")
@@ -768,6 +908,22 @@ local function BuildDone()
         if addon.ShowSettings then addon:ShowSettings() end
     end)
     settings:SetPoint("LEFT", guide, "RIGHT", 8, 0)
+
+    -- The reminder that keeps the voices growing (owner, 2026-11-07): what was not voiced is captured as you play,
+    -- and pasting it on the website gets it voiced, usually by the next day.
+    local growHead = Text(page, "GameFontNormal")
+    growHead:SetPoint("TOPLEFT", guide, "BOTTOMLEFT", 0, -26)
+    growHead:SetText("Help fill the gaps")
+    local grow = Text(page, "GameFontHighlight", CONTENT)
+    grow:SetPoint("TOPLEFT", growHead, "BOTTOMLEFT", 0, -4)
+    grow:SetSpacing(3)
+    local export = addon.UIK.Button(page, "Export captured text", 200, 28, function()
+        if addon.ShowHarvestExport then addon.ShowHarvestExport() end
+    end)
+    export:SetPoint("TOPLEFT", grow, "BOTTOMLEFT", 0, -10)
+    local box = CopyBox(page, WEBSITE_URL, CONTENT - 230)
+    box:SetPoint("LEFT", export, "RIGHT", 18, 0)
+
     page:SetScript("OnShow", function()
         local current = ProfileName(DB().profile)
         local chosen = ""
@@ -779,8 +935,16 @@ local function BuildDone()
         end
         body:SetText(chosen
             .. "Talk to a quest giver to hear SpeakStone in action.\n\n"
-            .. "Wrong voice or missing audio? Report it from the settings window (/ss), under General.\n\n"
-            .. "Thanks for helping voice Azeroth. Every capture you submit and every voice you lend makes the next pack better.")
+            .. "Something sounds wrong? Click the faint " .. ALERT .. " sign beside the words.")
+        local waiting = 0
+        if addon.HarvestCounts then
+            local q, _, _, _, l, i = addon.HarvestCounts()
+            waiting = (q or 0) + (l or 0) + (i or 0)
+        end
+        grow:SetText("Quests, NPC greetings and books with no voice yet are saved as you play"
+            .. (waiting > 0 and (" (" .. Good() .. waiting .. " waiting now|r)") or "")
+            .. ". Every so often, export them and paste them on the website: new lines are usually voiced by the "
+            .. "next day, for you and everyone else. Your reports go with them.")
     end)
 end
 
@@ -796,12 +960,14 @@ local function BuildWhatsNew()
     full:SetPoint("TOPLEFT", body, "BOTTOMLEFT", 0, -18)
     page:SetScript("OnShow", function()
         local g = Gold()
-        body:SetText(g .. "The SpeakStone Guide|r is rebuilt: browse every voiced quest by expansion, zone, NPC or title, "
-            .. "with the words of each quest and a read-along.\n\n"
-            .. g .. "Subtitles|r over the world, with the word being read lit, plus the same in Dialogue UI's window and Blizzard's talking heads.\n\n"
-            .. g .. "Three themes, a reading font and your own colours|r, made with readers who find some text harder in mind.\n\n"
-            .. g .. "A tidier settings window|r: Playback, Sound, On screen, Look and General.\n\n"
-            .. "Next: choose how it looks.")
+        body:SetText(g .. "The speaker beside the words|r: a picture in a ring, or a moving head that talks with the "
+            .. "voice. Pick one on the next page.\n\n"
+            .. g .. "Dialogue UI|r: its play button and R key play SpeakStone's voice, and the words follow it.\n\n"
+            .. g .. "Report a line where you hear it|r: a faint " .. ALERT .. " sign on Dialogue UI's window and "
+            .. "the speech bar.\n\n"
+            .. g .. "Reading along keeps time better|r, the text not being read is dimmed, and SpeakStone can match "
+            .. "Dialogue UI's Brown or Dark theme.\n\n"
+            .. "Next: the speaker.")
     end)
 end
 
@@ -875,9 +1041,10 @@ local function Build()
     BuildWelcome()
     BuildListen()
     BuildWords()
-    BuildLook()
+    BuildHead()
     BuildPlay()
     BuildWhere()
+    BuildReport()
     BuildHelp()
     BuildDone()
     BuildWhatsNew()
