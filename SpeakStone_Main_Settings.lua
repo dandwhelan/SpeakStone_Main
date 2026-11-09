@@ -547,7 +547,7 @@ local EXPECTED_PACK_FAMILIES = {
     },
     {
         prefix = "SpeakStone_Forever_",
-        packs = { "Audio_Pack1", "Audio_Pack2", "Chatter" },
+        packs = { "Audio_Pack1", "Audio_Pack2", "Chatter" },   -- Audio_Pack3 is deliberately not listed: no "missing" alert for it (owner 2026-11-09)
     },
 }
 

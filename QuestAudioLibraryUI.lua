@@ -275,13 +275,13 @@ local EXPANSION_NAMES = {
     Chatter = "Chatter and greetings",
 }
 -- WoW Forever has no expansions: its quests sit under the pack they shipped in.
-local FOREVER_PACK_NAMES = { Audio_Pack1 = "Audio Pack 1", Audio_Pack2 = "Audio Pack 2", Chatter = "Chatter and greetings" }
+local FOREVER_PACK_NAMES = { Audio_Pack1 = "Audio Pack 1", Audio_Pack2 = "Audio Pack 2", Audio_Pack3 = "Audio Pack 3", Chatter = "Chatter and greetings" }
 local EXPANSION_ORDER = {
     "Classic", "The Burning Crusade", "Wrath of the Lich King", "Cataclysm", "Mists of Pandaria",
     "Warlords of Draenor", "Legion", "Battle for Azeroth", "Shadowlands", "Dragonflight", "The War Within",
     "Midnight", "Chatter and greetings", "WoW Forever", "Other",
 }
-local FOREVER_ORDER = { "Audio Pack 1", "Audio Pack 2", "Chatter and greetings", "WoW Forever", "Other" }
+local FOREVER_ORDER = { "Audio Pack 1", "Audio Pack 2", "Audio Pack 3", "Chatter and greetings", "WoW Forever", "Other" }
 if addon.IS_FOREVER then EXPANSION_ORDER = FOREVER_ORDER end
 local EXPANSION_RANK = {}
 for rank, name in ipairs(EXPANSION_ORDER) do EXPANSION_RANK[name] = rank end
@@ -1995,7 +1995,7 @@ local function BuildUI()
             local info = self.infoView
             info.title:SetText("SpeakStone Guide")
             Ink(info.title, ui.title)
-            -- Forever has no expansions: its Guide groups by pack (Audio Pack 1, Audio Pack 2, Chatter).
+            -- Forever has no expansions: its Guide groups by pack (Audio Pack 1, 2, 3, Chatter).
             info.body:SetText("Open " .. (addon.IS_FOREVER and "a pack" or "an expansion")
                 .. " on the left and pick a quest, greeting or book to hear it. "
                 .. "The bar under each name shows how much of it you have heard.")
