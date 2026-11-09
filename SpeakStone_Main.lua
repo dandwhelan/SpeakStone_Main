@@ -271,6 +271,8 @@ local defaultSettings = {
     -- A small muted-speaker icon on the quest window when the passage on
     -- screen has no voice yet.
     showMissingVoiceIcon = true,
+    -- A play button beside each quest in Kaliel's Tracker's list (KalielsTracker.lua).
+    showKTTrackerButton = true,
     -- Optional Report button on the speech frame and quest window to flag a
     -- line (wrong voice, audio glitch, pronunciation) into your capture export.
     showReportButton = false,
@@ -1788,6 +1790,8 @@ function PlayQuestAudio(textType, skipDelay, forQuestID)
         questID = forQuestID
     elseif QuestFrame and QuestFrame:IsVisible() then
         questID = GetQuestID()
+    elseif addon.KTDetailsQuestID and addon.KTDetailsQuestID() then
+        questID = addon.KTDetailsQuestID()   -- Kaliel's Tracker's own quest details panel (KalielsTracker.lua)
     elseif QuestMapFrame and QuestMapFrame:IsVisible() then
         questID = C_QuestLog.GetSelectedQuest()
     else
@@ -2855,7 +2859,8 @@ questEventFrame:SetScript("OnEvent", function(self, event, ...)
     end
 
     if textType ~= "" and AutoPlayAllowed("autoPlayQuests") then
-        if QuestMapFrame and QuestMapFrame:IsVisible() and not (QuestFrame and QuestFrame:IsVisible()) then
+        if ((QuestMapFrame and QuestMapFrame:IsVisible()) or (addon.KTDetailsQuestID and addon.KTDetailsQuestID()))
+            and not (QuestFrame and QuestFrame:IsVisible()) then
             if not SpeakStone_MainDB.autoPlayInQuestMap then
                 lastTextType = textType
                 return

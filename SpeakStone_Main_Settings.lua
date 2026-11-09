@@ -125,6 +125,12 @@ local SETTINGS_TABS = {
                         onChange = function() if addon.UpdateMissingVoiceIcons then addon.UpdateMissingVoiceIcons() end end,
                     },
                     {
+                        option = "showKTTrackerButton",
+                        label = "Show play buttons in Kaliel's Tracker",
+                        tooltip = "A small speaker beside each quest in Kaliel's Tracker's quest list: click to read that quest. Greyed out when the quest has no voice yet. Only matters if you use Kaliel's Tracker.",
+                        onChange = function() if addon.RefreshKTTracker then addon.RefreshKTTracker() end end,
+                    },
+                    {
                         option = "showReportButton",
                         label = "Show the Report button on the quest window",
                         tooltip = "Adds a Report button beside Read Quest on Blizzard's quest window so you can flag a voice line (wrong voice, audio glitch, pronunciation) directly into your capture export. The speech bar always has its own: the faint warning sign beside Replay.",
