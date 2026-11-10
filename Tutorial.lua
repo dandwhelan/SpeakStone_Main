@@ -393,6 +393,7 @@ local function BuildWelcome()
         end
         -- This page covers the one-off audio-pack popup.
         DB().audioPackPromptShown = true
+        DB().audioPack3PromptShown = true
     end)
 end
 

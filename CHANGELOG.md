@@ -1,5 +1,11 @@
 # Changelog
 
+## 5.0.5 (November 2026)
+
+### Highlights
+- **WoW Forever Audio Pack 3 Support**: Added detection and missing-pack notifications for SpeakStone Forever Audio Pack 3. Players missing Audio Pack 3 are notified upon login with a direct link to install it from CurseForge.
+- **Voice Packs Dashboard & Guide**: The SpeakStone Guide Voice Packs tab and Settings dashboard now track all three Forever Audio Packs and Chatter.
+
 ## 5.0.2 (November 2026)
 
 ### Highlights

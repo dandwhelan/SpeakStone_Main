@@ -1172,13 +1172,12 @@ end
 
 local AUDIO_PACK_PROMPT_TEXT = "SpeakStone works better with the audio packs installed.\n\n"
     .. "Please look on CurseForge to get the Audio packs. They are always being updated and improved."
-    .. "\n\n"
-    .. "Please bear with me while CurseForge approves the audio pack addons."
-addon.AUDIO_PACK_EXTRA_NOTE = "\n\nPlease bear with me while CurseForge approves the audio pack addons."
+addon.AUDIO_PACK_EXTRA_NOTE = ""
 
 -- WoW cannot open a browser, so the link sits in a pre-selected edit box
 -- the player can Ctrl+C.
 local CURSEFORGE_URL = "https://www.curseforge.com/members/dandwhelan/projects"
+local FOREVER_PACK3_URL = "https://www.curseforge.com/wow/addons/speakstone-forever-audio-pack-3"
 
 StaticPopupDialogs["SPEAKSTONE_AUDIO_PACK_PROMPT"] = {
     text = AUDIO_PACK_PROMPT_TEXT .. "\n\nPress Ctrl+C to copy the link:",
@@ -1205,15 +1204,66 @@ StaticPopupDialogs["SPEAKSTONE_AUDIO_PACK_PROMPT"] = {
     preferredIndex = 3,
 }
 
+local NEW_AUDIO_PACK_PROMPT_TEXT = "A new audio pack is available!\n\n"
+    .. "SpeakStone Forever Quest Voices - Audio Pack 3 has been released. "
+    .. "Please install it from CurseForge to hear all the latest voiced quests."
+
+StaticPopupDialogs["SPEAKSTONE_NEW_AUDIO_PACK_PROMPT"] = {
+    text = NEW_AUDIO_PACK_PROMPT_TEXT .. "\n\nPress Ctrl+C to copy the link:",
+    button1 = OKAY,
+    hasEditBox = true,
+    editBoxWidth = 320,
+    OnShow = function(self)
+        local editBox = self.editBox or self.EditBox or _G[self:GetName() .. "EditBox"]
+        if editBox then
+            editBox:SetText(FOREVER_PACK3_URL)
+            editBox:HighlightText()
+            editBox:SetFocus()
+        end
+    end,
+    EditBoxOnEnterPressed = function(editBox)
+        editBox:GetParent():Hide()
+    end,
+    EditBoxOnEscapePressed = function(editBox)
+        editBox:GetParent():Hide()
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    preferredIndex = 3,
+}
+
 -- Shown once ever: the flag is saved the first time the prompt appears.
 function PromptForAudioPacksIfMissing()
-    if HasAnyAudioPack() or not SpeakStone_MainDB or SpeakStone_MainDB.audioPackPromptShown then
+    if not SpeakStone_MainDB then
         return
     end
-    SpeakStone_MainDB.audioPackPromptShown = true
-    print("|cff33ff99SpeakStone:|r " .. AUDIO_PACK_PROMPT_TEXT:gsub("\n\n", " "))
-    print("|cff33ff99SpeakStone:|r " .. CURSEFORGE_URL)
-    StaticPopup_Show("SPEAKSTONE_AUDIO_PACK_PROMPT")
+
+    -- Case 1: No audio packs installed at all
+    if not HasAnyAudioPack() then
+        if not SpeakStone_MainDB.audioPackPromptShown then
+            SpeakStone_MainDB.audioPackPromptShown = true
+            print("|cff33ff99SpeakStone:|r " .. AUDIO_PACK_PROMPT_TEXT:gsub("\n\n", " "))
+            print("|cff33ff99SpeakStone:|r " .. CURSEFORGE_URL)
+            StaticPopup_Show("SPEAKSTONE_AUDIO_PACK_PROMPT")
+        end
+        return
+    end
+
+    -- Case 2: Forever player is missing Audio Pack 3
+    if addon.IS_FOREVER then
+        local hasPack3 = addon.soundSources and addon.soundSources["SpeakStone_Forever_Audio_Pack3"] ~= nil
+        if not hasPack3 then
+            if not SpeakStone_MainDB.audioPack3PromptShown then
+                SpeakStone_MainDB.audioPack3PromptShown = true
+                print("|cff33ff99SpeakStone:|r " .. NEW_AUDIO_PACK_PROMPT_TEXT:gsub("\n\n", " "))
+                print("|cff33ff99SpeakStone:|r " .. FOREVER_PACK3_URL)
+                StaticPopup_Show("SPEAKSTONE_NEW_AUDIO_PACK_PROMPT")
+            end
+        else
+            SpeakStone_MainDB.audioPack3PromptShown = true
+        end
+    end
 end
 
 -- Tell the speech frame (SpeechFrame.lua) about a clip. An error in there
