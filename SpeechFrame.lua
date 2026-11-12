@@ -24,8 +24,9 @@ local SIZES = {
     { key = "xlarge", label = "Extra large", scale = 1.5 },
 }
 
-local WIDTH, HEIGHT = 660, 130
-local PORTRAIT = 72
+-- A little bigger than the first cut (660 x 130, 72 portrait; owner, 2026-11-12: "a little bit bigger").
+local WIDTH, HEIGHT = 720, 146
+local PORTRAIT = 84
 local TEXT_LINES = 4
 -- "Show all the text": the most lines the frame grows to before it scrolls.
 local MAX_FIT_LINES = 24
@@ -148,41 +149,122 @@ local function ApplyPosition()
     frame:SetPoint(pos[1], UIParent, pos[2], pos[3] / scale, pos[4] / scale)
 end
 
--- The bar's buttons take the theme's colours (UIKit, as the settings window and the Guide) and stay faint until the
--- mouse is on them, so the bar sits in the game instead of in front of it (owner, 2026-11-07: "better for immersion,
--- also make them faint"). Blizzard's red buttons were used before.
-local BUTTON_FAINT = 0.55
+-- The bar's controls are bare glyphs, not labelled buttons (owner, 2026-11-12: the buttons were "way too big" and
+-- too close together; "a bit more translucent and literally just icons"). Each is drawn in the theme's ink, faint
+-- until the mouse is on it, with a tooltip saying what it does.
+-- The glyphs are drawn here from flat colour shapes -- the usual media symbols: play, pause bars, stop square,
+-- back-to-start (bar + left triangle) for Replay, skip (right triangle + bar) for Next -- so they look the same in
+-- every client and theme. The game's stopwatch art was tried first and showed as boxed buttons that did not read
+-- (owner's screenshot, 2026-11-12: "the icons are hard to understand").
+local ICON_SIZE = 18
+local ICON_GAP = 12
+local ICON_FAINT = 0.45
 
-local function MakeButton(parent, label, width, onClick, tooltip)
-    local UIK = addon.UIK
-    local button
-    if UIK and UIK.Button then
-        button = UIK.Button(parent, label, width, 20, onClick)
-        button.label:SetFontObject("GameFontNormalSmall")
-        button.Paint()            -- SetFontObject resets the label's colour
-        button:SetAlpha(BUTTON_FAINT)
-        -- Hooked: the kit's own OnEnter / OnLeave paint the hover.
-        button:HookScript("OnEnter", function(self) self:SetAlpha(1) end)
-        button:HookScript("OnLeave", function(self) self:SetAlpha(BUTTON_FAINT) end)
-    else
-        button = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-        button:SetSize(width, 20)
-        button:SetText(label)
-        button:SetNormalFontObject("GameFontNormalSmall")
-        button:SetHighlightFontObject("GameFontHighlightSmall")
-        button:SetDisabledFontObject("GameFontDisableSmall")
-        button:SetScript("OnClick", onClick)
+local iconButtons = {}
+
+local function InkIcon(button)
+    local theme = addon.Theme and addon.Theme()
+    local ink = theme and theme.text or { 1, 1, 1 }
+    for _, tex in ipairs(button.inked) do
+        tex:SetColorTexture(ink[1], ink[2], ink[3], 1)
     end
-    if tooltip then
-        button:HookScript("OnEnter", function(self)
+end
+
+-- A rectangle centred x across from the button's middle.
+local function Rect(button, parts, width, height, x)
+    local tex = button:CreateTexture(nil, "ARTWORK")
+    tex:SetSize(width, height)
+    tex:SetPoint("CENTER", button, "CENTER", x or 0, 0)
+    button.inked[#button.inked + 1] = tex
+    parts[#parts + 1] = tex
+    return tex
+end
+
+-- A triangle as stacked one-pixel rows (each a little taller than its step, so no gaps at odd UI scales). Its flat
+-- side stands at edgeX from the button's middle; it points "right" or "left" from there.
+local function Triangle(button, parts, pointing, height, width, edgeX)
+    local half = height / 2
+    for row = 0, height - 1 do
+        local mid = half - row - 0.5
+        local w = math.max(1, width * (1 - math.abs(mid) / half))
+        local tex = button:CreateTexture(nil, "ARTWORK")
+        tex:SetSize(w, 1.5)
+        if pointing == "right" then
+            tex:SetPoint("LEFT", button, "CENTER", edgeX, mid)
+        else
+            tex:SetPoint("RIGHT", button, "CENTER", edgeX, mid)
+        end
+        button.inked[#button.inked + 1] = tex
+        parts[#parts + 1] = tex
+    end
+end
+
+local GLYPHS = {
+    play = function(b, p) Triangle(b, p, "right", 12, 10, -4) end,
+    pause = function(b, p) Rect(b, p, 3, 11, -3); Rect(b, p, 3, 11, 3) end,
+    stop = function(b, p) Rect(b, p, 10, 10, 0) end,
+    replay = function(b, p) Rect(b, p, 2, 11, -5); Triangle(b, p, "left", 11, 9, 6) end,
+    next = function(b, p) Triangle(b, p, "right", 11, 9, -6); Rect(b, p, 2, 11, 5) end,
+}
+addon.SpeechFrameGlyphs = GLYPHS
+
+local function IconButton(parent, glyph, onClick, tooltip)
+    local button = CreateFrame("Button", nil, parent)
+    button:SetSize(ICON_SIZE, ICON_SIZE)
+    button.inked = {}
+    button.glyphParts = {}
+    -- Shows one glyph, drawing it the first time.
+    function button:SetGlyph(name)
+        if self.glyph == name then return end
+        self.glyph = name
+        if not self.glyphParts[name] and GLYPHS[name] then
+            local parts = {}
+            GLYPHS[name](self, parts)
+            self.glyphParts[name] = parts
+            InkIcon(self)
+        end
+        for key, parts in pairs(self.glyphParts) do
+            for _, tex in ipairs(parts) do
+                tex:SetShown(key == name)
+            end
+        end
+    end
+    if glyph then
+        button:SetGlyph(glyph)
+    end
+    button:SetAlpha(ICON_FAINT)
+    button:SetScript("OnEnter", function(self)
+        self:SetAlpha(1)
+        if self.tooltip then
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:AddLine(tooltip, 1, 1, 1, true)
+            GameTooltip:AddLine(self.tooltip, 1, 1, 1, true)
             GameTooltip:Show()
-        end)
-        button:HookScript("OnLeave", function() GameTooltip:Hide() end)
-    end
+        end
+    end)
+    button:SetScript("OnLeave", function(self)
+        self:SetAlpha(ICON_FAINT)
+        GameTooltip:Hide()
+    end)
+    button:SetScript("OnClick", onClick)
+    button.tooltip = tooltip
+    iconButtons[#iconButtons + 1] = button
     return button
 end
+
+-- What the line is, in the bottom left corner, faint (owner, 2026-11-12): the game's own quest marks, so a player
+-- reads them at a glance -- ! a new quest, grey ? one still in progress, gold ? one being handed in -- a speech bubble
+-- for gossip and an open book for books. The preview shows the ! as a sample; zone lore shows nothing.
+-- 0.75: with no label the mark carries the meaning alone, and the grey ? all but vanished on parchment at 0.6
+-- (owner's screenshot, 2026-11-12).
+local KIND_FAINT = 0.75
+local KINDS = {
+    description = { tex = "Interface\\GossipFrame\\AvailableQuestIcon", tip = "New quest" },
+    progress = { tex = "Interface\\GossipFrame\\ActiveQuestIcon", grey = true, tip = "Quest in progress" },
+    completion = { tex = "Interface\\GossipFrame\\ActiveQuestIcon", tip = "Quest complete" },
+    gossip = { tex = "Interface\\GossipFrame\\GossipGossipIcon", tip = "Gossip" },
+    item = { tex = "Interface\\GossipFrame\\TrainerGossipIcon", tip = "Book" },
+}
+addon.SpeechFrameKinds = KINDS
 
 local Pause, Resume, StopNarration, Replay, Dismiss, OpenMenu
 
@@ -273,14 +355,23 @@ local function Build()
         if frame.ApplyFace then frame.ApplyFace(self) end
     end)
 
-    -- A themed X, faint like the other buttons (was Blizzard's red-and-gold close button).
-    frame.close = MakeButton(frame, "X", 20, function() Dismiss() end)
-    frame.close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -6, -6)
+    -- Close: a bare X in the theme's ink, faint like the other icons (was a boxed "X" button, and before that
+    -- Blizzard's red-and-gold one).
+    frame.close = IconButton(frame, nil, function() Dismiss() end, "Close. The voice carries on.")
+    frame.close:SetSize(14, 14)
+    frame.close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -10, -10)
+    local crossParts = {}
+    for _, angle in ipairs({ 45, -45 }) do
+        -- 3 px, to match the weight of the solid play / pause / stop shapes.
+        local bar = Rect(frame.close, crossParts, 15, 3, 0)
+        if bar.SetRotation then bar:SetRotation(math.rad(angle)) end
+    end
+    InkIcon(frame.close)
 
     -- Controls, right to left from the close button.
     local controls = CreateFrame("Frame", nil, frame)
-    controls:SetSize(1, 20)
-    controls:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -28, -8)
+    controls:SetSize(1, ICON_SIZE)
+    controls:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -36, -8)
     frame.controls = controls
     controls.gear = CreateFrame("Button", nil, controls)
     controls.gear:SetSize(18, 18)
@@ -288,13 +379,25 @@ local function Build()
     controls.gear:SetNormalTexture("Interface\\WorldMap\\Gear_64Grey")
     controls.gear:SetHighlightTexture("Interface\\WorldMap\\Gear_64Grey", "ADD")
     controls.gear:SetScript("OnClick", function(self) OpenMenu(self) end)
+    -- Faint and grey like the other icons until the mouse is on it (owner, 2026-11-12: "a little more
+    -- translucent and faded").
+    local function QuietGear(self, on)
+        local tex = self:GetNormalTexture()
+        if tex then tex:SetDesaturated(not on) end
+        self:SetAlpha(on and 1 or ICON_FAINT * 0.8)
+    end
+    QuietGear(controls.gear, false)
     controls.gear:SetScript("OnEnter", function(self)
+        QuietGear(self, true)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:AddLine("Size and position", 1, 1, 1)
         GameTooltip:AddLine("Also right-click the frame.", 0.7, 0.7, 0.7)
         GameTooltip:Show()
     end)
-    controls.gear:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    controls.gear:SetScript("OnLeave", function(self)
+        QuietGear(self, false)
+        GameTooltip:Hide()
+    end)
     controls.time = controls:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     controls.time:SetPoint("RIGHT", controls.gear, "LEFT", -8, 0)
     -- Report: a faded warning sign that opens the report menu for the line
@@ -327,20 +430,21 @@ local function Build()
         Quiet(self, false)
         GameTooltip:Hide()
     end)
-    controls.replay = MakeButton(controls, "Replay", 56, function() Replay() end, "Hear the line again from the start.")
-    controls.replay:SetPoint("RIGHT", controls.star, "LEFT", -6, 0)
-    controls.stop = MakeButton(controls, "Stop", 46, function() StopNarration() end, "Stop the narration and close.")
-    controls.stop:SetPoint("RIGHT", controls.replay, "LEFT", -4, 0)
-    controls.pause = MakeButton(controls, "Pause", 60, function()
+    -- Icons, spaced apart (owner, 2026-11-12), in the old order: Next, Pause, Stop, Replay.
+    controls.replay = IconButton(controls, "replay", function() Replay() end, "Replay: hear the line again from the start.")
+    controls.replay:SetPoint("RIGHT", controls.star, "LEFT", -ICON_GAP, 0)
+    controls.stop = IconButton(controls, "stop", function() StopNarration() end, "Stop the narration and close.")
+    controls.stop:SetPoint("RIGHT", controls.replay, "LEFT", -ICON_GAP, 0)
+    controls.pause = IconButton(controls, "pause", function()
         if paused then Resume() else Pause() end
-    end, "Pause the narration. The game cannot pick a clip up part-way, so Resume starts the line again.")
-    controls.pause:SetPoint("RIGHT", controls.stop, "LEFT", -4, 0)
-    controls.next = MakeButton(controls, "Next", 50, function()
+    end)
+    controls.pause:SetPoint("RIGHT", controls.stop, "LEFT", -ICON_GAP, 0)
+    controls.next = IconButton(controls, "next", function()
         paused = false
         lingerUntil = nil
         if addon.PlayNextQueued then addon.PlayNextQueued() end
-    end, "Skip to the next queued quest.")
-    controls.next:SetPoint("RIGHT", controls.pause, "LEFT", -4, 0)
+    end, "Next: skip to the next queued quest.")
+    controls.next:SetPoint("RIGHT", controls.pause, "LEFT", -ICON_GAP, 0)
     controls.next:Hide()
     -- No Report button here any more: the warning sign beside Replay does the same (owner, 2026-11-07: "we have
     -- two"). showReportButton now only puts one on Blizzard's quest window.
@@ -350,9 +454,16 @@ local function Build()
     -- cut short by Pause/Stop/Replay/Next.
     frame.name:SetPoint("LEFT", frame.portraitArea, "RIGHT", 14, 0)
     frame.name:SetPoint("TOP", frame, "TOP", 0, -32)
-    frame.name:SetPoint("RIGHT", frame, "RIGHT", -16, 0)
     frame.name:SetJustifyH("LEFT")
     frame.name:SetWordWrap(false)
+    -- The quest title (or a book's page) on its own, smaller and in the theme's quieter colour, sitting on the
+    -- name's baseline: one string in two colours at one size made the NPC and the quest hard to tell apart
+    -- (owner, 2026-11-12). It takes what width the name leaves and is cut short first.
+    frame.subtitle = frame:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    frame.subtitle:SetPoint("BOTTOMLEFT", frame.name, "BOTTOMRIGHT", 10, 1)
+    frame.subtitle:SetPoint("RIGHT", frame, "RIGHT", -16, 0)
+    frame.subtitle:SetJustifyH("LEFT")
+    frame.subtitle:SetWordWrap(false)
 
     -- The text, whole, in a mouse-wheel scroll area TEXT_LINES tall.
     local textFont = CreateFont("SpeakStoneSpeechTextFont")
@@ -402,6 +513,31 @@ local function Build()
     frame.track = frame.progress:CreateTexture(nil, "BACKGROUND")
     frame.track:SetAllPoints()
 
+    -- What kind of line this is: the mark alone, faint in the bottom left corner under the portrait (KINDS;
+    -- owner, 2026-11-12: moved from the bottom right, then "remove the text and just use the icons"). What it
+    -- means is in its tooltip.
+    frame.kind = CreateFrame("Frame", nil, frame)
+    frame.kind:SetSize(16, 16)
+    -- On the progress bar's row (it sat ~10 px below it), at the frame's left edge like the portrait.
+    frame.kind:SetPoint("RIGHT", frame.progress, "LEFT", -(14 + PORTRAIT - 16), 0)
+    frame.kind:SetAlpha(KIND_FAINT)
+    frame.kind:EnableMouse(true)
+    frame.kind.icon = frame.kind:CreateTexture(nil, "ARTWORK")
+    frame.kind.icon:SetAllPoints()
+    frame.kind:SetScript("OnEnter", function(self)
+        self:SetAlpha(1)
+        if self.tip then
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:AddLine(self.tip, 1, 1, 1)
+            GameTooltip:Show()
+        end
+    end)
+    frame.kind:SetScript("OnLeave", function(self)
+        self:SetAlpha(KIND_FAINT)
+        GameTooltip:Hide()
+    end)
+    frame.kind:Hide()
+
     ApplyPosition()
     addon.SpeechFramePaint()
 end
@@ -446,6 +582,8 @@ function addon.SpeechFramePaint()
     frame.textFont:SetShadowColor(0, 0, 0, theme.light and 0 or 1)
     frame.textFont:SetShadowOffset(theme.light and 0 or 1, theme.light and 0 or -1)
     addon.ThemeShadow(frame.name)
+    addon.ThemeShadow(frame.subtitle)
+    frame.subtitle:SetTextColor(unpack(theme.sub))
     addon.ThemeShadow(frame.controls.time)
     frame.controls.time:SetTextColor(unpack(theme.sub))
     frame.progress:SetStatusBarColor(theme.accent[1], theme.accent[2], theme.accent[3], 0.9)
@@ -453,7 +591,10 @@ function addon.SpeechFramePaint()
     -- The still picture's thin ring and its soft halo, in the theme's accent.
     frame.ring:SetColorTexture(theme.accent[1], theme.accent[2], theme.accent[3], 1)
     frame.ringHalo:SetColorTexture(theme.accent[1], theme.accent[2], theme.accent[3], 0.25)
-    frame.filledFor = nil          -- the header carries the theme's colour for the title
+    for _, button in ipairs(iconButtons) do
+        InkIcon(button)
+    end
+    frame.filledFor = nil         -- the header carries the theme's colour for the title
 end
 if addon.ThemeRegister then
     addon.ThemeRegister(function() addon.SpeechFramePaint() end)
@@ -693,18 +834,20 @@ function addon.SpeechFrameRefreshPortrait()
     end
 end
 
-local function HeaderText(sd)
+-- Who is speaking, and the quest (a book: its title, then the page), shown apart.
+local function HeaderParts(sd)
     local name = Readable(sd.npcName)
     local title = Readable(sd.title)
     if sd.textType == "item" then
         name, title = title or "Book", sd.page and ("Page " .. sd.page) or nil
     end
     name = name or title or "SpeakStone"
-    if title and title ~= name then
-        return name .. "  " .. ((addon.Theme and addon.Theme().subCode) or "|cff9d9d9d") .. title .. "|r"
+    if title == name then
+        title = nil
     end
-    return name
+    return name, title
 end
+addon.SpeechFrameHeaderParts = HeaderParts
 
 -- The report sign (it took the favourite star's place and name): shown for a
 -- real clip, hidden for the preview, which has nothing to report.
@@ -715,7 +858,13 @@ end
 
 -- Text and header, once per clip.
 local function Fill(sd)
-    frame.name:SetText(HeaderText(sd))
+    local name, title = HeaderParts(sd)
+    frame.name:SetText(name)
+    frame.subtitle:SetText(title or "")
+    -- The name keeps at most 60% of the row, so a long name still leaves the quest some room.
+    local row = WIDTH - PORTRAIT - 12 - 14 - 16
+    local natural = frame.name:GetStringWidth() or 0
+    frame.name:SetWidth(natural > 0 and math.min(natural + 2, row * (title and 0.6 or 1)) or row * 0.6)
     local text = Readable(sd.text)
     if text then
         text = text:gsub("\r", ""):gsub("\n%s*\n+", "\n\n")
@@ -742,6 +891,15 @@ local function Fill(sd)
     frame.scroll:SetVerticalScroll(0)
     frame.filledFor = sd
     addon.SpeechFrameRefreshStar()
+    local kind = KINDS[sd.preview and "description" or sd.textType or ""]
+    if kind then
+        frame.kind.icon:SetTexture(kind.tex)
+        frame.kind.icon:SetDesaturated(kind.grey == true)
+        frame.kind.tip = kind.tip
+        frame.kind:Show()
+    else
+        frame.kind:Hide()
+    end
 end
 
 local function Refresh()
@@ -794,7 +952,9 @@ local function Refresh()
         frame.progress:SetValue(0)
         frame.controls.time:SetText(Clock(elapsed))
     end
-    frame.controls.pause:SetText(paused and "Resume" or "Pause")
+    frame.controls.pause:SetGlyph(paused and "play" or "pause")
+    frame.controls.pause.tooltip = paused and "Resume: the game cannot pick a clip up part-way, so the line starts again."
+        or "Pause the narration. The game cannot pick a clip up part-way, so Resume starts the line again."
     -- Queue position ("1/2") and Next, only while something is queued.
     local total = addon.queueTotal or 0
     if total > 1 and not sd.preview then

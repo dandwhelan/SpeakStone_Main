@@ -1,5 +1,14 @@
 # Changelog
 
+## 5.0.6 (November 2026)
+
+### Highlights
+- **A cleaner speech bar**: the bar is a little bigger, and its Next, Pause, Stop and Replay buttons are now small, faint icons (play, pause, stop, back-to-start, skip) spaced further apart. They light up when you point at them, and each has a tooltip. The settings gear is faded to match.
+- **See what kind of line is playing**: a faint mark in the bottom left of the speech bar shows whether it is a new quest (!), a quest in progress (grey ?), a quest being handed in (gold ?), gossip (speech bubble) or a book (book). Point at it for a reminder.
+- **Speaker and quest are easier to tell apart**: the quest title now sits beside the speaker's name in smaller, lighter text.
+
+Unofficial; not affiliated with Blizzard Entertainment. The voices are similar to the in-game characters.
+
 ## 5.0.5 (November 2026)
 
 ### Highlights
