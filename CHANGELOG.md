@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.0.7
+
+- Fixed: on some installs the add-on found no voice packs and the first-start setup never opened. A bundled library was missing after installing; it now ships under a new name, and if a library is ever missing again only the minimap button is lost.
+
 ## 5.0.6 (November 2026)
 
 ### Highlights

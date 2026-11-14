@@ -5,8 +5,11 @@ do
     local interfaceVersion = select(4, GetBuildInfo())
     addon.IS_FOREVER = type(interfaceVersion) == "number" and interfaceVersion >= 16000 and interfaceVersion <= 16999
 end
-local LDB = LibStub("LibDataBroker-1.1")
-local icon = LibStub("LibDBIcon-1.0")
+-- Silent lookups: only the minimap button needs these. On 2026-11-14 a player's CurseForge-app install arrived
+-- without the bundled CallbackHandler files, so LibDataBroker failed to load and a plain LibStub() call here threw,
+-- which ended this file at line 8: no pack registration, no tutorial. A missing library now costs only the button.
+local LDB = LibStub("LibDataBroker-1.1", true)
+local icon = LibStub("LibDBIcon-1.0", true)
 
 -- Ogg first: new content ships as Ogg Vorbis, and where both exist the
 -- smaller file is preferred.
@@ -414,7 +417,7 @@ end
 addon.EnsureDB = InitializeAddonDB
 
 -- Create the LDB launcher
-local speakStoneLauncher = LDB:NewDataObject("SpeakStone_Main", {
+local speakStoneLauncher = LDB and LDB:NewDataObject("SpeakStone_Main", {
     type = "launcher",
     -- Named with the extension on purpose. An extensionless texture path
     -- resolves to .blp first, and the old cs_icon.blp has been removed in
@@ -445,6 +448,7 @@ local speakStoneLauncher = LDB:NewDataObject("SpeakStone_Main", {
 })
 
 local function UpdateMinimapButtonVisibility()
+    if not icon then return end
     -- LibDBIcon reads its own hide flag out of this table on register and on
     -- profile refresh. Setting only showMinimapButton left the two disagreeing,
     -- so the button came back on the next login after being hidden.
@@ -486,7 +490,7 @@ loadingFrame:SetScript("OnEvent", function(self, event, loadedAddonName)
         InitializeAddonDB()
         RestoreStrandedDialogVolume()
         if addon.RestoreStrandedDuckVolumes then addon.RestoreStrandedDuckVolumes() end
-        if speakStoneLauncher then
+        if speakStoneLauncher and icon then
             icon:Register("SpeakStone_Main", speakStoneLauncher, {
                 hide = not SpeakStone_MainDB.showMinimapButton,
                 position = SpeakStone_MainDB.minimapIconPosition
@@ -507,7 +511,8 @@ loadingFrame:SetScript("OnEvent", function(self, event, loadedAddonName)
                 end
             end)
         else
-            print("Error: speakStoneLauncher is nil")
+            print("|cff33ff99SpeakStone:|r the minimap button is unavailable because a bundled library did not load. "
+                .. "Everything else works; reinstalling SpeakStone restores the button.")
         end
         loadingFrame:UnregisterEvent("ADDON_LOADED")
     elseif event == "PLAYER_LOGIN" then

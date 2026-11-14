@@ -5,14 +5,14 @@
 ## Author: Nerf, SpeakStone@beanw.co.uk
 ## X-Wago-ID: 4N2kQZ6L
 ## X-Curse-Project-ID: 1708764
-## Version: 5.0.6
+## Version: 5.0.7
 ## SavedVariables: SpeakStone_MainDB
 
 ## OptionalDeps: SpeakStone_TWW_EN, SpeakStone_TWW_FR, !KalielsTracker
 
 # Libraries
 Libs\LibStub\LibStub.lua
-Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
+Libs\CallbackHandler\CallbackHandler.lua
 Libs\LibDataBroker-1.1\LibDataBroker-1.1.lua
 Libs\LibDBIcon-1.0\LibDBIcon-1.0.lua
 
