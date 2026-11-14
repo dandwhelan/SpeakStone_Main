@@ -1025,9 +1025,9 @@ local function Build()
         -- lost it to whatever hid it at login. UIParent hiding (Alt+Z, a cinematic) fires this too; not a close.
         if DB() and UIParent:IsShown() then DB().tutorialVersion = TUTORIAL_VERSION end
         if testHandle then StopSound(testHandle) testHandle = nil end
-        -- Closed without picking a profile: a fresh install gets the recommended one; an existing player
-        -- keeps the settings they already had.
-        if DB() and not DB().profile and addon.isFreshInstall then ApplyProfile("full") end
+        -- Closed without picking a profile: a fresh install gets the recommended set (the same as "I don't care,
+        -- let me play"); an existing player keeps the settings they already had.
+        if DB() and not DB().profile and addon.isFreshInstall then ApplyDefaults() end
     end)
 
     frame.back = addon.UIK.Button(frame, "Back", 100, 28, function() ShowPage(pageIndex - 1) end)

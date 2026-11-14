@@ -238,8 +238,8 @@ local defaultSettings = {
     -- Subtitle bar: its own background and text colours (accessibility); "theme" follows the theme.
     subtitleBack = "theme",
     subtitleText = "theme",
-    -- Blizzard's talking head: light the word being read (DialogueSync.lua).
-    talkingHeadHighlight = false,
+    -- Blizzard's talking head: light the word being read (DialogueSync.lua). WoW Forever has no talking heads.
+    talkingHeadHighlight = not addon.IS_FOREVER,
     -- A quest line that comes up in combat waits and plays when combat ends,
     -- instead of talking over the fight (or, with pauseAutoPlayInCombat, being
     -- dropped).
@@ -250,11 +250,14 @@ local defaultSettings = {
     subtitleLocked = false,
     -- Grow the frame to show the whole text (up to SpeechFrame's cap)
     -- instead of a four-line scroll area.
-    speechFitText = false,
-    -- Off by default: a new quest line waits its turn behind the one being
-    -- read instead of cutting it off. The speech frame shows "1/2" and a
-    -- Next button.
-    queueQuestSpeech = false,
+    -- speechFitText, queueQuestSpeech and talkingHeadHighlight match the tutorial's "I don't care, let me play" choices
+    -- (owner, 2026-11-14), so a new player who never sees or never finishes the tutorial gets the recommended set.
+    -- Defaults only fill unset keys: existing players keep what they have.
+    speechFitText = true,
+    -- On by default (2026-11-14, was off): a new quest line waits its turn behind
+    -- the one being read instead of cutting it off. The speech frame shows "1/2"
+    -- and a Next button.
+    queueQuestSpeech = true,
     -- Off by default: accepting a quest is the player's decision. Shift held
     -- while the quest opens skips it for that quest.
     autoAcceptQuests = false,

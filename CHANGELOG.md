@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.0.8
+
+- New installs start with the recommended settings (the whole passage in the speech box, quests queued instead of cutting each other off), even if the first-start setup is closed early or never opens. Existing settings are not changed.
+
 ## 5.0.7
 
 - Fixed: on some installs the add-on found no voice packs and the first-start setup never opened. A bundled library was missing after installing; it now ships under a new name, and if a library is ever missing again only the minimap button is lost.
