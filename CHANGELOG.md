@@ -1,5 +1,22 @@
 # Changelog
 
+## 6.0.0 (November 2026)
+
+**6.0.0 is a big one: the voices have been overhauled, and characters now speak with emotion.**
+
+### Highlights
+- **New voices with emotion**: Thousands of lines re-recorded. Characters now sound angry, sad, afraid, happy or surprised where the line calls for it, sentence by sentence, instead of reading everything in one tone.
+- **Stage directions acted, not read out**: Lines such as *<Grumbar growls.>* or *<She sobs.>* are now performed with a sound instead of being spoken as words.
+- **Natural pauses**: Longer breaths between sentences, and quick back-to-back short sentences keep their pace.
+- **More characters sound like their race**: hundreds of lines re-recorded so the voice matches the character.
+- **Read-along keeps time**: the highlighted sentence follows the voice more closely, including in Dialogue UI.
+- **"Stop narration when the window closes" now works for quests and books**: with the option on, closing the window stops the line and clears the queue. With it off (the default), lines still finish.
+
+### Heads up
+This is a large change, so there may be bugs: a line in the wrong voice, a missing clip, or an odd pause. Please report anything you hear at speakstone.beanw.co.uk or on our GitHub issues page and we will fix it. Update your voice packs to 6.0.0 as well to hear the new voices.
+
+Unofficial; not affiliated with Blizzard Entertainment. The voices are similar to the in-game characters.
+
 ## 5.0.8
 
 - New installs start with the recommended settings (the whole passage in the speech box, quests queued instead of cutting each other off), even if the first-start setup is closed early or never opens. Existing settings are not changed.

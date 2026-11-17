@@ -21,7 +21,7 @@ local addonName, addon = ...
 --       play. Ignored: SpeakStone's own autoplay already started or scheduled
 --       the line, with all its settings (delay, skip heard, combat, NPC voice).
 --     * the window closing (its "stop when leaving", on by default). Ignored:
---       stopDialogueOnClose / keepReadingQuests decide that, as without it.
+--       stopDialogueOnClose decides that (and keepReadingQuests when it is off).
 --     * a book opening (BookUI.BookCached, whatever the settings). Ignored:
 --       our book narration starts at that very moment and was cut off.
 --     * a click on its play button while our line plays. Acted on.

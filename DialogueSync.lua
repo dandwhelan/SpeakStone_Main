@@ -96,10 +96,13 @@ local function Bind(sd)
     end
     -- A clip whose narrator reads the stage directions (addon.ClipNarrated): their paragraphs are read too.
     local narrated = addon.ClipNarrated and addon.ClipNarrated(sd.soundFile)
-    local found = {}
+    local found, missed = {}, {}
     for _, fs in ui.fontStringPool:EnumerateActive() do
         local orig = fs:GetText()
         local t = Norm(orig)
+        if t ~= "" and fs:IsShown() and not spoken:find(t, 1, true) then
+            missed[#missed + 1] = t   -- /ssdebug only
+        end
         if t ~= "" and fs:IsShown() and spoken:find(t, 1, true) then
             local direction = t:match("^<.*>$") and not narrated   -- on screen but not read
             local linked = orig:find("|H", 1, true)       -- never split a link
@@ -122,18 +125,45 @@ local function Bind(sd)
         return nil
     end
     table.sort(found, function(a, b) return a.top > b.top end)
-    local words = {}
-    for _, para in ipairs(found) do
-        para.a = #words + 1
-        for _, word in ipairs(para.words) do
-            words[#words + 1] = word
-        end
-        para.b = #words
-    end
+    -- Time against the WHOLE spoken text, not just the paragraphs found on
+    -- screen (2026-11-16, owner saw the highlight drift in Forever 5.0.11).
+    -- A paragraph Dialogue UI changed (quotes, spacing, the player's name)
+    -- fails the substring test above; when the timeline was built from the
+    -- found paragraphs only, the clip's whole length was spread over fewer
+    -- words, so the highlight ran ahead and stalled, and the sentence count
+    -- no longer fitted the pack's SentenceTimings. Now that paragraph keeps
+    -- its share of the time and simply gets no highlight.
+    local words = addon.SubtitleWords(sd.text, narrated)
     if #words == 0 then
         return nil
     end
-    return found, words
+    -- Each found paragraph's place in that timeline: the words before it in
+    -- the spoken text. The " x" stops a prefix that is only a stage
+    -- direction from reading as whole-passage item text (SubtitleWords keeps
+    -- those words); it is taken back off the count.
+    -- Whole-passage item text ("<The idol appears...>") keeps every word, so
+    -- its prefixes are counted with nothing stripped.
+    local inner = spoken:match("^<(.*)>$")
+    local whole = inner and not inner:find("[<>]")
+    local function WordsBefore(pos)
+        if whole then
+            return #addon.SubtitleWords(spoken:sub(1, pos - 1), true)
+        end
+        return #addon.SubtitleWords(spoken:sub(1, pos - 1) .. " x", narrated) - 1
+    end
+    local cursor = 1
+    for _, para in ipairs(found) do
+        local t = Norm(para.orig)
+        local pos = spoken:find(t, cursor, true) or spoken:find(t, 1, true)
+        para.a = WordsBefore(pos) + 1
+        para.b = para.a + #para.words - 1
+        cursor = pos + #t
+        -- Should never happen; if the counts disagree, no highlight rather than the wrong words.
+        if #para.words > 0 and WordsBefore(pos + #t) ~= para.b then
+            para.words, para.b = {}, para.a - 1
+        end
+    end
+    return found, words, missed
 end
 
 local function Draw(s, index)
@@ -221,7 +251,7 @@ local function Tick()
     end
     local sd = s.sd
     if not s.paras then
-        s.paras, s.words = Bind(sd)
+        s.paras, s.words, s.missed = Bind(sd)
         if not s.paras then
             if not s.expecting or GetTime() > s.expectUntil then
                 EndSync()
@@ -251,6 +281,25 @@ local function Tick()
         end
         if not s.times then
             s.times, s.starts = addon.SubtitleTiming(s.words, duration, sd.soundFile)
+            -- /ssdebug: why a read-along drifts (2026-11-16, owner: "still drifts" in Dialogue UI). Pack marks that
+            -- do not fit the window's sentence count mean the rough estimate is in use.
+            if addon.DebugPrint then
+                local matched, lit = 0, 0
+                for _, para in ipairs(s.paras) do
+                    matched = matched + 1
+                    if #para.words > 0 then lit = lit + 1 end
+                end
+                local ok, marks = pcall(addon.SentenceTimesFor or function() end,
+                    tostring(sd.soundFile):match("[^/\\]+$") or "")
+                addon.DebugPrint(string.format("Read-along %s: %.1fs, %d words, %d sentences, pack marks %s -> %s; "
+                    .. "%d of %d paragraphs matched (%d lit)", tostring(sd.soundFile):match("[^/\\]+$") or "?",
+                    duration, #s.words, #addon.SubtitleSentences(s.words),
+                    (ok and type(marks) == "table") and tostring(#marks) or "none",
+                    s.starts and "anchored" or "ESTIMATE", matched, matched + #(s.missed or {}), lit))
+                for _, t in ipairs(s.missed or {}) do
+                    addon.DebugPrint("  not matched: " .. t:sub(1, 80))
+                end
+            end
         end
         local elapsed = math.max(0, GetTime() - sd.startedAt)
         index = elapsed >= duration and #s.words or addon.SubtitleWordAt(s.times, elapsed + LEAD)

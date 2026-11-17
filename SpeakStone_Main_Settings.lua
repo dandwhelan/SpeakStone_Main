@@ -394,7 +394,7 @@ local SETTINGS_TABS = {
                     {
                         option = "stopDialogueOnClose",
                         label = "Stop narration when the window closes",
-                        tooltip = "Walking away mid-sentence stops the audio instead of leaving a disembodied voice following you. Off: the line finishes after the window closes, and plays at your Master volume rather than the Dialog slider.",
+                        tooltip = "Closing the quest, gossip or book window (or walking away) stops the audio and clears the quest queue, instead of leaving a disembodied voice following you. Off: the line finishes after the window closes, and plays at your Master volume rather than the Dialog slider.",
                     },
                 },
             },

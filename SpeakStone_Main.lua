@@ -2876,8 +2876,9 @@ questEventFrame:SetScript("OnEvent", function(self, event, ...)
         -- Closing the gossip window ends the gossip, not a book or quest line
         -- still being read from a window closed earlier (keepReading*).
         local cur = GetCurrentSound()
-        if SpeakStone_MainDB.stopDialogueOnClose and not QuestQueueHolds()
-            and cur and cur.textType == "gossip" then
+        DebugPrint(string.format("GOSSIP_CLOSED: stopOnClose=%s playing=%s type=%s",
+            tostring(SpeakStone_MainDB.stopDialogueOnClose), tostring(cur and cur.soundFile), tostring(cur and cur.textType)))
+        if SpeakStone_MainDB.stopDialogueOnClose and cur and cur.textType == "gossip" then
             StopCurrentSound()
         end
         return
@@ -2898,8 +2899,10 @@ questEventFrame:SetScript("OnEvent", function(self, event, ...)
         -- Keep reading after the book is closed (owner, 2026-09-28): shut the
         -- book, get back on the road, hear the rest. Only a book that is
         -- actually being read carries on; anything else stops as before.
-        local keepGoing = SpeakStone_MainDB.keepReadingBooks ~= false and BookIsReading()
-        if SpeakStone_MainDB.stopDialogueOnClose and not keepGoing then
+        -- With "Stop narration when the window closes" on, that wins and the
+        -- book stops (2026-11-16, same player report as QUEST_FINISHED below);
+        -- keepReadingBooks applies when the option is off.
+        if SpeakStone_MainDB.stopDialogueOnClose then
             StopCurrentSound(true)
             bookReading = nil
         end
@@ -2933,14 +2936,26 @@ questEventFrame:SetScript("OnEvent", function(self, event, ...)
         if addon.MaybeAutoAccept then
             addon.MaybeAutoAccept()
         end
-    elseif event == "QUEST_FINISHED" and SpeakStone_MainDB.stopDialogueOnClose then
-        -- Keep reading after the quest window closes (owner, 2026-09-28): a
-        -- quest line already playing finishes. Anything else stops as before.
+    end
+    if event == "QUEST_FINISHED" then
+        -- /ssdebug: what closing the window found, so "it kept playing" can be told apart from "the
+        -- close never arrived" or "the option reads off" (2026-11-16, owner retest of the fix below).
         local cur = GetCurrentSound()
-        local questLine = cur and (cur.textType == "description" or cur.textType == "progress"
-            or cur.textType == "completion") and (cur.isPlaying or cur.nextSoundTimer or cur.autoAccepted)
-        if not ((SpeakStone_MainDB.keepReadingQuests ~= false and questLine) or QuestQueueHolds()) then
-            StopCurrentSound(QuestQueueHolds()) -- Stop sound when the quest dialog finishes
+        DebugPrint(string.format("QUEST_FINISHED: stopOnClose=%s playing=%s type=%s autoAccepted=%s",
+            tostring(SpeakStone_MainDB.stopDialogueOnClose), tostring(cur and cur.soundFile),
+            tostring(cur and cur.textType), tostring(cur and cur.autoAccepted)))
+    end
+    if event == "QUEST_FINISHED" and SpeakStone_MainDB.stopDialogueOnClose then
+        -- "Stop narration when the window closes" means exactly that, and it
+        -- wins over keepReadingQuests and the quest queue. Until 2026-11-16
+        -- either of those kept a playing quest line going, so the option did
+        -- nothing for quests (player report: "I close the convo and it keeps
+        -- playing when I walk away"). keepReadingQuests still applies when
+        -- this option is off. The one exception is auto-accept: it closes the
+        -- window itself, the player did not walk away, so the line goes on.
+        local cur = GetCurrentSound()
+        if not (cur and cur.autoAccepted) then
+            StopCurrentSound() -- clears the queue too: the player left the conversation
         end
     end
 
