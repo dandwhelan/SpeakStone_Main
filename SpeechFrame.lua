@@ -33,7 +33,9 @@ local MAX_FIT_LINES = 24
 -- How long the frame stays up after a line ends on its own.
 local LINGER_SECONDS = 2
 local UPDATE_INTERVAL = 0.1
-local DEFAULT_POINT = { "BOTTOM", "BOTTOM", 0, 190 }
+-- Top of the screen by default: out of the way of action bars and the controller's on-screen hints, and
+-- reachable for controller players who cannot drag it (owner, 2026-11-17).
+local DEFAULT_POINT = { "TOP", "TOP", 0, -110 }
 
 local PREVIEW_TEXT = "This is the SpeakStone speech bar. It appears when you walk away from a quest giver while "
     .. "narration is still going, or when a quest is auto-accepted, so you can read along and pause or stop the "
@@ -1128,6 +1130,63 @@ function SpeakStone_TogglePause()
     end
 end
 
+-- --------------------------------------------------------------------------
+-- Controller hooks (Gamepad.lua)
+-- --------------------------------------------------------------------------
+
+function addon.SpeechFrameGet()
+    return frame, current
+end
+
+function addon.SpeechFrameControl(action)
+    if not current then
+        if action == "pause" then SpeakStone_TogglePause() end
+        return
+    end
+    if action == "pause" then
+        if paused then Resume() else Pause() end
+    elseif action == "stop" then
+        StopNarration()
+    elseif action == "replay" then
+        Replay()
+    elseif action == "close" then
+        Dismiss()
+    elseif action == "next" then
+        if current.preview or not (addon.speechQueue and #addon.speechQueue > 0) then return end
+        paused = false
+        lingerUntil = nil
+        if addon.PlayNextQueued then addon.PlayNextQueued() end
+    end
+end
+
+-- Move by (dx, dy) UIParent units; the controller's D-pad. Ignores the lock: a deliberate move.
+function addon.SpeechFrameNudge(dx, dy)
+    if not frame then return end
+    local scale = frame:GetScale()
+    local left, top = frame:GetLeft(), frame:GetTop()
+    if not left then return end
+    frame:ClearAllPoints()
+    frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left + dx / scale, top + dy / scale)
+    SavePosition()
+end
+
+-- One size step bigger (+1) or smaller (-1); the controller's shoulder buttons.
+function addon.SpeechFrameResize(step)
+    local db = DB()
+    local index = 2
+    for i, size in ipairs(SIZES) do
+        if size.key == (db.speechSize or "medium") then index = i end
+    end
+    index = math.max(1, math.min(#SIZES, index + step))
+    db.speechSize = SIZES[index].key
+    if frame then ApplyPosition() end
+end
+
+function addon.SpeechFrameResetPosition()
+    DB().speechFramePos = nil
+    if frame then ApplyPosition() end
+end
+
 -- /ss frame: a sample line to place and size the frame with.
 function addon.SpeechFramePreview()
     if current and current.preview then
@@ -1229,10 +1288,23 @@ function OpenMenu(owner)
         root:CreateCheckbox("Lock position",
             function() return db.speechFrameLocked end,
             function() db.speechFrameLocked = not db.speechFrameLocked end)
-        root:CreateButton("Reset position", function()
+        root:CreateButton("Reset position (top of the screen)", function()
             db.speechFramePos = nil
             ApplyPosition()
         end)
+        if addon.SetControllerLayout then
+            local pad = root:CreateButton("Controller")
+            for _, opt in ipairs({ { "XBOX", "Xbox" }, { "PS", "PlayStation" }, { "KBM", "None (keyboard and mouse)" } }) do
+                pad:CreateRadio(opt[2], function() return addon.ControllerLayout() == opt[1] end,
+                    function() addon.SetControllerLayout(opt[1]) end)
+            end
+            pad:CreateDivider()
+            pad:CreateTitle("Button to take the bar")
+            for _, b in ipairs({ "PADBACK", "PADLSTICK", "PADRSTICK" }) do
+                pad:CreateRadio(addon.ControllerLabel(b), function() return addon.ControllerFocusButton() == b end,
+                    function() addon.SetControllerFocusButton(b) end)
+            end
+        end
         root:CreateDivider()
         if current and not current.preview and addon.OpenReportMenu then
             local reportSub = root:CreateButton("Report this voice line")

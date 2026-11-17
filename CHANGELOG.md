@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Controller support for the speech bar
+- **Asks which controller you use** (Xbox or PlayStation) the first time you press a controller button, or picks it up on its own when the pad names itself. Change it in the bar's gear menu > Controller.
+- **Take the bar with View (Xbox) / Create (PlayStation)** while it is on screen. Then: A/Cross pause or resume, X/Square next queued quest, Y/Triangle replay, B/Circle stop, D-pad moves the bar, LB/RB or L1/R1 change its size. Press View/Create again, wait a few seconds, or move a stick and the buttons go back to the game. Never takes buttons in combat.
+- A small legend under the bar names the buttons for your controller.
+- **New key bindings**: Stop, Next, Replay and "take the speech bar", so you can put them on any controller combination in the game's bindings.
+- **The speech bar now starts at the top of the screen** instead of above the action bars. Gear menu > Reset position moves an existing bar there.
+
 ## 6.0.0 (November 2026)
 
 **6.0.0 is a big one: the voices have been overhauled, and characters now speak with emotion.**
