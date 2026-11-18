@@ -1,8 +1,13 @@
 # Changelog
 
-## Unreleased
+## 6.0.1 (November 2026)
 
 ### Controller support for the speech bar
+- **Controller button pictures**: every button name (the legend, the gear menu, the tutorial) now shows as your controller's own button picture, Xbox letters or PlayStation shapes, instead of text like [A].
+- **Compact speech bar on a controller**: three lines that scroll along with the voice, so a whole passage doesn't sit in the middle of the screen while you walk around. Mouse and keyboard players can turn it on too: gear menu or /ss > "Compact: three scrolling lines".
+- **While you hold the bar, its own Pause, Next, Replay and Stop buttons show the controller button that works each one.**
+- The scrolling text always stops on whole lines, so no line is cut in half.
+- Fixed an error when switching between the controller and the mouse.
 - **Asks which controller you use** (Xbox or PlayStation) the first time you press a controller button, or picks it up on its own when the pad names itself. Change it in the bar's gear menu > Controller.
 - **Take the bar with View (Xbox) / Create (PlayStation)** while it is on screen. Then: A/Cross pause or resume, X/Square next queued quest, Y/Triangle replay, B/Circle stop, D-pad moves the bar, LB/RB or L1/R1 change its size. Press View/Create again, wait a few seconds, or move a stick and the buttons go back to the game. Never takes buttons in combat.
 - **The tutorial works with a controller**: D-pad moves a gold box between buttons and tick boxes, A/Cross picks, B/Circle goes back a page, LB/RB (L1/R1) turn pages. No mouse needed.
