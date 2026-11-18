@@ -247,6 +247,19 @@ end
 -- Events
 -- --------------------------------------------------------------------------
 
+-- Which device the player is using right now: the game says when it flips between controller and mouse.
+-- The TV size (speechTVOnPad) follows it.
+addon.padActive = false
+local function PadActiveChanged(active)
+    active = active and true or false
+    if addon.padActive == active then return end
+    addon.padActive = active
+    if DB().speechTVOnPad and addon.SpeechSettingChanged then
+        addon.SpeechSettingChanged("speechTextSize")
+        addon.SpeechSettingChanged("speechSize")
+    end
+end
+
 local events = CreateFrame("Frame")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
 events:RegisterEvent("PLAYER_REGEN_DISABLED")
@@ -274,19 +287,6 @@ events:SetScript("OnEvent", function(_, event, arg)
         AskLayout()
     end
 end)
-
--- Which device the player is using right now: the game says when it flips between controller and mouse.
--- The TV size (speechTVOnPad) follows it.
-addon.padActive = false
-local function PadActiveChanged(active)
-    active = active and true or false
-    if addon.padActive == active then return end
-    addon.padActive = active
-    if DB().speechTVOnPad and addon.SpeechSettingChanged then
-        addon.SpeechSettingChanged("speechTextSize")
-        addon.SpeechSettingChanged("speechSize")
-    end
-end
 
 -- A short buzz: "queue" when a quest joins the queue, "next" when a queued quest starts.
 function addon.Rumble(kind)
