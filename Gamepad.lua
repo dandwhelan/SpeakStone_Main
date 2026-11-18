@@ -131,7 +131,7 @@ local function UpdateHint()
     local frame = addon.SpeechFrameGet and addon.SpeechFrameGet()
     if not frame then return end
     BuildHint(frame)
-    if not Layout() or not frame:IsShown() then
+    if not Layout() or not frame:IsShown() or DB().controllerShowLegend == false then
         hint:Hide()
         return
     end
@@ -230,7 +230,7 @@ listener:SetScript("OnUpdate", function(self)
             self.repeatAt = now + REPEAT_RATE
         end
     end
-    if hint and hint:IsShown() ~= (shown and Layout() ~= nil) then
+    if hint and hint:IsShown() ~= (shown and Layout() ~= nil and DB().controllerShowLegend ~= false) then
         UpdateHint()
     end
 end)
@@ -278,6 +278,8 @@ function addon.SetControllerLayout(key)
     DB().controllerLayout = key
     if key ~= "KBM" then Enable() end
     UpdateHint()
+    local tut = SpeakStoneTutorialFrame
+    if tut and tut.ssNav then tut.ssNav.Refresh() end
 end
 
 function addon.ControllerFocusButton()
@@ -290,6 +292,7 @@ function addon.SetControllerFocusButton(button)
 end
 
 addon.ControllerLabel = Label
+addon.ControllerDetect = Detect
 
 -- --------------------------------------------------------------------------
 -- Key bindings (globals on purpose: Bindings.xml calls them by name)
@@ -307,3 +310,184 @@ BINDING_NAME_SPEAKSTONESTOP = "Stop narration (clears the queue)"
 BINDING_NAME_SPEAKSTONENEXT = "Next queued quest"
 BINDING_NAME_SPEAKSTONEREPLAY = "Replay the line"
 BINDING_NAME_SPEAKSTONEPADFOCUS = "Controller: take / release the speech bar"
+
+-- --------------------------------------------------------------------------
+-- Driving a window with the controller (the tutorial; owner, 2026-11-18)
+-- --------------------------------------------------------------------------
+-- A gold box sits on one button or tick box at a time. D-pad moves it to the nearest one that way, A/Cross
+-- presses it, B/Circle goes back, LB/RB (L1/R1) turn the page, Menu/Options goes on. While the window is open
+-- it takes the controller (out of combat only); the sticks still go to the game.
+
+local function Usable(w)
+    return w and w:IsVisible() and w:IsEnabled() and w:IsMouseEnabled() and w:GetScript("OnClick") ~= nil
+        and w:GetLeft() ~= nil
+end
+
+-- Every clickable button / tick box under `root`, however deep.
+local function Collect(root, out)
+    out = out or {}
+    for _, child in ipairs({ root:GetChildren() }) do
+        if child:IsVisible() then
+            if child:IsObjectType("Button") and Usable(child) then
+                out[#out + 1] = child
+            end
+            Collect(child, out)
+        end
+    end
+    return out
+end
+
+local function Center(w)
+    local x, y = w:GetCenter()
+    local s = w:GetEffectiveScale()
+    return x * s, y * s
+end
+
+-- The nearest item in direction (dx, dy): along the way counts once, off to the side counts three times.
+local function Nearest(items, from, dx, dy)
+    local fx, fy = Center(from)
+    local best, bestScore
+    for _, w in ipairs(items) do
+        if w ~= from then
+            local x, y = Center(w)
+            local along = (x - fx) * dx + (y - fy) * dy
+            local side = math.abs((x - fx) * dy) + math.abs((y - fy) * dx)
+            if along > 2 then
+                local score = along + side * 3
+                if not bestScore or score < bestScore then best, bestScore = w, score end
+            end
+        end
+    end
+    return best
+end
+
+local function Leave(w)
+    if w and w:GetScript("OnLeave") then pcall(w:GetScript("OnLeave"), w) end
+    GameTooltip:Hide()
+end
+
+local function Enter(w)
+    if w and w:GetScript("OnEnter") then pcall(w:GetScript("OnEnter"), w) end
+end
+
+-- opts: items() -> list (default: every button in the window), start() -> the item to begin on,
+-- back(), prev(), next(), close().
+function addon.GamepadNav(window, opts)
+    if not window.EnableGamePadButton then return end
+    opts = opts or {}
+    local nav = { window = window }
+    window.ssNav = nav
+
+    local ring = CreateFrame("Frame", nil, window, BackdropTemplateMixin and "BackdropTemplate" or nil)
+    ring:SetFrameStrata("TOOLTIP")
+    if ring.SetBackdrop then
+        ring:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 2 })
+        ring:SetBackdropBorderColor(1, 0.82, 0, 1)
+    end
+    ring:Hide()
+
+    local legend = window:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    legend:SetPoint("BOTTOM", window, "BOTTOM", 0, 4)
+    legend:Hide()
+
+    local function Items()
+        return opts.items and opts.items() or Collect(window)
+    end
+
+    local function Put(w)
+        if nav.current ~= w then Leave(nav.current) end
+        nav.current = w
+        if not w then ring:Hide() return end
+        ring:ClearAllPoints()
+        ring:SetPoint("TOPLEFT", w, "TOPLEFT", -4, 4)
+        -- A tick box: ring the box and its words.
+        local extra = (w.text and w.text.GetStringWidth and w:IsObjectType("CheckButton")) and (w.text:GetStringWidth() + 8) or 0
+        ring:SetPoint("BOTTOMRIGHT", w, "BOTTOMRIGHT", 4 + extra, -4)
+        ring:Show()
+        Enter(w)
+    end
+
+    function nav.Reset()
+        local items = Items()
+        local start = opts.start and opts.start()
+        if not Usable(start) then start = items[1] end
+        Put(start)
+    end
+
+    local function Active()
+        return Layout() ~= nil and not InCombatLockdown()
+    end
+
+    local function Refresh()
+        local on = Active()
+        legend:SetShown(on)
+        if on then
+            legend:SetText(Label("PAD1") .. " Select   " .. Label("PAD2") .. " Back   |cffffd100[D-pad]|r Move   "
+                .. Label("PADLSHOULDER") .. "/" .. Label("PADRSHOULDER") .. " Page")
+            if not Usable(nav.current) then nav.Reset() end
+        else
+            Put(nil)
+        end
+    end
+    nav.Refresh = Refresh
+
+    window:HookScript("OnShow", function()
+        if not InCombatLockdown() then
+            window:EnableGamePadButton(true)
+            window:SetPropagateKeyboardInput(true)
+        end
+        Refresh()
+    end)
+    window:HookScript("OnHide", function() Put(nil) end)
+
+    local function Move(dx, dy)
+        local items = Items()
+        if not Usable(nav.current) then nav.Reset() return end
+        local w = Nearest(items, nav.current, dx, dy)
+        if w then Put(w) end
+    end
+
+    window:HookScript("OnGamePadButtonDown", function(self, button)
+        if DB().controllerLayout == nil and not InCombatLockdown() then
+            -- First press in the window: that is the answer to "do you use a controller".
+            DB().controllerLayout = Detect() or "XBOX"
+            StaticPopup_Hide("SPEAKSTONE_CONTROLLER_LAYOUT")
+            Refresh()
+            if opts.onLayout then opts.onLayout() end
+        end
+        if not Active() then
+            if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
+            return
+        end
+        local handled = true
+        if button == "PAD1" then
+            if Usable(nav.current) then
+                local w = nav.current
+                w:Click()
+                -- The page may have changed under it.
+                if not Usable(w) then nav.Reset() else Put(w) end
+            else
+                nav.Reset()
+            end
+        elseif button == "PAD2" then
+            if opts.back then opts.back() else self:Hide() end
+        elseif button == "PADDUP" then Move(0, 1)
+        elseif button == "PADDDOWN" then Move(0, -1)
+        elseif button == "PADDLEFT" then Move(-1, 0)
+        elseif button == "PADDRIGHT" then Move(1, 0)
+        elseif button == "PADLSHOULDER" and opts.prev then opts.prev()
+        elseif button == "PADRSHOULDER" and opts.next then opts.next()
+        elseif button == "PADFORWARD" and opts.next then opts.next()
+        elseif button == "PADBACK" then
+            if opts.close then opts.close() else self:Hide() end
+        else
+            handled = false
+        end
+        self:SetPropagateKeyboardInput(not handled)
+    end)
+    window:HookScript("OnGamePadButtonUp", function(self)
+        if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
+    end)
+
+    return nav
+end

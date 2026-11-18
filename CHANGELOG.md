@@ -5,6 +5,8 @@
 ### Controller support for the speech bar
 - **Asks which controller you use** (Xbox or PlayStation) the first time you press a controller button, or picks it up on its own when the pad names itself. Change it in the bar's gear menu > Controller.
 - **Take the bar with View (Xbox) / Create (PlayStation)** while it is on screen. Then: A/Cross pause or resume, X/Square next queued quest, Y/Triangle replay, B/Circle stop, D-pad moves the bar, LB/RB or L1/R1 change its size. Press View/Create again, wait a few seconds, or move a stick and the buttons go back to the game. Never takes buttons in combat.
+- **The tutorial works with a controller**: D-pad moves a gold box between buttons and tick boxes, A/Cross picks, B/Circle goes back a page, LB/RB (L1/R1) turn pages. No mouse needed.
+- **New Controller page in the tutorial**: pick Xbox, PlayStation or keyboard and mouse; turn on the game's own controller support if it is off; and "Make it easy" options: a bigger speech bar at the top, the button legend, auto-accept and queue quests, and which button takes the speech bar. One button sets all the controller-friendly choices. Players who already did the tutorial only see this page if the game's controller support is on.
 - A small legend under the bar names the buttons for your controller.
 - **New key bindings**: Stop, Next, Replay and "take the speech bar", so you can put them on any controller combination in the game's bindings.
 - **The speech bar now starts at the top of the screen** instead of above the action bars. Gear menu > Reset position moves an existing bar there.
