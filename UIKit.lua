@@ -451,6 +451,7 @@ function UIK.Dropdown(parent, width, getItems, onSelect)
         menu:ClearAllPoints()
         menu:SetPoint("TOPLEFT", drop, "BOTTOMLEFT", 0, -2)
         menu:Show()
+        UIK.openMenu = menu  -- the controller (Gamepad.lua) steps into the open list
     end)
     -- A click anywhere else closes it.
     menu:SetScript("OnUpdate", function(self)

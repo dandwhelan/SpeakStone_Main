@@ -28,12 +28,23 @@ local SIZES = {
 local WIDTH, HEIGHT = 720, 146
 local PORTRAIT = 84
 local TEXT_LINES = 4
+-- Text size and how many lines show at once (owner, 2026-11-18: for a television across the room, bigger text,
+-- three or four lines at a time, gliding up as it is read). Points added to the reading font's size.
+local TEXT_SIZES = {
+    { key = "normal", label = "Normal", add = 0 },
+    { key = "large", label = "Large", add = 3 },
+    { key = "xlarge", label = "Extra large (TV)", add = 7 },
+}
+local BASE_LINE = 15      -- the normal font's row height: HEIGHT was laid out for TEXT_LINES of these
+local SCROLL_EASE = 5     -- how fast the text glides to where it should be (higher = snappier)
 -- "Show all the text": the most lines the frame grows to before it scrolls.
 local MAX_FIT_LINES = 24
 -- How long the frame stays up after a line ends on its own.
 local LINGER_SECONDS = 2
 local UPDATE_INTERVAL = 0.1
-local DEFAULT_POINT = { "BOTTOM", "BOTTOM", 0, 190 }
+-- Top of the screen by default: out of the way of action bars and the controller's on-screen hints, and
+-- reachable for controller players who cannot drag it (owner, 2026-11-17).
+local DEFAULT_POINT = { "TOP", "TOP", 0, -110 }
 
 local PREVIEW_TEXT = "This is the SpeakStone speech bar. It appears when you walk away from a quest giver while "
     .. "narration is still going, or when a quest is auto-accepted, so you can read along and pause or stop the "
@@ -70,7 +81,14 @@ local function Readable(value)
     return value
 end
 
+-- TV size while the controller is in use (speechTVOnPad; owner, 2026-11-18): bigger bar, extra-large text,
+-- three lines. Back to the player's own sizes as soon as they pick up the mouse.
+local function TVNow()
+    return DB().speechTVOnPad and addon.padActive
+end
+
 local function SizeScale()
+    if TVNow() then return 1.25 end
     local key = DB().speechSize or "medium"
     for _, size in ipairs(SIZES) do
         if size.key == key then
@@ -78,6 +96,50 @@ local function SizeScale()
         end
     end
     return 1
+end
+
+local function TextAdd()
+    if TVNow() then return 7 end
+    local key = DB().speechTextSize or "normal"
+    for _, size in ipairs(TEXT_SIZES) do
+        if size.key == key then return size.add end
+    end
+    return 0
+end
+
+-- Compact (owner, 2026-11-18): three lines that scroll with the voice, whatever "grow to show all the
+-- text" says, so a big box of quest text doesn't sit in the middle of the screen while walking around.
+-- Always on with a controller; mouse and keyboard players can pick it (speechCompact).
+local function Compact()
+    return addon.padActive or DB().speechCompact == true
+end
+
+local function Lines()
+    if Compact() then return 3 end
+    local n = tonumber(DB().speechLines)
+    return (n == 3 or n == 4) and n or TEXT_LINES
+end
+
+-- In combat the bar can stay, fade back or get out of the way; the voice carries on either way.
+local function CombatMode()
+    local mode = DB().speechCombat
+    return (mode == "fade" or mode == "hide") and mode or "show"
+end
+
+-- On a flight path, or a cutscene playing: the bar steps aside (the voice carries on).
+local function SteppedAside()
+    if DB().speechHideOnTaxi ~= false and UnitOnTaxi and UnitOnTaxi("player") then
+        return true
+    end
+    if (InCinematic and InCinematic()) or (CinematicFrame and CinematicFrame:IsShown())
+        or (MovieFrame and MovieFrame:IsShown()) then
+        return true
+    end
+    return false
+end
+
+local function InFight()
+    return (InCombatLockdown and InCombatLockdown()) or (UnitAffectingCombat and UnitAffectingCombat("player"))
 end
 
 local function Duration(sd)
@@ -480,8 +542,20 @@ local function Build()
     scroll:SetScript("OnMouseWheel", function(self, delta)
         -- A manual scroll pauses the auto-scroll for a few seconds.
         frame.manualScrollUntil = GetTime() + 4
-        local target = self:GetVerticalScroll() - delta * frame.lineHeight * 2
-        self:SetVerticalScroll(math.max(0, math.min(target, self:GetVerticalScrollRange())))
+        local target = (frame.scrollTarget or self:GetVerticalScroll()) - delta * frame.lineHeight * 2
+        frame.scrollTarget = math.max(0, math.min(target, self:GetVerticalScrollRange()))
+    end)
+    -- Every frame, glide toward scrollTarget instead of jumping there: the text rolls up smoothly as it is read.
+    scroll:SetScript("OnUpdate", function(self, elapsed)
+        local target = frame.scrollTarget
+        if not target then return end
+        local now = self:GetVerticalScroll()
+        local diff = target - now
+        if math.abs(diff) < 0.3 then
+            if diff ~= 0 then self:SetVerticalScroll(target) end
+            return
+        end
+        self:SetVerticalScroll(now + diff * math.min(1, elapsed * SCROLL_EASE))
     end)
     local child = CreateFrame("Frame", nil, scroll)
     child:SetSize(1, 1)
@@ -547,9 +621,10 @@ function addon.SpeechFrameApplyFont()
     if not frame or not frame.textFont then
         return
     end
-    local custom = addon.ApplyReadingFont and addon.ApplyReadingFont(frame.textFont, 12, "")
+    local add = TextAdd()
+    local custom = addon.ApplyReadingFont and addon.ApplyReadingFont(frame.textFont, 12 + add, "")
     if not custom then
-        frame.textFont:SetFont((GameFontHighlight:GetFont()), 13, "")
+        frame.textFont:SetFont((GameFontHighlight:GetFont()), 13 + add, "")
     end
     local spacing = custom and 4 or 2
     frame.textFont:SetSpacing(spacing)
@@ -560,8 +635,8 @@ function addon.SpeechFrameApplyFont()
     local two = frame.measure:GetStringHeight() or 0
     frame.measure:SetText("")
     frame.measure:Hide()
-    frame.lineHeight = (two - one > 4) and (two - one) or ((custom and 12 or 13) + spacing)
-    frame.scroll:SetHeight(frame.lineHeight * TEXT_LINES)
+    frame.lineHeight = (two - one > 4) and (two - one) or ((custom and 12 or 13) + add + spacing)
+    frame.scroll:SetHeight(frame.lineHeight * Lines())
     frame.filledFor = nil
 end
 
@@ -880,15 +955,17 @@ local function Fill(sd)
     frame.plain, frame.litIndex, frame.readKey = text, nil, nil
     local textHeight = math.max(1, frame.text:GetStringHeight())
     frame.scrollChild:SetSize(width, textHeight)
-    -- Fixed four lines, or grown to fit the whole text (capped).
-    local lines = TEXT_LINES
-    if DB().speechFitText then
-        lines = math.max(TEXT_LINES, math.min(MAX_FIT_LINES, math.ceil(textHeight / frame.lineHeight)))
+    -- Fixed lines, or grown to fit the whole text (capped); never grown when compact.
+    local lines = Lines()
+    if DB().speechFitText and not Compact() then
+        lines = math.max(lines, math.min(MAX_FIT_LINES, math.ceil(textHeight / frame.lineHeight)))
     end
     local scrollHeight = frame.lineHeight * lines
     frame.scroll:SetHeight(scrollHeight)
-    frame:SetHeight(HEIGHT + scrollHeight - frame.lineHeight * TEXT_LINES)
+    -- Never shorter than the portrait needs.
+    frame:SetHeight(math.max(HEIGHT - BASE_LINE, HEIGHT + scrollHeight - BASE_LINE * TEXT_LINES))
     frame.scroll:SetVerticalScroll(0)
+    frame.scrollTarget = 0
     frame.filledFor = sd
     addon.SpeechFrameRefreshStar()
     local kind = KINDS[sd.preview and "description" or sd.textType or ""]
@@ -944,8 +1021,13 @@ local function Refresh()
         -- through the clip we are) in the middle of the text area.
         local range = frame.scroll:GetVerticalScrollRange()
         if range > 0 and not paused and DB().speechAutoScroll ~= false and GetTime() >= (frame.manualScrollUntil or 0) then
-            local target = fraction * frame.scrollChild:GetHeight() - frame.scroll:GetHeight() / 2
-            frame.scroll:SetVerticalScroll(math.max(0, math.min(target, range)))
+            -- The spoken line sits a third of the way down, so what is coming next is in view; the OnUpdate
+            -- above glides there.
+            local target = fraction * frame.scrollChild:GetHeight() - frame.scroll:GetHeight() / 3
+            -- Whole lines only, so no line is shown cut in half at the top or bottom.
+            local step = frame.lineHeight or 1
+            target = math.floor(target / step + 0.5) * step
+            frame.scrollTarget = math.max(0, math.min(target, range))
         end
         frame.controls.time:SetText(Clock(math.min(elapsed, duration)) .. " / " .. Clock(duration))
     else
@@ -983,6 +1065,12 @@ local function ShouldShow(sd)
     if SourceWindowOpen(sd) then
         return false
     end
+    if CombatMode() == "hide" and InFight() then
+        return false
+    end
+    if SteppedAside() then
+        return false
+    end
     if paused then
         return true
     end
@@ -1011,6 +1099,7 @@ local function Tick()
     end
     if ShouldShow(current) then
         Refresh()
+        frame:SetAlpha((CombatMode() == "fade" and InFight()) and 0.3 or 1)
         frame:Show()
     else
         frame:Hide()
@@ -1128,6 +1217,63 @@ function SpeakStone_TogglePause()
     end
 end
 
+-- --------------------------------------------------------------------------
+-- Controller hooks (Gamepad.lua)
+-- --------------------------------------------------------------------------
+
+function addon.SpeechFrameGet()
+    return frame, current
+end
+
+function addon.SpeechFrameControl(action)
+    if not current then
+        if action == "pause" then SpeakStone_TogglePause() end
+        return
+    end
+    if action == "pause" then
+        if paused then Resume() else Pause() end
+    elseif action == "stop" then
+        StopNarration()
+    elseif action == "replay" then
+        Replay()
+    elseif action == "close" then
+        Dismiss()
+    elseif action == "next" then
+        if current.preview or not (addon.speechQueue and #addon.speechQueue > 0) then return end
+        paused = false
+        lingerUntil = nil
+        if addon.PlayNextQueued then addon.PlayNextQueued() end
+    end
+end
+
+-- Move by (dx, dy) UIParent units; the controller's D-pad. Ignores the lock: a deliberate move.
+function addon.SpeechFrameNudge(dx, dy)
+    if not frame then return end
+    local scale = frame:GetScale()
+    local left, top = frame:GetLeft(), frame:GetTop()
+    if not left then return end
+    frame:ClearAllPoints()
+    frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left + dx / scale, top + dy / scale)
+    SavePosition()
+end
+
+-- One size step bigger (+1) or smaller (-1); the controller's shoulder buttons.
+function addon.SpeechFrameResize(step)
+    local db = DB()
+    local index = 2
+    for i, size in ipairs(SIZES) do
+        if size.key == (db.speechSize or "medium") then index = i end
+    end
+    index = math.max(1, math.min(#SIZES, index + step))
+    db.speechSize = SIZES[index].key
+    if frame then ApplyPosition() end
+end
+
+function addon.SpeechFrameResetPosition()
+    DB().speechFramePos = nil
+    if frame then ApplyPosition() end
+end
+
 -- /ss frame: a sample line to place and size the frame with.
 function addon.SpeechFramePreview()
     if current and current.preview then
@@ -1211,6 +1357,32 @@ function OpenMenu(owner)
             themes:CreateRadio(addon.Themes[key].label, function() return addon.Theme().key == key end,
                 function() addon.SetTheme(key) end)
         end
+        local textMenu = root:CreateButton("Text size")
+        for _, size in ipairs(TEXT_SIZES) do
+            textMenu:CreateRadio(size.label,
+                function() return (db.speechTextSize or "normal") == size.key end,
+                function() db.speechTextSize = size.key; addon.SpeechSettingChanged("speechTextSize") end)
+        end
+        local linesMenu = root:CreateButton("Lines at a time")
+        for _, n in ipairs({ 3, 4 }) do
+            linesMenu:CreateRadio(n .. " lines", function() return Lines() == n end,
+                function() db.speechLines = n; addon.SpeechSettingChanged("speechLines") end)
+        end
+        local combatMenu = root:CreateButton("In combat")
+        for _, opt in ipairs({ { "show", "Keep showing" }, { "fade", "Fade it back" }, { "hide", "Hide it (the voice carries on)" } }) do
+            combatMenu:CreateRadio(opt[2], function() return CombatMode() == opt[1] end,
+                function() db.speechCombat = opt[1] end)
+        end
+        root:CreateCheckbox("Hide on flight paths",
+            function() return db.speechHideOnTaxi ~= false end,
+            function() db.speechHideOnTaxi = db.speechHideOnTaxi == false end)
+        root:CreateCheckbox("TV size while using a controller",
+            function() return db.speechTVOnPad end,
+            function()
+                db.speechTVOnPad = not db.speechTVOnPad
+                addon.SpeechSettingChanged("speechTextSize")
+                addon.SpeechSettingChanged("speechSize")
+            end)
         root:CreateCheckbox("Auto-scroll the text",
             function() return db.speechAutoScroll ~= false end,
             function() db.speechAutoScroll = db.speechAutoScroll == false end)
@@ -1219,6 +1391,12 @@ function OpenMenu(owner)
             function()
                 db.speechFitText = not db.speechFitText
                 addon.SpeechSettingChanged("speechFitText")
+            end)
+        root:CreateCheckbox("Compact: three scrolling lines",
+            function() return db.speechCompact == true end,
+            function()
+                db.speechCompact = not db.speechCompact
+                addon.SpeechSettingChanged("speechCompact")
             end)
         root:CreateCheckbox("Queue quests (don't interrupt)",
             function() return db.queueQuestSpeech end,
@@ -1229,10 +1407,23 @@ function OpenMenu(owner)
         root:CreateCheckbox("Lock position",
             function() return db.speechFrameLocked end,
             function() db.speechFrameLocked = not db.speechFrameLocked end)
-        root:CreateButton("Reset position", function()
+        root:CreateButton("Reset position (top of the screen)", function()
             db.speechFramePos = nil
             ApplyPosition()
         end)
+        if addon.SetControllerLayout then
+            local pad = root:CreateButton("Controller")
+            for _, opt in ipairs({ { "XBOX", "Xbox" }, { "PS", "PlayStation" }, { "KBM", "None (keyboard and mouse)" } }) do
+                pad:CreateRadio(opt[2], function() return addon.ControllerLayout() == opt[1] end,
+                    function() addon.SetControllerLayout(opt[1]) end)
+            end
+            pad:CreateDivider()
+            pad:CreateTitle("Button to take the bar")
+            for _, b in ipairs({ "PADBACK", "PADLSTICK", "PADRSTICK" }) do
+                pad:CreateRadio(addon.ControllerLabel(b), function() return addon.ControllerFocusButton() == b end,
+                    function() addon.SetControllerFocusButton(b) end)
+            end
+        end
         root:CreateDivider()
         if current and not current.preview and addon.OpenReportMenu then
             local reportSub = root:CreateButton("Report this voice line")
@@ -1271,7 +1462,7 @@ function addon.SpeechSettingChanged(key)
     if addon.SubtitleSettingChanged then
         addon.SubtitleSettingChanged(key)
     end
-    if key == "readingFont" and addon.SpeechFrameApplyFont then
+    if (key == "readingFont" or key == "speechTextSize" or key == "speechLines" or key == "speechCompact") and addon.SpeechFrameApplyFont then
         addon.SpeechFrameApplyFont()
     end
     if addon.FontPreviewRefresh then

@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Controller support for the speech bar
+- **Asks which controller you use** (Xbox or PlayStation) the first time you press a controller button, or picks it up on its own when the pad names itself. Change it in the bar's gear menu > Controller.
+- **Take the bar with View (Xbox) / Create (PlayStation)** while it is on screen. Then: A/Cross pause or resume, X/Square next queued quest, Y/Triangle replay, B/Circle stop, D-pad moves the bar, LB/RB or L1/R1 change its size. Press View/Create again, wait a few seconds, or move a stick and the buttons go back to the game. Never takes buttons in combat.
+- **The tutorial works with a controller**: D-pad moves a gold box between buttons and tick boxes, A/Cross picks, B/Circle goes back a page, LB/RB (L1/R1) turn pages. No mouse needed.
+- **New Controller page in the tutorial**: pick Xbox, PlayStation or keyboard and mouse; turn on the game's own controller support if it is off; and "Make it easy" options: a bigger speech bar at the top, the button legend, auto-accept and queue quests, and which button takes the speech bar. One button sets all the controller-friendly choices. Players who already did the tutorial only see this page if the game's controller support is on.
+- A small legend under the bar names the buttons for your controller.
+- **New key bindings**: Stop, Next, Replay and "take the speech bar", so you can put them on any controller combination in the game's bindings.
+- **TV size for the speech bar**: text size (Normal / Large / Extra large), 3 or 4 lines at a time, and the text now glides up smoothly as it is read instead of jumping. In the gear menu, and one tick on the tutorial's Controller page (bigger bar, extra-large text, 3 lines, top of the screen).
+- **Speech bar in combat**: keep showing, fade back, or hide (the voice carries on). Gear menu > In combat; the controller settings hide it.
+- **Bigger tutorial with a controller**: the tutorial window grows (as much as fits the screen) when a controller is in use.
+- **Rumble**: a short buzz when a quest joins the queue, two when the next queued quest starts. On by default with a controller; tick on the Controller page.
+- **The speech bar steps aside on flight paths and in cutscenes** (the voice carries on). Gear menu > Hide on flight paths.
+- **TV size only while you are on the controller**: pick up the mouse and the bar goes back to your own sizes; touch the pad and it grows again. Gear menu > TV size while using a controller.
+- **The settings window (/ss) works with a controller**: D-pad between options, A/Cross to pick, dropdowns open into a list you can scroll, sliders move with left/right, B/Circle closes.
+- **The speech bar now starts at the top of the screen** instead of above the action bars. Gear menu > Reset position moves an existing bar there.
+
 ## 6.0.0 (November 2026)
 
 **6.0.0 is a big one: the voices have been overhauled, and characters now speak with emotion.**

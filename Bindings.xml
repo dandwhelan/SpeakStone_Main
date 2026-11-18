@@ -5,4 +5,16 @@
   <Binding name="SPEAKSTONEPAUSE">
     SpeakStone_TogglePause()
   </Binding>
+  <Binding name="SPEAKSTONESTOP">
+    SpeakStone_Stop()
+  </Binding>
+  <Binding name="SPEAKSTONENEXT">
+    SpeakStone_Next()
+  </Binding>
+  <Binding name="SPEAKSTONEREPLAY">
+    SpeakStone_Replay()
+  </Binding>
+  <Binding name="SPEAKSTONEPADFOCUS">
+    SpeakStone_ControllerFocus()
+  </Binding>
 </Bindings>

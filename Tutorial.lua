@@ -20,7 +20,8 @@ local addonName, addon = ...
 -- Bump to show the setup once more to everyone, e.g. after adding a page.
 -- 2: the speech bar page. 3: the flow rebuilt (look, behaviour, the Guide); players who saw version 2 get the short run.
 -- 4: the speaker and report pages (2026-11-07); everyone who saw 3 gets the short run with them once.
-local TUTORIAL_VERSION = 4
+-- 5: the controller page (2026-11-18); shown once to players who saw 4 only if the game's controller support is on.
+local TUTORIAL_VERSION = 5
 
 local CURSEFORGE_URL = "https://www.curseforge.com/members/dandwhelan/projects"
 local WEBSITE_URL = "https://speakstone.beanw.co.uk"
@@ -241,10 +242,10 @@ local CONTENT = WIDTH - 60
 local frame, pages, pageIndex
 local order, pageByName
 local ShowPage
-local FULL_ORDER = { "welcome", "listen", "words", "head", "play", "where", "report", "help", "done" }
-local SHORT_ORDER = { "whatsnew", "head", "report", "done" }
+local FULL_ORDER = { "welcome", "controller", "listen", "words", "head", "play", "where", "report", "help", "done" }
+local SHORT_ORDER = { "whatsnew", "controller", "head", "report", "done" }
 local STEP_TITLES = {
-    welcome = "Welcome", listen = "How to listen", words = "When you walk away", head = "The speaker",
+    welcome = "Welcome", controller = "Controller", listen = "How to listen", words = "When you walk away", head = "The speaker",
     play = "While you play", report = "Report a voice",
     where = "Where things are", help = "Help the project", done = "Done", whatsnew = "What's new",
 }
@@ -395,6 +396,146 @@ local function BuildWelcome()
         DB().audioPackPromptShown = true
         DB().audioPack3PromptShown = true
     end)
+end
+
+-- 1b. Controller: which one, and settings that make SpeakStone easy to use without a mouse
+local function PadOn()
+    return C_GamePad and C_GamePad.IsEnabled and C_GamePad.IsEnabled()
+end
+
+-- Big enough to read from the sofa: a bigger bar, big text three lines at a time, at the top of the screen.
+-- Only while the controller is in use: the mouse brings back the player's own sizes (SpeechFrame.lua TVNow).
+local function ApplyTVSize(on)
+    local db = DB()
+    db.speechTVOnPad = on and true or false
+    db.speechAutoScroll = true
+    if on and addon.SpeechFrameResetPosition then addon.SpeechFrameResetPosition() end
+    if addon.SpeechSettingChanged then
+        addon.SpeechSettingChanged("speechSize")
+        addon.SpeechSettingChanged("speechTextSize")
+    end
+end
+
+local function TVSizeOn()
+    return DB().speechTVOnPad and true or false
+end
+
+local function BuildController()
+    local page = NewPage("controller")
+    local title = Title(page, "Playing with a controller?")
+    local hint = Text(page, "GameFontHighlightSmall", CONTENT)
+    hint:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
+    hint:SetText("Pick yours and SpeakStone names the buttons to match. Every page of this tutorial works with the "
+        .. "controller too: D-pad to move, A / Cross to pick, B / Circle to go back, LB / RB (L1 / R1) to turn the page.")
+
+    local choices = {}
+    local function Refresh()
+        local layout = addon.ControllerLayout and addon.ControllerLayout()
+        for _, b in ipairs(choices) do b:SetSelected(b.key == layout) end
+        page.focusButton:SetText("Take the speech bar with: " .. addon.ControllerLabel(addon.ControllerFocusButton()):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""))
+        page.gameSupport:SetShown(not PadOn())
+        local isPad = layout == "XBOX" or layout == "PS"
+        for _, w in ipairs(page.padOnly) do
+            if isPad then w:Enable() else w:Disable() end
+            if w.Refresh then w.Refresh() end
+        end
+        page.big:SetChecked(TVSizeOn())
+        page.combat:SetChecked(DB().speechCombat == "hide")
+        page.rumble:SetChecked(DB().controllerRumble ~= false)
+        page.legend:SetChecked(DB().controllerShowLegend ~= false)
+    end
+    page.Refresh = Refresh
+
+    local x = 0
+    for _, opt in ipairs({ { "XBOX", "Xbox" }, { "PS", "PlayStation" }, { "KBM", "Keyboard and mouse" } }) do
+        local b = addon.UIK.Button(page, opt[2], 170, 34, function()
+            addon.SetControllerLayout(opt[1])
+            Refresh()
+        end)
+        b:SetPoint("TOPLEFT", hint, "BOTTOMLEFT", x, -14)
+        b.key = opt[1]
+        choices[#choices + 1] = b
+        x = x + 180
+    end
+
+    -- WoW's own controller support has to be on for any of this to reach the addon.
+    page.gameSupport = addon.UIK.Button(page, "Turn on the game's controller support", 300, 26, function()
+        if SetCVar then SetCVar("GamePadEnable", "1") end
+        print("|cff33ff99SpeakStone:|r controller support turned on. If the pad does nothing yet, /reload.")
+        C_Timer.After(0.5, Refresh)
+    end)
+    page.gameSupport:SetPoint("TOPLEFT", choices[1], "BOTTOMLEFT", 0, -10)
+
+    local head = Text(page, "GameFontNormal", CONTENT)
+    head:SetPoint("TOPLEFT", choices[1], "BOTTOMLEFT", 0, -46)
+    head:SetText("Make it easy")
+
+    page.padOnly = {}
+    page.big = addon.UIK.Check(page, "TV size while on the controller: big text, 3 lines that glide up, bar at the top")
+    page.big:SetPoint("TOPLEFT", head, "BOTTOMLEFT", 0, -8)
+    page.big:SetHitRectInsets(0, -(page.big.text:GetStringWidth() + 6), 0, 0)
+    page.big:SetScript("OnClick", function(self) ApplyTVSize(self:GetChecked()) end)
+    page.combat = addon.UIK.Check(page, "Hide the speech bar in combat (the voice carries on)")
+    page.combat:SetPoint("TOPLEFT", page.big, "BOTTOMLEFT", 0, -6)
+    page.combat:SetHitRectInsets(0, -(page.combat.text:GetStringWidth() + 6), 0, 0)
+    page.combat:SetScript("OnClick", function(self) DB().speechCombat = self:GetChecked() and "hide" or "show" end)
+    page.legend = addon.UIK.Check(page, "Show which button does what under the speech bar")
+    page.rumble = addon.UIK.Check(page, "Rumble when a quest is queued, and when the next one starts")
+    page.rumble:SetPoint("TOPLEFT", page.combat, "BOTTOMLEFT", 0, -6)
+    page.rumble:SetHitRectInsets(0, -(page.rumble.text:GetStringWidth() + 6), 0, 0)
+    page.rumble:SetScript("OnClick", function(self)
+        DB().controllerRumble = self:GetChecked() and true or false
+        if self:GetChecked() and addon.Rumble then addon.Rumble("queue") end
+    end)
+    page.legend:SetPoint("TOPLEFT", page.rumble, "BOTTOMLEFT", 0, -6)
+    page.legend:SetHitRectInsets(0, -(page.legend.text:GetStringWidth() + 6), 0, 0)
+    page.legend:SetScript("OnClick", function(self) DB().controllerShowLegend = self:GetChecked() and true or false end)
+    local accept = Check(page, page.legend, "autoAcceptQuests", "Auto-accept quests: fewer windows to click through",
+        "Quests are accepted as soon as they are offered and read to you on the speech bar.", 8)
+    local queue = Check(page, accept, "queueQuestSpeech", "Queue quests instead of cutting one off",
+        "Talk to several quest givers in a row; each quest waits its turn, and the speech bar's Next skips ahead.", 8)
+
+    page.focusButton = addon.UIK.Button(page, "", 300, 26, function()
+        local cycle = { PADBACK = "PADLSTICK", PADLSTICK = "PADRSTICK", PADRSTICK = "PADBACK" }
+        addon.SetControllerFocusButton(cycle[addon.ControllerFocusButton()] or "PADBACK")
+        Refresh()
+    end)
+    page.focusButton:SetPoint("TOPLEFT", queue, "BOTTOMLEFT", 0, -12)
+    page.focusButton:HookScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("The speech bar", 1, 0.82, 0)
+        GameTooltip:AddLine("Press this button while the speech bar is up to take it: then A / Cross pauses, X / Square "
+            .. "skips to the next quest, Y / Triangle replays, B / Circle stops, the D-pad moves it and LB / RB resize it. "
+            .. "Press again (or wait a few seconds) to hand the buttons back. Press here to pick another button.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    page.focusButton:HookScript("OnLeave", function() GameTooltip:Hide() end)
+
+    page.recommended = addon.UIK.Button(page, "Use the controller-friendly settings", 300, 30, function()
+        local db = DB()
+        if not (db.controllerLayout == "XBOX" or db.controllerLayout == "PS") then
+            addon.SetControllerLayout(addon.ControllerDetect() or "XBOX")
+        end
+        ApplyTVSize(true)
+        db.speechCombat = "hide"
+        db.controllerRumble = true
+        db.speechHideOnTaxi = true
+        db.controllerShowLegend = true
+        db.autoAcceptQuests = true
+        db.queueQuestSpeech = true
+        db.showSpeechFrame = true
+        Refresh()
+        print("|cff33ff99SpeakStone:|r controller-friendly settings on.")
+    end)
+    page.recommended:SetPoint("BOTTOMLEFT", page, "BOTTOMLEFT", 0, 6)
+
+    for _, w in ipairs({ page.big, page.rumble, page.legend, page.focusButton }) do page.padOnly[#page.padOnly + 1] = w end
+    page:SetScript("OnShow", function()
+        accept.Refresh()
+        queue.Refresh()
+        Refresh()
+    end)
+    addon.ThemeRegister(function() if page:IsShown() then Refresh() end end)
 end
 
 -- 2. How to listen: a profile
@@ -982,6 +1123,7 @@ function ShowPage(index)
     frame.next:SetText(index == #order and "Finish" or "Next")
     local name = order.names[index]
     frame.step:SetText(string.format("Step %d of %d  \194\183  %s", index, #order, STEP_TITLES[name] or ""))
+    if frame.nav then frame.nav.Reset() end
 end
 
 local function Build()
@@ -998,6 +1140,12 @@ local function Build()
     function addon.PlaceTutorial()
         local self = frame
         if not self:IsShown() then return end
+        -- Controller mode: bigger, for a screen across the room, as big as fits.
+        local layout = DB().controllerLayout
+        local pad = layout == "XBOX" or layout == "PS"
+            or (layout == nil and addon.ControllerDetect and addon.ControllerDetect() ~= nil)
+        local padScale = pad and 1.3 or 1
+        self:SetScale(math.min(padScale, (UIParent:GetHeight() - 20) / HEIGHT))
         local settings = SpeakStoneSettingsFrame
         self:ClearAllPoints()
         if not (settings and settings:IsShown() and settings:GetLeft()) then
@@ -1040,6 +1188,7 @@ local function Build()
 
     pages, pageByName = {}, {}
     BuildWelcome()
+    BuildController()
     BuildListen()
     BuildWords()
     BuildHead()
@@ -1050,13 +1199,34 @@ local function Build()
     BuildDone()
     BuildWhatsNew()
     SetOrder(FULL_ORDER)
+
+    -- The controller drives every page: start on Next, B goes back a page (closes on the first), LB / RB turn pages.
+    if addon.GamepadNav then
+        frame.nav = addon.GamepadNav(frame, {
+            start = function() return frame.next end,
+            back = function() if pageIndex > 1 then ShowPage(pageIndex - 1) else frame:Hide() end end,
+            prev = function() if pageIndex > 1 then ShowPage(pageIndex - 1) end end,
+            next = function() if pageIndex == #order then frame:Hide() else ShowPage(pageIndex + 1) end end,
+            close = function() frame:Hide() end,
+            onLayout = function()
+                addon.PlaceTutorial()
+                local page = pages[order[pageIndex]]
+                if page and page.Refresh then page.Refresh() end
+            end,
+        })
+    end
 end
 
 -- page: optional start page (2 = how to listen). whatsNew: the short run for players who saw an older version.
 function addon.ShowTutorial(page, whatsNew)
     if not DB() then return end
     if not frame then Build() end
-    SetOrder(whatsNew and SHORT_ORDER or FULL_ORDER)
+    local names = whatsNew and SHORT_ORDER or FULL_ORDER
+    if whatsNew and not PadOn() then
+        names = {}
+        for _, n in ipairs(SHORT_ORDER) do if n ~= "controller" then names[#names + 1] = n end end
+    end
+    SetOrder(names)
     selectedProfile = nil
     defaultsApplied = false
     frame:Show()
@@ -1070,6 +1240,11 @@ function addon.MaybeShowTutorial()
     local db = DB()
     local seen = db and db.tutorialVersion or 0
     if not db or seen >= TUTORIAL_VERSION then return false end
+    -- Version 5 only added the controller page: no need to show it again to someone without a controller.
+    if seen == 4 and not PadOn() then
+        db.tutorialVersion = TUTORIAL_VERSION
+        return false
+    end
     addon.ShowTutorial(1, seen >= 1)
     return true
 end
