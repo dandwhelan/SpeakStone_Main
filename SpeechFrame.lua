@@ -107,8 +107,15 @@ local function TextAdd()
     return 0
 end
 
+-- Compact (owner, 2026-11-18): three lines that scroll with the voice, whatever "grow to show all the
+-- text" says, so a big box of quest text doesn't sit in the middle of the screen while walking around.
+-- Always on with a controller; mouse and keyboard players can pick it (speechCompact).
+local function Compact()
+    return addon.padActive or DB().speechCompact == true
+end
+
 local function Lines()
-    if TVNow() then return 3 end
+    if Compact() then return 3 end
     local n = tonumber(DB().speechLines)
     return (n == 3 or n == 4) and n or TEXT_LINES
 end
@@ -948,9 +955,9 @@ local function Fill(sd)
     frame.plain, frame.litIndex, frame.readKey = text, nil, nil
     local textHeight = math.max(1, frame.text:GetStringHeight())
     frame.scrollChild:SetSize(width, textHeight)
-    -- Fixed four lines, or grown to fit the whole text (capped).
+    -- Fixed lines, or grown to fit the whole text (capped); never grown when compact.
     local lines = Lines()
-    if DB().speechFitText then
+    if DB().speechFitText and not Compact() then
         lines = math.max(lines, math.min(MAX_FIT_LINES, math.ceil(textHeight / frame.lineHeight)))
     end
     local scrollHeight = frame.lineHeight * lines
@@ -1017,6 +1024,9 @@ local function Refresh()
             -- The spoken line sits a third of the way down, so what is coming next is in view; the OnUpdate
             -- above glides there.
             local target = fraction * frame.scrollChild:GetHeight() - frame.scroll:GetHeight() / 3
+            -- Whole lines only, so no line is shown cut in half at the top or bottom.
+            local step = frame.lineHeight or 1
+            target = math.floor(target / step + 0.5) * step
             frame.scrollTarget = math.max(0, math.min(target, range))
         end
         frame.controls.time:SetText(Clock(math.min(elapsed, duration)) .. " / " .. Clock(duration))
@@ -1382,6 +1392,12 @@ function OpenMenu(owner)
                 db.speechFitText = not db.speechFitText
                 addon.SpeechSettingChanged("speechFitText")
             end)
+        root:CreateCheckbox("Compact: three scrolling lines",
+            function() return db.speechCompact == true end,
+            function()
+                db.speechCompact = not db.speechCompact
+                addon.SpeechSettingChanged("speechCompact")
+            end)
         root:CreateCheckbox("Queue quests (don't interrupt)",
             function() return db.queueQuestSpeech end,
             function()
@@ -1446,7 +1462,7 @@ function addon.SpeechSettingChanged(key)
     if addon.SubtitleSettingChanged then
         addon.SubtitleSettingChanged(key)
     end
-    if (key == "readingFont" or key == "speechTextSize" or key == "speechLines") and addon.SpeechFrameApplyFont then
+    if (key == "readingFont" or key == "speechTextSize" or key == "speechLines" or key == "speechCompact") and addon.SpeechFrameApplyFont then
         addon.SpeechFrameApplyFont()
     end
     if addon.FontPreviewRefresh then

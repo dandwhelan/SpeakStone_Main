@@ -45,9 +45,48 @@ local function FocusButton()
     return DB().controllerFocusButton or "PADBACK"
 end
 
+-- The game's own button pictures (UiTextureAtlasMember, gamepad_ltr_* = Xbox letters, gamepad_shp_* = PlayStation
+-- shapes). Shown inline in text; a button whose picture this client lacks falls back to its gold [name].
+local ICONS = {
+    XBOX = { PAD1 = "gamepad_ltr_a_64", PAD2 = "gamepad_ltr_b_64", PAD3 = "gamepad_ltr_x_64", PAD4 = "gamepad_ltr_y_64",
+        PADBACK = "gamepad_ltr_view_64", PADFORWARD = "gamepad_ltr_menu_64",
+        PADLSHOULDER = "gamepad_ltr_lshoulder_64", PADRSHOULDER = "gamepad_ltr_rshoulder_64",
+        PADLSTICK = "gamepad_gen_lstickin_64", PADRSTICK = "gamepad_gen_rstickin_64",
+        PADDUP = "gamepad_ltr_up_64", PADDDOWN = "gamepad_ltr_down_64",
+        PADDLEFT = "gamepad_ltr_left_64", PADDRIGHT = "gamepad_ltr_right_64" },
+    PS = { PAD1 = "gamepad_shp_cross_64", PAD2 = "gamepad_shp_circle_64", PAD3 = "gamepad_shp_square_64",
+        PAD4 = "gamepad_shp_triangle_64", PADBACK = "gamepad_shp_share_64", PADFORWARD = "gamepad_shp_menu_64",
+        PADLSHOULDER = "gamepad_shp_lshoulder_64", PADRSHOULDER = "gamepad_shp_rshoulder_64",
+        PADLSTICK = "gamepad_shp_lstickin_64", PADRSTICK = "gamepad_shp_rstickin_64",
+        PADDUP = "gamepad_shp_up_64", PADDDOWN = "gamepad_shp_down_64",
+        PADDLEFT = "gamepad_shp_left_64", PADDRIGHT = "gamepad_shp_right_64" },
+}
+local ICON_SIZE = 18
+
+local hasAtlas = {}
+local function AtlasExists(name)
+    if hasAtlas[name] == nil then
+        hasAtlas[name] = (C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(name)) and true or false
+    end
+    return hasAtlas[name]
+end
+
+local function Icon(layout, button)
+    local atlas = ICONS[layout][button]
+    if atlas and AtlasExists(atlas) then
+        return "|A:" .. atlas .. ":" .. ICON_SIZE .. ":" .. ICON_SIZE .. "|a"
+    end
+end
+
 local function Label(button)
-    local set = LABELS[Layout() or "XBOX"]
-    return "|cffffd100[" .. (set[button] or button) .. "]|r"
+    local layout = Layout() or "XBOX"
+    if button == "DPAD" then
+        local up, down = Icon(layout, "PADDUP"), Icon(layout, "PADDDOWN")
+        local left, right = Icon(layout, "PADDLEFT"), Icon(layout, "PADDRIGHT")
+        if up and down and left and right then return left .. up .. down .. right end
+        return "|cffffd100[D-pad]|r"
+    end
+    return Icon(layout, button) or ("|cffffd100[" .. (LABELS[layout][button] or button) .. "]|r")
 end
 
 -- --------------------------------------------------------------------------
@@ -105,6 +144,22 @@ end
 -- Holding the bar
 -- --------------------------------------------------------------------------
 
+-- Which device the player is using right now: the game says when it flips between controller and mouse.
+-- The bar's line count and the TV size (speechTVOnPad) follow it.
+addon.padActive = false
+local function PadActiveChanged(active)
+    active = active and true or false
+    if addon.padActive == active then return end
+    addon.padActive = active
+    if not addon.SpeechSettingChanged then return end
+    -- The bar keeps to three lines on a controller (SpeechFrame Lines()), so refit it either way.
+    addon.SpeechSettingChanged("speechLines")
+    if DB().speechTVOnPad then
+        addon.SpeechSettingChanged("speechTextSize")
+        addon.SpeechSettingChanged("speechSize")
+    end
+end
+
 local listener = CreateFrame("Frame", "SpeakStoneGamepadListener", UIParent)
 listener:SetFrameStrata("DIALOG")
 listener:SetSize(1, 1)
@@ -127,10 +182,38 @@ local function BuildHint(frame)
     hint.text:SetPoint("CENTER")
 end
 
+-- While the player holds the bar, each of its own buttons wears the pad button that works it (owner,
+-- 2026-11-18), as well as the legend underneath.
+local BADGE_SIZE = 13
+
+local function Badges(frame, on)
+    local controls = frame.controls
+    if not controls then return end
+    local layout = Layout()
+    for button, action in pairs(ACTIONS) do
+        local target = controls[action]
+        if target then
+            local atlas = on and layout and ICONS[layout][button]
+            if atlas and AtlasExists(atlas) then
+                if not target.padBadge then
+                    target.padBadge = target:CreateTexture(nil, "OVERLAY", nil, 7)
+                    target.padBadge:SetSize(BADGE_SIZE, BADGE_SIZE)
+                    target.padBadge:SetPoint("CENTER", target, "BOTTOMRIGHT", 1, 1)
+                end
+                target.padBadge:SetAtlas(atlas)
+                target.padBadge:Show()
+            elseif target.padBadge then
+                target.padBadge:Hide()
+            end
+        end
+    end
+end
+
 local function UpdateHint()
     local frame = addon.SpeechFrameGet and addon.SpeechFrameGet()
     if not frame then return end
     BuildHint(frame)
+    Badges(frame, listener.focused and Layout() ~= nil and frame:IsShown())
     if not Layout() or not frame:IsShown() or DB().controllerShowLegend == false then
         hint:Hide()
         return
@@ -138,7 +221,7 @@ local function UpdateHint()
     local text
     if listener.focused then
         text = Label("PAD1") .. " Pause/Resume   " .. Label("PAD3") .. " Next   " .. Label("PAD4") .. " Replay   "
-            .. Label("PAD2") .. " Stop   |cffffd100[D-pad]|r Move   " .. Label("PADLSHOULDER") .. "/"
+            .. Label("PAD2") .. " Stop   " .. Label("DPAD") .. " Move   " .. Label("PADLSHOULDER") .. "/"
             .. Label("PADRSHOULDER") .. " Size   " .. Label(FocusButton()) .. " Done"
     else
         text = Label(FocusButton()) .. " Control the speech bar"
@@ -173,6 +256,9 @@ local function DoMove(button)
 end
 
 listener:SetScript("OnGamePadButtonDown", function(self, button)
+    -- A button press means the controller is in use, even if the game has not said so yet (it only
+    -- reports a change, so a player who logs in on the pad would otherwise stay on mouse sizes).
+    PadActiveChanged(true)
     if not Layout() or InCombatLockdown() then
         Propagate(true)
         return
@@ -246,19 +332,6 @@ end
 -- --------------------------------------------------------------------------
 -- Events
 -- --------------------------------------------------------------------------
-
--- Which device the player is using right now: the game says when it flips between controller and mouse.
--- The TV size (speechTVOnPad) follows it.
-addon.padActive = false
-local function PadActiveChanged(active)
-    active = active and true or false
-    if addon.padActive == active then return end
-    addon.padActive = active
-    if DB().speechTVOnPad and addon.SpeechSettingChanged then
-        addon.SpeechSettingChanged("speechTextSize")
-        addon.SpeechSettingChanged("speechSize")
-    end
-end
 
 local events = CreateFrame("Frame")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
@@ -467,7 +540,7 @@ function addon.GamepadNav(window, opts)
         local on = Active()
         legend:SetShown(on)
         if on then
-            legend:SetText(Label("PAD1") .. " Select   " .. Label("PAD2") .. " Back   |cffffd100[D-pad]|r Move   "
+            legend:SetText(Label("PAD1") .. " Select   " .. Label("PAD2") .. " Back   " .. Label("DPAD") .. " Move   "
                 .. (opts.prev and (Label("PADLSHOULDER") .. "/" .. Label("PADRSHOULDER") .. " Page") or ""))
             if not Usable(nav.current) then nav.Reset() end
         else
