@@ -1,5 +1,11 @@
 # Changelog
 
+## 6.0.2 (November 2026)
+
+- Controller: the tutorial page, its tooltip and the first-run "which controller?" popup now show your pad's own button pictures too.
+- The list of voiced lines is refreshed from the latest game data.
+- Voice packs: lines that had a pause in the middle of a word are back to their original timing (separate pack updates).
+
 ## 6.0.1 (November 2026)
 
 ### Controller support for the speech bar
