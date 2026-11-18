@@ -12,6 +12,10 @@
 - **TV size for the speech bar**: text size (Normal / Large / Extra large), 3 or 4 lines at a time, and the text now glides up smoothly as it is read instead of jumping. In the gear menu, and one tick on the tutorial's Controller page (bigger bar, extra-large text, 3 lines, top of the screen).
 - **Speech bar in combat**: keep showing, fade back, or hide (the voice carries on). Gear menu > In combat; the controller settings hide it.
 - **Bigger tutorial with a controller**: the tutorial window grows (as much as fits the screen) when a controller is in use.
+- **Rumble**: a short buzz when a quest joins the queue, two when the next queued quest starts. On by default with a controller; tick on the Controller page.
+- **The speech bar steps aside on flight paths and in cutscenes** (the voice carries on). Gear menu > Hide on flight paths.
+- **TV size only while you are on the controller**: pick up the mouse and the bar goes back to your own sizes; touch the pad and it grows again. Gear menu > TV size while using a controller.
+- **The settings window (/ss) works with a controller**: D-pad between options, A/Cross to pick, dropdowns open into a list you can scroll, sliders move with left/right, B/Circle closes.
 - **The speech bar now starts at the top of the screen** instead of above the action bars. Gear menu > Reset position moves an existing bar there.
 
 ## 6.0.0 (November 2026)

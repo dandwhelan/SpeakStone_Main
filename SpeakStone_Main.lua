@@ -1686,6 +1686,7 @@ local function EnqueueSpeech(soundData)
         addon.SpeechFrameCapturePortrait(soundData)
     end
     NotifySpeechFrame("queue", addon.activeSound)
+    if addon.Rumble then addon.Rumble("queue") end
 end
 
 -- Start the next queued line now (the frame's Next button, or the end of
@@ -1702,6 +1703,7 @@ function addon.PlayNextQueued()
         return false
     end
     StopCurrentSound(true)
+    if addon.Rumble then addon.Rumble("next") end
     addon.queuePos = addon.queuePos + 1
     nextSound.isPlaying = false
     nextSound.soundHandle = nil

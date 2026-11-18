@@ -81,7 +81,14 @@ local function Readable(value)
     return value
 end
 
+-- TV size while the controller is in use (speechTVOnPad; owner, 2026-11-18): bigger bar, extra-large text,
+-- three lines. Back to the player's own sizes as soon as they pick up the mouse.
+local function TVNow()
+    return DB().speechTVOnPad and addon.padActive
+end
+
 local function SizeScale()
+    if TVNow() then return 1.25 end
     local key = DB().speechSize or "medium"
     for _, size in ipairs(SIZES) do
         if size.key == key then
@@ -92,6 +99,7 @@ local function SizeScale()
 end
 
 local function TextAdd()
+    if TVNow() then return 7 end
     local key = DB().speechTextSize or "normal"
     for _, size in ipairs(TEXT_SIZES) do
         if size.key == key then return size.add end
@@ -100,6 +108,7 @@ local function TextAdd()
 end
 
 local function Lines()
+    if TVNow() then return 3 end
     local n = tonumber(DB().speechLines)
     return (n == 3 or n == 4) and n or TEXT_LINES
 end
@@ -108,6 +117,18 @@ end
 local function CombatMode()
     local mode = DB().speechCombat
     return (mode == "fade" or mode == "hide") and mode or "show"
+end
+
+-- On a flight path, or a cutscene playing: the bar steps aside (the voice carries on).
+local function SteppedAside()
+    if DB().speechHideOnTaxi ~= false and UnitOnTaxi and UnitOnTaxi("player") then
+        return true
+    end
+    if (InCinematic and InCinematic()) or (CinematicFrame and CinematicFrame:IsShown())
+        or (MovieFrame and MovieFrame:IsShown()) then
+        return true
+    end
+    return false
 end
 
 local function InFight()
@@ -1037,6 +1058,9 @@ local function ShouldShow(sd)
     if CombatMode() == "hide" and InFight() then
         return false
     end
+    if SteppedAside() then
+        return false
+    end
     if paused then
         return true
     end
@@ -1339,6 +1363,16 @@ function OpenMenu(owner)
             combatMenu:CreateRadio(opt[2], function() return CombatMode() == opt[1] end,
                 function() db.speechCombat = opt[1] end)
         end
+        root:CreateCheckbox("Hide on flight paths",
+            function() return db.speechHideOnTaxi ~= false end,
+            function() db.speechHideOnTaxi = db.speechHideOnTaxi == false end)
+        root:CreateCheckbox("TV size while using a controller",
+            function() return db.speechTVOnPad end,
+            function()
+                db.speechTVOnPad = not db.speechTVOnPad
+                addon.SpeechSettingChanged("speechTextSize")
+                addon.SpeechSettingChanged("speechSize")
+            end)
         root:CreateCheckbox("Auto-scroll the text",
             function() return db.speechAutoScroll ~= false end,
             function() db.speechAutoScroll = db.speechAutoScroll == false end)

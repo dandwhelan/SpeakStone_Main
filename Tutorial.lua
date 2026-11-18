@@ -404,11 +404,10 @@ local function PadOn()
 end
 
 -- Big enough to read from the sofa: a bigger bar, big text three lines at a time, at the top of the screen.
+-- Only while the controller is in use: the mouse brings back the player's own sizes (SpeechFrame.lua TVNow).
 local function ApplyTVSize(on)
     local db = DB()
-    db.speechSize = on and "large" or "medium"
-    db.speechTextSize = on and "xlarge" or "normal"
-    db.speechLines = on and 3 or 4
+    db.speechTVOnPad = on and true or false
     db.speechAutoScroll = true
     if on and addon.SpeechFrameResetPosition then addon.SpeechFrameResetPosition() end
     if addon.SpeechSettingChanged then
@@ -418,8 +417,7 @@ local function ApplyTVSize(on)
 end
 
 local function TVSizeOn()
-    local db = DB()
-    return db.speechTextSize == "xlarge" and (db.speechSize == "large" or db.speechSize == "xlarge")
+    return DB().speechTVOnPad and true or false
 end
 
 local function BuildController()
@@ -443,6 +441,7 @@ local function BuildController()
         end
         page.big:SetChecked(TVSizeOn())
         page.combat:SetChecked(DB().speechCombat == "hide")
+        page.rumble:SetChecked(DB().controllerRumble ~= false)
         page.legend:SetChecked(DB().controllerShowLegend ~= false)
     end
     page.Refresh = Refresh
@@ -472,16 +471,23 @@ local function BuildController()
     head:SetText("Make it easy")
 
     page.padOnly = {}
-    page.big = addon.UIK.Check(page, "TV size: big text, 3 lines at a time that glide up, bar at the top of the screen")
+    page.big = addon.UIK.Check(page, "TV size while on the controller: big text, 3 lines that glide up, bar at the top")
     page.big:SetPoint("TOPLEFT", head, "BOTTOMLEFT", 0, -8)
     page.big:SetHitRectInsets(0, -(page.big.text:GetStringWidth() + 6), 0, 0)
     page.big:SetScript("OnClick", function(self) ApplyTVSize(self:GetChecked()) end)
     page.combat = addon.UIK.Check(page, "Hide the speech bar in combat (the voice carries on)")
-    page.combat:SetPoint("TOPLEFT", page.big, "BOTTOMLEFT", 0, -8)
+    page.combat:SetPoint("TOPLEFT", page.big, "BOTTOMLEFT", 0, -6)
     page.combat:SetHitRectInsets(0, -(page.combat.text:GetStringWidth() + 6), 0, 0)
     page.combat:SetScript("OnClick", function(self) DB().speechCombat = self:GetChecked() and "hide" or "show" end)
     page.legend = addon.UIK.Check(page, "Show which button does what under the speech bar")
-    page.legend:SetPoint("TOPLEFT", page.combat, "BOTTOMLEFT", 0, -8)
+    page.rumble = addon.UIK.Check(page, "Rumble when a quest is queued, and when the next one starts")
+    page.rumble:SetPoint("TOPLEFT", page.combat, "BOTTOMLEFT", 0, -6)
+    page.rumble:SetHitRectInsets(0, -(page.rumble.text:GetStringWidth() + 6), 0, 0)
+    page.rumble:SetScript("OnClick", function(self)
+        DB().controllerRumble = self:GetChecked() and true or false
+        if self:GetChecked() and addon.Rumble then addon.Rumble("queue") end
+    end)
+    page.legend:SetPoint("TOPLEFT", page.rumble, "BOTTOMLEFT", 0, -6)
     page.legend:SetHitRectInsets(0, -(page.legend.text:GetStringWidth() + 6), 0, 0)
     page.legend:SetScript("OnClick", function(self) DB().controllerShowLegend = self:GetChecked() and true or false end)
     local accept = Check(page, page.legend, "autoAcceptQuests", "Auto-accept quests: fewer windows to click through",
@@ -512,6 +518,8 @@ local function BuildController()
         end
         ApplyTVSize(true)
         db.speechCombat = "hide"
+        db.controllerRumble = true
+        db.speechHideOnTaxi = true
         db.controllerShowLegend = true
         db.autoAcceptQuests = true
         db.queueQuestSpeech = true
@@ -521,7 +529,7 @@ local function BuildController()
     end)
     page.recommended:SetPoint("BOTTOMLEFT", page, "BOTTOMLEFT", 0, 6)
 
-    for _, w in ipairs({ page.big, page.legend, page.focusButton }) do page.padOnly[#page.padOnly + 1] = w end
+    for _, w in ipairs({ page.big, page.rumble, page.legend, page.focusButton }) do page.padOnly[#page.padOnly + 1] = w end
     page:SetScript("OnShow", function()
         accept.Refresh()
         queue.Refresh()

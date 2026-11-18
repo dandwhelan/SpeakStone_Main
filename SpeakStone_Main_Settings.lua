@@ -696,6 +696,8 @@ function SpeakStone:CreateWindow()
 
     local frame = addon.UIK.Window("SpeakStoneSettingsFrame", FRAME_WIDTH, FRAME_HEIGHT, "SpeakStone")
     tinsert(UISpecialFrames, "SpeakStoneSettingsFrame")
+    -- D-pad / A / B work here too (Gamepad.lua): dropdowns open into a list, sliders move with left / right.
+    if addon.GamepadNav then addon.GamepadNav(frame) end
     -- The tutorial opens at login, so Settings often opens on top of it.
     frame:HookScript("OnShow", function()
         if addon.PlaceTutorial then addon.PlaceTutorial() end

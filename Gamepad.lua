@@ -263,11 +263,43 @@ events:SetScript("OnEvent", function(_, event, arg)
         listener:Hide()
     elseif event == "PLAYER_REGEN_ENABLED" then
         if listener.enabled then listener:Show() end
-    elseif event == "GAME_PAD_CONNECTED" or (event == "GAME_PAD_ACTIVE_CHANGED" and arg) then
+    elseif event == "GAME_PAD_ACTIVE_CHANGED" then
+        PadActiveChanged(arg)
+        if arg then
+            Enable()
+            AskLayout()
+        end
+    elseif event == "GAME_PAD_CONNECTED" then
         Enable()
         AskLayout()
     end
 end)
+
+-- Which device the player is using right now: the game says when it flips between controller and mouse.
+-- The TV size (speechTVOnPad) follows it.
+addon.padActive = false
+local function PadActiveChanged(active)
+    active = active and true or false
+    if addon.padActive == active then return end
+    addon.padActive = active
+    if DB().speechTVOnPad and addon.SpeechSettingChanged then
+        addon.SpeechSettingChanged("speechTextSize")
+        addon.SpeechSettingChanged("speechSize")
+    end
+end
+
+-- A short buzz: "queue" when a quest joins the queue, "next" when a queued quest starts.
+function addon.Rumble(kind)
+    if not (Layout() and addon.padActive and DB().controllerRumble ~= false) then return end
+    if not (C_GamePad and C_GamePad.SetVibration) then return end
+    local pulses = kind == "next" and 2 or 1
+    for i = 1, pulses do
+        C_Timer.After((i - 1) * 0.25, function()
+            pcall(C_GamePad.SetVibration, "Low", 0.6)
+            C_Timer.After(0.12, function() pcall(C_GamePad.StopVibration) end)
+        end)
+    end
+end
 
 -- For the gear menu.
 function addon.ControllerLayout()
@@ -320,6 +352,9 @@ BINDING_NAME_SPEAKSTONEPADFOCUS = "Controller: take / release the speech bar"
 -- it takes the controller (out of combat only); the sticks still go to the game.
 
 local function Usable(w)
+    if w and w.IsObjectType and w:IsObjectType("Slider") then
+        return w:IsVisible() and w:IsEnabled() and w:GetLeft() ~= nil and w:GetOrientation() == "HORIZONTAL"
+    end
     return w and w:IsVisible() and w:IsEnabled() and w:IsMouseEnabled() and w:GetScript("OnClick") ~= nil
         and w:GetLeft() ~= nil
 end
@@ -329,7 +364,7 @@ local function Collect(root, out)
     out = out or {}
     for _, child in ipairs({ root:GetChildren() }) do
         if child:IsVisible() then
-            if child:IsObjectType("Button") and Usable(child) then
+            if (child:IsObjectType("Button") or child:IsObjectType("Slider")) and Usable(child) then
                 out[#out + 1] = child
             end
             Collect(child, out)
@@ -381,6 +416,7 @@ function addon.GamepadNav(window, opts)
 
     local ring = CreateFrame("Frame", nil, window, BackdropTemplateMixin and "BackdropTemplate" or nil)
     ring:SetFrameStrata("TOOLTIP")
+    ring:SetFrameLevel(500)
     if ring.SetBackdrop then
         ring:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 2 })
         ring:SetBackdropBorderColor(1, 0.82, 0, 1)
@@ -391,7 +427,15 @@ function addon.GamepadNav(window, opts)
     legend:SetPoint("BOTTOM", window, "BOTTOM", 0, 4)
     legend:Hide()
 
+    -- A dropdown's list hangs off UIParent, not the window: while one is open, it is all there is.
+    local function OpenMenu()
+        local m = addon.UIK and addon.UIK.openMenu
+        return m and m:IsShown() and m or nil
+    end
+
     local function Items()
+        local menu = OpenMenu()
+        if menu then return Collect(menu) end
         return opts.items and opts.items() or Collect(window)
     end
 
@@ -410,7 +454,7 @@ function addon.GamepadNav(window, opts)
 
     function nav.Reset()
         local items = Items()
-        local start = opts.start and opts.start()
+        local start = not OpenMenu() and opts.start and opts.start()
         if not Usable(start) then start = items[1] end
         Put(start)
     end
@@ -424,7 +468,7 @@ function addon.GamepadNav(window, opts)
         legend:SetShown(on)
         if on then
             legend:SetText(Label("PAD1") .. " Select   " .. Label("PAD2") .. " Back   |cffffd100[D-pad]|r Move   "
-                .. Label("PADLSHOULDER") .. "/" .. Label("PADRSHOULDER") .. " Page")
+                .. (opts.prev and (Label("PADLSHOULDER") .. "/" .. Label("PADRSHOULDER") .. " Page") or ""))
             if not Usable(nav.current) then nav.Reset() end
         else
             Put(nil)
@@ -461,17 +505,44 @@ function addon.GamepadNav(window, opts)
             return
         end
         local handled = true
+        local cur = nav.current
+        local onSlider = Usable(cur) and cur:IsObjectType("Slider")
         if button == "PAD1" then
-            if Usable(nav.current) then
-                local w = nav.current
-                w:Click()
-                -- The page may have changed under it.
-                if not Usable(w) then nav.Reset() else Put(w) end
+            if onSlider then
+                -- nothing to press; left / right change it
+            elseif Usable(cur) then
+                local wasMenu = OpenMenu()
+                cur:Click()
+                if OpenMenu() and not wasMenu then
+                    -- Opened a dropdown: into its list.
+                    nav.menuOwner = cur
+                    nav.Reset()
+                elseif wasMenu and not OpenMenu() and Usable(nav.menuOwner) then
+                    -- Picked from the list: back on the dropdown.
+                    Put(nav.menuOwner)
+                    nav.menuOwner = nil
+                elseif not Usable(cur) then
+                    -- The page changed under it.
+                    nav.Reset()
+                else
+                    Put(cur)
+                end
             else
                 nav.Reset()
             end
         elseif button == "PAD2" then
-            if opts.back then opts.back() else self:Hide() end
+            local menu = OpenMenu()
+            if menu then
+                menu:Hide()
+                if Usable(nav.menuOwner) then Put(nav.menuOwner) else nav.Reset() end
+                nav.menuOwner = nil
+            elseif opts.back then opts.back() else self:Hide() end
+        elseif (button == "PADDLEFT" or button == "PADDRIGHT") and onSlider then
+            local lo, hi = cur:GetMinMaxValues()
+            local step = cur:GetValueStep()
+            if not step or step <= 0 then step = (hi - lo) / 20 end
+            local v = cur:GetValue() + (button == "PADDRIGHT" and step or -step)
+            cur:SetValue(math.max(lo, math.min(hi, v)))
         elseif button == "PADDUP" then Move(0, 1)
         elseif button == "PADDDOWN" then Move(0, -1)
         elseif button == "PADDLEFT" then Move(-1, 0)
