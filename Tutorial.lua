@@ -425,13 +425,19 @@ local function BuildController()
     local title = Title(page, "Playing with a controller?")
     local hint = Text(page, "GameFontHighlightSmall", CONTENT)
     hint:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
-    hint:SetText("Pick yours and SpeakStone names the buttons to match. Every page of this tutorial works with the "
-        .. "controller too: D-pad to move, A / Cross to pick, B / Circle to go back, LB / RB (L1 / R1) to turn the page.")
+    local N = addon.ControllerName or function(b) return b end
+    local function HintText()
+        return "Pick yours and SpeakStone names the buttons to match. Every page of this tutorial works with the "
+            .. "controller too: " .. N("DPAD") .. " to move, " .. N("PAD1") .. " to pick, " .. N("PAD2") .. " to go back, "
+            .. N("PADLSHOULDER") .. " " .. N("PADRSHOULDER") .. " to turn the page."
+    end
+    hint:SetText(HintText())
 
     local choices = {}
     local function Refresh()
         local layout = addon.ControllerLayout and addon.ControllerLayout()
         for _, b in ipairs(choices) do b:SetSelected(b.key == layout) end
+        hint:SetText(HintText())
         page.focusButton:SetText("Take the speech bar with: " .. addon.ControllerLabel(addon.ControllerFocusButton()):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""))
         page.gameSupport:SetShown(not PadOn())
         local isPad = layout == "XBOX" or layout == "PS"
@@ -504,8 +510,9 @@ local function BuildController()
     page.focusButton:HookScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:AddLine("The speech bar", 1, 0.82, 0)
-        GameTooltip:AddLine("Press this button while the speech bar is up to take it: then A / Cross pauses, X / Square "
-            .. "skips to the next quest, Y / Triangle replays, B / Circle stops, the D-pad moves it and LB / RB resize it. "
+        GameTooltip:AddLine("Press this button while the speech bar is up to take it: then " .. N("PAD1") .. " pauses, "
+            .. N("PAD3") .. " skips to the next quest, " .. N("PAD4") .. " replays, " .. N("PAD2") .. " stops, "
+            .. N("DPAD") .. " moves it and " .. N("PADLSHOULDER") .. " " .. N("PADRSHOULDER") .. " resize it. "
             .. "Press again (or wait a few seconds) to hand the buttons back. Press here to pick another button.", 1, 1, 1, true)
         GameTooltip:Show()
     end)

@@ -78,8 +78,8 @@ local function Icon(layout, button)
     end
 end
 
-local function Label(button)
-    local layout = Layout() or "XBOX"
+local function Label(button, layout)
+    layout = layout or Layout() or "XBOX"
     if button == "DPAD" then
         local up, down = Icon(layout, "PADDUP"), Icon(layout, "PADDDOWN")
         local left, right = Icon(layout, "PADDLEFT"), Icon(layout, "PADDRIGHT")
@@ -87,6 +87,13 @@ local function Label(button)
         return "|cffffd100[D-pad]|r"
     end
     return Icon(layout, button) or ("|cffffd100[" .. (LABELS[layout][button] or button) .. "]|r")
+end
+
+-- The player's pad's button; both pads' (Xbox / PlayStation) while none is picked yet.
+local function Name(button)
+    if Layout() or button == "DPAD" then return Label(button) end  -- one set of arrows is enough
+    local x, p = Label(button, "XBOX"), Label(button, "PS")
+    return x == p and x or (x .. "/" .. p)
 end
 
 -- --------------------------------------------------------------------------
@@ -137,7 +144,7 @@ local function AskLayout()
             .. "Change it in the bar's gear menu.")
         return
     end
-    StaticPopup_Show("SPEAKSTONE_CONTROLLER_LAYOUT", "View / Create")
+    StaticPopup_Show("SPEAKSTONE_CONTROLLER_LAYOUT", Name(FocusButton()))
 end
 
 -- --------------------------------------------------------------------------
@@ -398,6 +405,7 @@ function addon.SetControllerFocusButton(button)
 end
 
 addon.ControllerLabel = Label
+addon.ControllerName = Name
 addon.ControllerDetect = Detect
 
 -- --------------------------------------------------------------------------
