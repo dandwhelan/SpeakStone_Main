@@ -279,6 +279,7 @@ function addon.SetControllerLayout(key)
     if key ~= "KBM" then Enable() end
     UpdateHint()
     local tut = SpeakStoneTutorialFrame
+    if tut and tut:IsShown() and addon.PlaceTutorial then addon.PlaceTutorial() end
     if tut and tut.ssNav then tut.ssNav.Refresh() end
 end
 

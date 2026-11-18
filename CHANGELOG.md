@@ -9,6 +9,9 @@
 - **New Controller page in the tutorial**: pick Xbox, PlayStation or keyboard and mouse; turn on the game's own controller support if it is off; and "Make it easy" options: a bigger speech bar at the top, the button legend, auto-accept and queue quests, and which button takes the speech bar. One button sets all the controller-friendly choices. Players who already did the tutorial only see this page if the game's controller support is on.
 - A small legend under the bar names the buttons for your controller.
 - **New key bindings**: Stop, Next, Replay and "take the speech bar", so you can put them on any controller combination in the game's bindings.
+- **TV size for the speech bar**: text size (Normal / Large / Extra large), 3 or 4 lines at a time, and the text now glides up smoothly as it is read instead of jumping. In the gear menu, and one tick on the tutorial's Controller page (bigger bar, extra-large text, 3 lines, top of the screen).
+- **Speech bar in combat**: keep showing, fade back, or hide (the voice carries on). Gear menu > In combat; the controller settings hide it.
+- **Bigger tutorial with a controller**: the tutorial window grows (as much as fits the screen) when a controller is in use.
 - **The speech bar now starts at the top of the screen** instead of above the action bars. Gear menu > Reset position moves an existing bar there.
 
 ## 6.0.0 (November 2026)

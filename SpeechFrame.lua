@@ -28,6 +28,15 @@ local SIZES = {
 local WIDTH, HEIGHT = 720, 146
 local PORTRAIT = 84
 local TEXT_LINES = 4
+-- Text size and how many lines show at once (owner, 2026-11-18: for a television across the room, bigger text,
+-- three or four lines at a time, gliding up as it is read). Points added to the reading font's size.
+local TEXT_SIZES = {
+    { key = "normal", label = "Normal", add = 0 },
+    { key = "large", label = "Large", add = 3 },
+    { key = "xlarge", label = "Extra large (TV)", add = 7 },
+}
+local BASE_LINE = 15      -- the normal font's row height: HEIGHT was laid out for TEXT_LINES of these
+local SCROLL_EASE = 5     -- how fast the text glides to where it should be (higher = snappier)
 -- "Show all the text": the most lines the frame grows to before it scrolls.
 local MAX_FIT_LINES = 24
 -- How long the frame stays up after a line ends on its own.
@@ -80,6 +89,29 @@ local function SizeScale()
         end
     end
     return 1
+end
+
+local function TextAdd()
+    local key = DB().speechTextSize or "normal"
+    for _, size in ipairs(TEXT_SIZES) do
+        if size.key == key then return size.add end
+    end
+    return 0
+end
+
+local function Lines()
+    local n = tonumber(DB().speechLines)
+    return (n == 3 or n == 4) and n or TEXT_LINES
+end
+
+-- In combat the bar can stay, fade back or get out of the way; the voice carries on either way.
+local function CombatMode()
+    local mode = DB().speechCombat
+    return (mode == "fade" or mode == "hide") and mode or "show"
+end
+
+local function InFight()
+    return (InCombatLockdown and InCombatLockdown()) or (UnitAffectingCombat and UnitAffectingCombat("player"))
 end
 
 local function Duration(sd)
@@ -482,8 +514,20 @@ local function Build()
     scroll:SetScript("OnMouseWheel", function(self, delta)
         -- A manual scroll pauses the auto-scroll for a few seconds.
         frame.manualScrollUntil = GetTime() + 4
-        local target = self:GetVerticalScroll() - delta * frame.lineHeight * 2
-        self:SetVerticalScroll(math.max(0, math.min(target, self:GetVerticalScrollRange())))
+        local target = (frame.scrollTarget or self:GetVerticalScroll()) - delta * frame.lineHeight * 2
+        frame.scrollTarget = math.max(0, math.min(target, self:GetVerticalScrollRange()))
+    end)
+    -- Every frame, glide toward scrollTarget instead of jumping there: the text rolls up smoothly as it is read.
+    scroll:SetScript("OnUpdate", function(self, elapsed)
+        local target = frame.scrollTarget
+        if not target then return end
+        local now = self:GetVerticalScroll()
+        local diff = target - now
+        if math.abs(diff) < 0.3 then
+            if diff ~= 0 then self:SetVerticalScroll(target) end
+            return
+        end
+        self:SetVerticalScroll(now + diff * math.min(1, elapsed * SCROLL_EASE))
     end)
     local child = CreateFrame("Frame", nil, scroll)
     child:SetSize(1, 1)
@@ -549,9 +593,10 @@ function addon.SpeechFrameApplyFont()
     if not frame or not frame.textFont then
         return
     end
-    local custom = addon.ApplyReadingFont and addon.ApplyReadingFont(frame.textFont, 12, "")
+    local add = TextAdd()
+    local custom = addon.ApplyReadingFont and addon.ApplyReadingFont(frame.textFont, 12 + add, "")
     if not custom then
-        frame.textFont:SetFont((GameFontHighlight:GetFont()), 13, "")
+        frame.textFont:SetFont((GameFontHighlight:GetFont()), 13 + add, "")
     end
     local spacing = custom and 4 or 2
     frame.textFont:SetSpacing(spacing)
@@ -562,8 +607,8 @@ function addon.SpeechFrameApplyFont()
     local two = frame.measure:GetStringHeight() or 0
     frame.measure:SetText("")
     frame.measure:Hide()
-    frame.lineHeight = (two - one > 4) and (two - one) or ((custom and 12 or 13) + spacing)
-    frame.scroll:SetHeight(frame.lineHeight * TEXT_LINES)
+    frame.lineHeight = (two - one > 4) and (two - one) or ((custom and 12 or 13) + add + spacing)
+    frame.scroll:SetHeight(frame.lineHeight * Lines())
     frame.filledFor = nil
 end
 
@@ -883,14 +928,16 @@ local function Fill(sd)
     local textHeight = math.max(1, frame.text:GetStringHeight())
     frame.scrollChild:SetSize(width, textHeight)
     -- Fixed four lines, or grown to fit the whole text (capped).
-    local lines = TEXT_LINES
+    local lines = Lines()
     if DB().speechFitText then
-        lines = math.max(TEXT_LINES, math.min(MAX_FIT_LINES, math.ceil(textHeight / frame.lineHeight)))
+        lines = math.max(lines, math.min(MAX_FIT_LINES, math.ceil(textHeight / frame.lineHeight)))
     end
     local scrollHeight = frame.lineHeight * lines
     frame.scroll:SetHeight(scrollHeight)
-    frame:SetHeight(HEIGHT + scrollHeight - frame.lineHeight * TEXT_LINES)
+    -- Never shorter than the portrait needs.
+    frame:SetHeight(math.max(HEIGHT - BASE_LINE, HEIGHT + scrollHeight - BASE_LINE * TEXT_LINES))
     frame.scroll:SetVerticalScroll(0)
+    frame.scrollTarget = 0
     frame.filledFor = sd
     addon.SpeechFrameRefreshStar()
     local kind = KINDS[sd.preview and "description" or sd.textType or ""]
@@ -946,8 +993,10 @@ local function Refresh()
         -- through the clip we are) in the middle of the text area.
         local range = frame.scroll:GetVerticalScrollRange()
         if range > 0 and not paused and DB().speechAutoScroll ~= false and GetTime() >= (frame.manualScrollUntil or 0) then
-            local target = fraction * frame.scrollChild:GetHeight() - frame.scroll:GetHeight() / 2
-            frame.scroll:SetVerticalScroll(math.max(0, math.min(target, range)))
+            -- The spoken line sits a third of the way down, so what is coming next is in view; the OnUpdate
+            -- above glides there.
+            local target = fraction * frame.scrollChild:GetHeight() - frame.scroll:GetHeight() / 3
+            frame.scrollTarget = math.max(0, math.min(target, range))
         end
         frame.controls.time:SetText(Clock(math.min(elapsed, duration)) .. " / " .. Clock(duration))
     else
@@ -985,6 +1034,9 @@ local function ShouldShow(sd)
     if SourceWindowOpen(sd) then
         return false
     end
+    if CombatMode() == "hide" and InFight() then
+        return false
+    end
     if paused then
         return true
     end
@@ -1013,6 +1065,7 @@ local function Tick()
     end
     if ShouldShow(current) then
         Refresh()
+        frame:SetAlpha((CombatMode() == "fade" and InFight()) and 0.3 or 1)
         frame:Show()
     else
         frame:Hide()
@@ -1270,6 +1323,22 @@ function OpenMenu(owner)
             themes:CreateRadio(addon.Themes[key].label, function() return addon.Theme().key == key end,
                 function() addon.SetTheme(key) end)
         end
+        local textMenu = root:CreateButton("Text size")
+        for _, size in ipairs(TEXT_SIZES) do
+            textMenu:CreateRadio(size.label,
+                function() return (db.speechTextSize or "normal") == size.key end,
+                function() db.speechTextSize = size.key; addon.SpeechSettingChanged("speechTextSize") end)
+        end
+        local linesMenu = root:CreateButton("Lines at a time")
+        for _, n in ipairs({ 3, 4 }) do
+            linesMenu:CreateRadio(n .. " lines", function() return Lines() == n end,
+                function() db.speechLines = n; addon.SpeechSettingChanged("speechLines") end)
+        end
+        local combatMenu = root:CreateButton("In combat")
+        for _, opt in ipairs({ { "show", "Keep showing" }, { "fade", "Fade it back" }, { "hide", "Hide it (the voice carries on)" } }) do
+            combatMenu:CreateRadio(opt[2], function() return CombatMode() == opt[1] end,
+                function() db.speechCombat = opt[1] end)
+        end
         root:CreateCheckbox("Auto-scroll the text",
             function() return db.speechAutoScroll ~= false end,
             function() db.speechAutoScroll = db.speechAutoScroll == false end)
@@ -1343,7 +1412,7 @@ function addon.SpeechSettingChanged(key)
     if addon.SubtitleSettingChanged then
         addon.SubtitleSettingChanged(key)
     end
-    if key == "readingFont" and addon.SpeechFrameApplyFont then
+    if (key == "readingFont" or key == "speechTextSize" or key == "speechLines") and addon.SpeechFrameApplyFont then
         addon.SpeechFrameApplyFont()
     end
     if addon.FontPreviewRefresh then

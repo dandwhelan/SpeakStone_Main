@@ -403,6 +403,25 @@ local function PadOn()
     return C_GamePad and C_GamePad.IsEnabled and C_GamePad.IsEnabled()
 end
 
+-- Big enough to read from the sofa: a bigger bar, big text three lines at a time, at the top of the screen.
+local function ApplyTVSize(on)
+    local db = DB()
+    db.speechSize = on and "large" or "medium"
+    db.speechTextSize = on and "xlarge" or "normal"
+    db.speechLines = on and 3 or 4
+    db.speechAutoScroll = true
+    if on and addon.SpeechFrameResetPosition then addon.SpeechFrameResetPosition() end
+    if addon.SpeechSettingChanged then
+        addon.SpeechSettingChanged("speechSize")
+        addon.SpeechSettingChanged("speechTextSize")
+    end
+end
+
+local function TVSizeOn()
+    local db = DB()
+    return db.speechTextSize == "xlarge" and (db.speechSize == "large" or db.speechSize == "xlarge")
+end
+
 local function BuildController()
     local page = NewPage("controller")
     local title = Title(page, "Playing with a controller?")
@@ -422,7 +441,8 @@ local function BuildController()
             if isPad then w:Enable() else w:Disable() end
             if w.Refresh then w.Refresh() end
         end
-        page.big:SetChecked(DB().speechSize == "large" or DB().speechSize == "xlarge")
+        page.big:SetChecked(TVSizeOn())
+        page.combat:SetChecked(DB().speechCombat == "hide")
         page.legend:SetChecked(DB().controllerShowLegend ~= false)
     end
     page.Refresh = Refresh
@@ -452,16 +472,16 @@ local function BuildController()
     head:SetText("Make it easy")
 
     page.padOnly = {}
-    page.big = addon.UIK.Check(page, "Bigger speech bar, at the top of the screen (easy to read from the sofa)")
+    page.big = addon.UIK.Check(page, "TV size: big text, 3 lines at a time that glide up, bar at the top of the screen")
     page.big:SetPoint("TOPLEFT", head, "BOTTOMLEFT", 0, -8)
     page.big:SetHitRectInsets(0, -(page.big.text:GetStringWidth() + 6), 0, 0)
-    page.big:SetScript("OnClick", function(self)
-        DB().speechSize = self:GetChecked() and "large" or "medium"
-        if self:GetChecked() and addon.SpeechFrameResetPosition then addon.SpeechFrameResetPosition() end
-        if addon.SpeechSettingChanged then addon.SpeechSettingChanged("speechSize") end
-    end)
+    page.big:SetScript("OnClick", function(self) ApplyTVSize(self:GetChecked()) end)
+    page.combat = addon.UIK.Check(page, "Hide the speech bar in combat (the voice carries on)")
+    page.combat:SetPoint("TOPLEFT", page.big, "BOTTOMLEFT", 0, -8)
+    page.combat:SetHitRectInsets(0, -(page.combat.text:GetStringWidth() + 6), 0, 0)
+    page.combat:SetScript("OnClick", function(self) DB().speechCombat = self:GetChecked() and "hide" or "show" end)
     page.legend = addon.UIK.Check(page, "Show which button does what under the speech bar")
-    page.legend:SetPoint("TOPLEFT", page.big, "BOTTOMLEFT", 0, -8)
+    page.legend:SetPoint("TOPLEFT", page.combat, "BOTTOMLEFT", 0, -8)
     page.legend:SetHitRectInsets(0, -(page.legend.text:GetStringWidth() + 6), 0, 0)
     page.legend:SetScript("OnClick", function(self) DB().controllerShowLegend = self:GetChecked() and true or false end)
     local accept = Check(page, page.legend, "autoAcceptQuests", "Auto-accept quests: fewer windows to click through",
@@ -490,13 +510,12 @@ local function BuildController()
         if not (db.controllerLayout == "XBOX" or db.controllerLayout == "PS") then
             addon.SetControllerLayout(addon.ControllerDetect() or "XBOX")
         end
-        db.speechSize = "large"
+        ApplyTVSize(true)
+        db.speechCombat = "hide"
         db.controllerShowLegend = true
         db.autoAcceptQuests = true
         db.queueQuestSpeech = true
         db.showSpeechFrame = true
-        if addon.SpeechFrameResetPosition then addon.SpeechFrameResetPosition() end
-        if addon.SpeechSettingChanged then addon.SpeechSettingChanged("speechSize") end
         Refresh()
         print("|cff33ff99SpeakStone:|r controller-friendly settings on.")
     end)
@@ -1113,6 +1132,12 @@ local function Build()
     function addon.PlaceTutorial()
         local self = frame
         if not self:IsShown() then return end
+        -- Controller mode: bigger, for a screen across the room, as big as fits.
+        local layout = DB().controllerLayout
+        local pad = layout == "XBOX" or layout == "PS"
+            or (layout == nil and addon.ControllerDetect and addon.ControllerDetect() ~= nil)
+        local padScale = pad and 1.3 or 1
+        self:SetScale(math.min(padScale, (UIParent:GetHeight() - 20) / HEIGHT))
         local settings = SpeakStoneSettingsFrame
         self:ClearAllPoints()
         if not (settings and settings:IsShown() and settings:GetLeft()) then
@@ -1176,6 +1201,7 @@ local function Build()
             next = function() if pageIndex == #order then frame:Hide() else ShowPage(pageIndex + 1) end end,
             close = function() frame:Hide() end,
             onLayout = function()
+                addon.PlaceTutorial()
                 local page = pages[order[pageIndex]]
                 if page and page.Refresh then page.Refresh() end
             end,
