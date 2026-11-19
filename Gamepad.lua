@@ -63,6 +63,19 @@ local ICONS = {
 }
 local ICON_SIZE = 18
 
+-- SpeakStone's own pictures (Art\Pad), for clients without the game's (Classic-based ones, WoW Forever).
+local ART = "Interface\\AddOns\\" .. addonName .. "\\Art\\Pad\\"
+local FILES = {
+    XBOX = { PAD1 = "xbox_a", PAD2 = "xbox_b", PAD3 = "xbox_x", PAD4 = "xbox_y", PADBACK = "view", PADFORWARD = "menu",
+        PADLSHOULDER = "xbox_lb", PADRSHOULDER = "xbox_rb", PADLSTICK = "ls", PADRSTICK = "rs",
+        PADDUP = "dpad_up", PADDDOWN = "dpad_down", PADDLEFT = "dpad_left", PADDRIGHT = "dpad_right" },
+    PS = { PAD1 = "ps_cross", PAD2 = "ps_circle", PAD3 = "ps_square", PAD4 = "ps_triangle", PADBACK = "create",
+        PADFORWARD = "menu", PADLSHOULDER = "ps_l1", PADRSHOULDER = "ps_r1", PADLSTICK = "ls", PADRSTICK = "rs",
+        PADDUP = "dpad_up", PADDDOWN = "dpad_down", PADDLEFT = "dpad_left", PADDRIGHT = "dpad_right" },
+}
+-- Shoulder pictures are wide pills; give them room so they read at chat size.
+local WIDE = { PADLSHOULDER = true, PADRSHOULDER = true }
+
 local hasAtlas = {}
 local function AtlasExists(name)
     if hasAtlas[name] == nil then
@@ -75,6 +88,11 @@ local function Icon(layout, button)
     local atlas = ICONS[layout][button]
     if atlas and AtlasExists(atlas) then
         return "|A:" .. atlas .. ":" .. ICON_SIZE .. ":" .. ICON_SIZE .. "|a"
+    end
+    local file = FILES[layout][button]
+    if file then
+        local w = WIDE[button] and math.floor(ICON_SIZE * 1.4) or ICON_SIZE
+        return "|T" .. ART .. file .. ":" .. ICON_SIZE .. ":" .. w .. "|t"
     end
 end
 
@@ -201,13 +219,19 @@ local function Badges(frame, on)
         local target = controls[action]
         if target then
             local atlas = on and layout and ICONS[layout][button]
-            if atlas and AtlasExists(atlas) then
+            local file = on and layout and FILES[layout][button]
+            if (atlas and AtlasExists(atlas)) or file then
                 if not target.padBadge then
                     target.padBadge = target:CreateTexture(nil, "OVERLAY", nil, 7)
                     target.padBadge:SetSize(BADGE_SIZE, BADGE_SIZE)
                     target.padBadge:SetPoint("CENTER", target, "BOTTOMRIGHT", 1, 1)
                 end
-                target.padBadge:SetAtlas(atlas)
+                if atlas and AtlasExists(atlas) then
+                    target.padBadge:SetAtlas(atlas)
+                else
+                    target.padBadge:SetTexture(ART .. file)
+                    target.padBadge:SetTexCoord(0, 1, 0, 1)
+                end
                 target.padBadge:Show()
             elseif target.padBadge then
                 target.padBadge:Hide()

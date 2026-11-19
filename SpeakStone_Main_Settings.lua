@@ -130,6 +130,24 @@ local SETTINGS_TABS = {
                         tooltip = "A small speaker beside each quest in Kaliel's Tracker's quest list: click to read that quest. Greyed out when the quest has no voice yet. Only matters if you use Kaliel's Tracker.",
                         onChange = function() if addon.RefreshKTTracker then addon.RefreshKTTracker() end end,
                     },
+                },
+            },
+            {
+                title = "Help and community",
+                extrasFirst = true,
+                extras = { "links" },
+                options = {},
+            },
+            {
+                title = "Advanced",
+                info = "For reporting problems and helping voice missing quests. Most players can leave these alone.",
+                options = {
+                    {
+                        option = "harvestEnabled",
+                        label = "Capture quest text to help voice missing quests",
+                        tooltip = "Records the text of quests, greetings and books you encounter, so unvoiced ones can be queued up. Your character's name is replaced with $n before anything is stored.",
+                        onChange = function() if addon.RefreshSettingsStatus then addon.RefreshSettingsStatus() end end,
+                    },
                     {
                         option = "showReportButton",
                         label = "Show the Report button on the quest window",
@@ -146,52 +164,11 @@ local SETTINGS_TABS = {
                         onChange = function() if addon.UpdateDialogueReportFlag then addon.UpdateDialogueReportFlag() end end,
                     },
                     {
-                        option = "harvestEnabled",
-                        label = "Capture quest text to help voice missing quests",
-                        tooltip = "Records the text of quests, greetings and books you encounter, so unvoiced ones can be queued up. Your character's name is replaced with $n before anything is stored.",
-                        onChange = function() if addon.RefreshSettingsStatus then addon.RefreshSettingsStatus() end end,
-                    },
-                },
-            },
-            {
-                title = "Help and community",
-                extrasFirst = true,
-                extras = { "links" },
-                options = {
-                    {
                         option = "showDebugMessages",
-                        label = "Advanced: show debug messages in chat",
-                        small = true,
+                        label = "Show debug messages in chat",
                         tooltip = "Prints which clip was chosen, and says so when a quest has no audio installed. Useful when reporting a problem.",
                     },
                 },
-            },
-        },
-    },
-    {
-        title = "Sound",
-        sections = {
-            {
-                title = "Blizzard's voice lines",
-                options = {
-                    {
-                        option = "muteGossip",
-                        label = "Silence Blizzard's own voice lines",
-                        tooltip = "Off: where Blizzard has voiced a line, that recording plays and SpeakStone waits its turn. On: the game's Dialog channel is muted instead, so narration starts immediately and nothing plays over it.",
-                    },
-                },
-                slider = DELAY_SLIDER,
-            },
-            {
-                title = "Other sounds",
-                options = {
-                    {
-                        option = "duckOtherSounds",
-                        label = "Lower music and ambience while speaking",
-                        tooltip = "WoW cannot set a volume for one sound, so this turns music and ambience down while a line is read instead, and back up when it ends.",
-                    },
-                },
-                slider = DUCK_SLIDER,
             },
         },
     },
@@ -405,6 +382,28 @@ local SETTINGS_TABS = {
                     },
                 },
             },
+            {
+                title = "Blizzard's voice lines",
+                options = {
+                    {
+                        option = "muteGossip",
+                        label = "Silence Blizzard's own voice lines",
+                        tooltip = "Off: where Blizzard has voiced a line, that recording plays and SpeakStone waits its turn. On: the game's Dialog channel is muted instead, so narration starts immediately and nothing plays over it.",
+                    },
+                },
+                slider = DELAY_SLIDER,
+            },
+            {
+                title = "Other sounds",
+                options = {
+                    {
+                        option = "duckOtherSounds",
+                        label = "Lower music and ambience while speaking",
+                        tooltip = "WoW cannot set a volume for one sound, so this turns music and ambience down while a line is read instead, and back up when it ends.",
+                    },
+                },
+                slider = DUCK_SLIDER,
+            },
         },
     },
     {
@@ -427,13 +426,6 @@ local SETTINGS_TABS = {
     },
 }
 
--- A troubleshooting switch, not a preference: drawn small at the foot of the General tab.
-local DEBUG_OPTION = {
-    option = "showDebugMessages",
-    label = "Advanced: show debug messages in chat",
-    small = true,
-    tooltip = "Prints which clip was chosen, and says so when a quest has no audio installed. Useful when reporting a problem.",
-}
 
 -- --------------------------------------------------------------------------
 -- Small shared helpers
@@ -1133,7 +1125,8 @@ function SpeakStone:CreateWindow()
         end
     end
     panel = frame
-    SelectTab(tonumber(SpeakStone_MainDB.settingsTab) or 1)
+    local savedTab = tonumber(SpeakStone_MainDB.settingsTab) or 1
+    SelectTab((savedTab >= 1 and savedTab <= #SETTINGS_TABS) and savedTab or 1)
 
     -- ----------------------------------------------------------------------
     -- Keeping the cards true
