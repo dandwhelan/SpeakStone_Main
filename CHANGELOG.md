@@ -1,5 +1,19 @@
 # Changelog
 
+## 6.0.3 (November 2026)
+
+### Speech bar
+- **Compact speech bar shows four lines** instead of three, and the text now rolls up smoothly with the voice instead of stepping a line at a time.
+- **The line being spoken stays in the middle of the bar**, following the highlighted word, and the last sentence rolls up to the middle too instead of stopping at the bottom.
+- **Soft top and bottom edges**: text fades out gently at the edges of the bar when there is more above or below.
+- **Narration stands apart from speech**: parts in angle brackets (stage directions, read by the narrator) are shown on their own line, indented, a size smaller and in a softer colour, without the brackets.
+- On a controller, the TV-size text is a little smaller.
+
+### Other
+- The settings window is slimmer, and controller button pictures show on game versions that lack the game's own button art.
+- Fixed the subtitle preview ignoring your settings in WoW Forever.
+- Fixed a possible error when the quest log looked up the selected quest.
+
 ## 6.0.2 (November 2026)
 
 - Controller: the tutorial page, its tooltip and the first-run "which controller?" popup now show your pad's own button pictures too.

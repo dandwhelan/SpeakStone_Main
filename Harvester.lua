@@ -607,7 +607,7 @@ local CHAT_EVENTS = {
     CHAT_MSG_MONSTER_WHISPER = true, CHAT_MSG_MONSTER_PARTY = true,
 }
 
-frame:SetScript("OnEvent", function(_, event, ...)
+local function OnHarvestEvent(_, event, ...)
     if not Enabled() then return end
 
     if CHAT_EVENTS[event] then
@@ -666,6 +666,13 @@ frame:SetScript("OnEvent", function(_, event, ...)
         RecordPassage(questID, "progress", GetProgressText())
     elseif event == "QUEST_COMPLETE" then
         RecordPassage(questID, "completion", GetRewardText())
+    end
+end
+frame:SetScript("OnEvent", function(self, event, ...)
+    if addon.Timed then
+        addon.Timed("text capture " .. tostring(event), OnHarvestEvent, self, event, ...)
+    else
+        OnHarvestEvent(self, event, ...)
     end
 end)
 

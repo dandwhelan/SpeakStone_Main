@@ -99,7 +99,7 @@ local function SizeScale()
 end
 
 local function TextAdd()
-    if TVNow() then return 7 end
+    if TVNow() then return 5 end   -- a little under "Extra large" (owner, 2026-11-19: "a little smaller")
     local key = DB().speechTextSize or "normal"
     for _, size in ipairs(TEXT_SIZES) do
         if size.key == key then return size.add end
@@ -107,7 +107,7 @@ local function TextAdd()
     return 0
 end
 
--- Compact (owner, 2026-11-18): three lines that scroll with the voice, whatever "grow to show all the
+-- Compact (owner, 2026-11-18; four lines and a smooth roll, 2026-11-19): four lines that scroll with the voice, whatever "grow to show all the
 -- text" says, so a big box of quest text doesn't sit in the middle of the screen while walking around.
 -- Always on with a controller; mouse and keyboard players can pick it (speechCompact).
 local function Compact()
@@ -115,7 +115,7 @@ local function Compact()
 end
 
 local function Lines()
-    if Compact() then return 3 end
+    if Compact() then return 4 end
     local n = tonumber(DB().speechLines)
     return (n == 3 or n == 4) and n or TEXT_LINES
 end
@@ -136,6 +136,222 @@ local function SteppedAside()
         return true
     end
     return false
+end
+
+-- The soft edges (owner, 2026-11-19). Each edge is a stack of thin strips in the paper's colour, solid at the
+-- edge and clear toward the middle: a gradient that needs no client gradient API (SetGradient drew a flat band
+-- in game). Over Dialogue UI's paper the colour is that art's own (measured in game, tinted like the frame);
+-- over the flat band it is the theme's background.
+local FADE_MAX = 0.95
+local FADE_STRIPS = 10
+local PAPER = { 0.80, 0.655, 0.46 }
+
+local function PaintFades(theme, art)
+    if not frame or not frame.fades then return end
+    local c
+    if art then
+        local t = theme.tint or { 1, 1, 1 }
+        c = { PAPER[1] * t[1], PAPER[2] * t[2], PAPER[3] * t[3] }
+    else
+        c = theme.back or { 0, 0, 0 }
+    end
+    for _, edge in ipairs({ frame.fades.top, frame.fades.bottom }) do
+        for i, strip in ipairs(edge.strips) do
+            -- Strip 1 sits at the edge. Eased, so the text dissolves rather than meeting a line.
+            local a = FADE_MAX * ((FADE_STRIPS - i + 0.5) / FADE_STRIPS) ^ 1.6
+            strip:SetColorTexture(c[1], c[2], c[3], a)
+        end
+    end
+end
+
+-- Lay an edge's strips out over `height`, from its outer edge inward.
+local function PlaceStrips(edge, height, fromTop)
+    if edge.placed == height then return end
+    edge.placed = height
+    edge:SetHeight(height)
+    local h = height / FADE_STRIPS
+    for i, strip in ipairs(edge.strips) do
+        strip:ClearAllPoints()
+        strip:SetHeight(h)
+        if fromTop then
+            strip:SetPoint("TOPLEFT", edge, "TOPLEFT", 0, -(i - 1) * h)
+            strip:SetPoint("TOPRIGHT", edge, "TOPRIGHT", 0, -(i - 1) * h)
+        else
+            strip:SetPoint("BOTTOMLEFT", edge, "BOTTOMLEFT", 0, (i - 1) * h)
+            strip:SetPoint("BOTTOMRIGHT", edge, "BOTTOMRIGHT", 0, (i - 1) * h)
+        end
+    end
+end
+
+-- Each edge shows only while text is hidden past it, coming in over the first line of scrolling.
+local function UpdateFades(scroll)
+    local fades = frame and frame.fades
+    if not fades then return end
+    local line = frame.lineHeight or 15
+    local range = scroll:GetVerticalScrollRange() or 0
+    if range <= 0 then
+        fades.top:SetAlpha(0)
+        fades.bottom:SetAlpha(0)
+        return
+    end
+    local height = math.floor(line * 1.2 + 0.5)
+    PlaceStrips(fades.top, height, true)
+    PlaceStrips(fades.bottom, height, false)
+    local now = scroll:GetVerticalScroll() or 0
+    fades.top:SetAlpha(math.max(0, math.min(1, now / line)))
+    fades.bottom:SetAlpha(math.max(0, math.min(1, (range - now) / line)))
+end
+
+-- Narrator parts (owner, 2026-11-19: "<> stage directions do not have the indentations to show it's a narrator
+-- part ... can narrator parts be smaller italic text?"). The text is laid out as blocks: paragraphs, and inside
+-- a paragraph the <...> runs apart from the speech around them. A <...> block is indented, a size smaller and in
+-- the theme's quieter ink, without its brackets. Not italic: the game ships no italic font, and font files
+-- bundled in the addon did not load (docs/todo.md).
+local NARR_INDENT = 14
+
+local function Segments(plain)
+    local segs = {}
+    if not plain:find("|", 1, true) then
+        local para, pa, inDirection = 0, 1, false
+        while pa <= #plain do
+            local s, e = plain:find("\n[ \t]*\n", pa)
+            local pb = s and (s - 1) or #plain
+            para = para + 1
+            local run
+            for rs, re in plain:sub(pa, pb):gmatch("()%S+()") do
+                local ts, te = rs + pa - 1, re + pa - 2
+                local word = plain:sub(ts, te)
+                if word:sub(1, 1) == "<" then inDirection = true end
+                local narr = inDirection
+                if inDirection and word:sub(-1) == ">" then inDirection = false end
+                if run and run.narr == narr then
+                    run.b = te
+                else
+                    run = { a = ts, b = te, narr = narr, para = para }
+                    segs[#segs + 1] = run
+                end
+            end
+            pa = e and (e + 1) or (#plain + 1)
+        end
+    end
+    if #segs == 0 then
+        segs[1] = { a = 1, b = #plain, para = 1 }
+    end
+    for _, seg in ipairs(segs) do
+        seg.da, seg.db = seg.a, seg.b
+        if seg.narr then
+            if plain:sub(seg.da, seg.da) == "<" then seg.da = seg.da + 1 end
+            if plain:sub(seg.db, seg.db) == ">" then seg.db = seg.db - 1 end
+        end
+    end
+    return segs
+end
+addon.SpeechSegments = Segments   -- for the tests
+
+-- One block's text, the marked words wrapped in the highlight colour; dimCode dims the whole block.
+local function SegText(plain, seg, marks, code, dimCode)
+    local out, from = {}, seg.da
+    for _, t in ipairs(marks or {}) do
+        local s, e = math.max(t.s, seg.da), math.min(t.e, seg.db)
+        if s <= e and s >= from then
+            out[#out + 1] = plain:sub(from, s - 1)
+            out[#out + 1] = code .. plain:sub(s, e) .. "|r"
+            from = e + 1
+        end
+    end
+    out[#out + 1] = plain:sub(from, seg.db)
+    local str = table.concat(out)
+    if dimCode and str ~= "" then
+        str = dimCode .. str .. "|r"
+    end
+    return str
+end
+
+local function PlainSegTexts()
+    local texts = {}
+    for i, seg in ipairs(frame.segs) do
+        texts[i] = frame.plain:sub(seg.da, seg.db)
+    end
+    return texts
+end
+
+-- The read-along texts: the word being read (and the one before, or its span) lit, other paragraphs dimmed
+-- when the player has that on -- what addon.LitText does for one string, per block. Also notes where the word
+-- sits (spokenY) for the auto-scroll.
+local function LitSegTexts(index, span)
+    local plain, tokens, spoken = frame.plain, frame.readTokens, frame.readSpoken
+    local light = addon.ThemeIsLight()
+    local code, dimCode = addon.HighlightCode(light), addon.FadeCode(light)
+    local marks = {}
+    for k = span and span[1] or math.max(1, index - 1), span and span[2] or index do
+        if spoken[k] then marks[#marks + 1] = tokens[spoken[k]] end
+    end
+    local cur = spoken[index] and tokens[spoken[index]]
+    local curPara
+    frame.spokenY = nil
+    if cur then
+        for _, seg in ipairs(frame.segs) do
+            if cur.s >= seg.a and cur.s <= seg.b then
+                curPara = seg.para
+                local frac = (cur.s - seg.da) / math.max(1, seg.db - seg.da + 1)
+                frame.spokenY = (seg.top or 0) + math.max(0, frac) * (seg.h or 0)
+                break
+            end
+        end
+    end
+    local texts = {}
+    for i, seg in ipairs(frame.segs) do
+        if #marks == 0 then
+            texts[i] = plain:sub(seg.da, seg.db)
+        else
+            local dim = (dimCode and curPara and seg.para ~= curPara) and dimCode or nil
+            texts[i] = SegText(plain, seg, marks, code, dim)
+        end
+    end
+    return texts
+end
+
+-- Put the blocks in the scroll child, one font string each, stacked; returns the height they take.
+local function LayoutSegments(texts)
+    local child, width = frame.scrollChild, frame.textWidth or 1
+    local line = frame.lineHeight or 15
+    local y = 0
+    for i, seg in ipairs(frame.segs) do
+        local fs = frame.segFS[i]
+        if not fs then
+            fs = child:CreateFontString(nil, "ARTWORK")
+            fs:SetJustifyH("LEFT")
+            fs:SetJustifyV("TOP")
+            fs:SetWordWrap(true)
+            frame.segFS[i] = fs
+        end
+        local indent = seg.narr and NARR_INDENT or 0
+        fs:SetFontObject(seg.narr and frame.narrFont or frame.textFont)
+        fs:ClearAllPoints()
+        fs:SetPoint("TOPLEFT", child, "TOPLEFT", indent, -y)
+        fs:SetWidth(width - indent)
+        fs:SetText(texts[i])
+        fs:Show()
+        seg.top = y
+        seg.h = math.max(1, fs:GetStringHeight() or 1)
+        y = y + seg.h
+        local nextSeg = frame.segs[i + 1]
+        if nextSeg then
+            y = y + ((nextSeg.para ~= seg.para) and math.floor(line * 0.6 + 0.5) or 3)
+        end
+    end
+    for i = #frame.segs + 1, #frame.segFS do
+        frame.segFS[i]:SetText("")
+        frame.segFS[i]:Hide()
+    end
+    return math.max(1, y)
+end
+
+-- New colours only (read-along): the words keep their places, so nothing moves.
+local function SetSegTexts(texts)
+    for i = 1, #frame.segs do
+        frame.segFS[i]:SetText(texts[i])
+    end
 end
 
 local function InFight()
@@ -547,6 +763,7 @@ local function Build()
     end)
     -- Every frame, glide toward scrollTarget instead of jumping there: the text rolls up smoothly as it is read.
     scroll:SetScript("OnUpdate", function(self, elapsed)
+        UpdateFades(self)
         local target = frame.scrollTarget
         if not target then return end
         local now = self:GetVerticalScroll()
@@ -563,12 +780,39 @@ local function Build()
     frame.scroll = scroll
     frame.scrollChild = child
 
+    -- Soft top and bottom edges (owner, 2026-11-19: "the top and bottom slightly fade with the text being
+    -- read in the middle"). A frame above the scroll area holds two strips in the bar's own colour, see-through
+    -- toward the middle; each shows only while there is text hidden past its edge (UpdateFades).
+    local fades = CreateFrame("Frame", nil, frame)
+    fades:SetAllPoints(scroll)
+    if fades.SetFrameLevel and scroll.GetFrameLevel then
+        fades:SetFrameLevel(scroll:GetFrameLevel() + 5)
+    end
+    for _, key in ipairs({ "top", "bottom" }) do
+        local edge = CreateFrame("Frame", nil, fades)
+        edge:SetPoint(key == "top" and "TOPLEFT" or "BOTTOMLEFT")
+        edge:SetPoint(key == "top" and "TOPRIGHT" or "BOTTOMRIGHT")
+        edge:SetHeight(1)
+        edge:SetAlpha(0)
+        edge.strips = {}
+        for i = 1, FADE_STRIPS do
+            edge.strips[i] = edge:CreateTexture(nil, "OVERLAY")
+        end
+        fades[key] = edge
+    end
+    frame.fades = fades
+
     frame.text = child:CreateFontString(nil, "ARTWORK")
     frame.text:SetFontObject(textFont)
     frame.text:SetPoint("TOPLEFT")
     frame.text:SetJustifyH("LEFT")
     frame.text:SetJustifyV("TOP")
     frame.text:SetWordWrap(true)
+    frame.segFS = { frame.text }
+    -- Narrator parts: a size smaller, in the quieter ink (SpeechFrameApplyFont / SpeechFramePaint).
+    local narrFont = CreateFont("SpeakStoneSpeechNarratorFont")
+    narrFont:CopyFontObject(textFont)
+    frame.narrFont = narrFont
 
     frame.measure = frame:CreateFontString(nil, "ARTWORK")
     frame.measure:SetFontObject(textFont)
@@ -628,6 +872,13 @@ function addon.SpeechFrameApplyFont()
     end
     local spacing = custom and 4 or 2
     frame.textFont:SetSpacing(spacing)
+    if frame.narrFont then
+        local smaller = addon.ApplyReadingFont and addon.ApplyReadingFont(frame.narrFont, 12 + add - 2, "")
+        if not smaller then
+            frame.narrFont:SetFont((GameFontHighlight:GetFont()), 13 + add - 2, "")
+        end
+        frame.narrFont:SetSpacing(spacing)
+    end
     frame.measure:Show()
     frame.measure:SetText("A")
     local one = frame.measure:GetStringHeight() or 0
@@ -656,6 +907,11 @@ function addon.SpeechFramePaint()
     -- The game's drop shadow behind dark ink on paper reads as bold: off on the light theme.
     frame.textFont:SetShadowColor(0, 0, 0, theme.light and 0 or 1)
     frame.textFont:SetShadowOffset(theme.light and 0 or 1, theme.light and 0 or -1)
+    if frame.narrFont then
+        frame.narrFont:SetTextColor(unpack(theme.sub))
+        frame.narrFont:SetShadowColor(0, 0, 0, theme.light and 0 or 1)
+        frame.narrFont:SetShadowOffset(theme.light and 0 or 1, theme.light and 0 or -1)
+    end
     addon.ThemeShadow(frame.name)
     addon.ThemeShadow(frame.subtitle)
     frame.subtitle:SetTextColor(unpack(theme.sub))
@@ -669,6 +925,7 @@ function addon.SpeechFramePaint()
     for _, button in ipairs(iconButtons) do
         InkIcon(button)
     end
+    PaintFades(theme, art)
     frame.filledFor = nil         -- the header carries the theme's colour for the title
 end
 if addon.ThemeRegister then
@@ -950,11 +1207,11 @@ local function Fill(sd)
     if not width or width <= 0 then
         width = WIDTH - PORTRAIT - 12 - 14 - 16
     end
-    frame.text:SetWidth(width)
-    frame.text:SetText(text)
-    frame.plain, frame.litIndex, frame.readKey = text, nil, nil
-    local textHeight = math.max(1, frame.text:GetStringHeight())
-    frame.scrollChild:SetSize(width, textHeight)
+    frame.textWidth = width
+    frame.plain, frame.litIndex, frame.readKey, frame.spokenY = text, nil, nil, nil
+    frame.segs = Segments(text)
+    local textHeight = LayoutSegments(PlainSegTexts())
+    frame.textHeight = textHeight
     -- Fixed lines, or grown to fit the whole text (capped); never grown when compact.
     local lines = Lines()
     if DB().speechFitText and not Compact() then
@@ -962,6 +1219,13 @@ local function Fill(sd)
     end
     local scrollHeight = frame.lineHeight * lines
     frame.scroll:SetHeight(scrollHeight)
+    -- Room under the text, when it does not all fit, so the last sentence can roll up to the middle like the
+    -- rest instead of stopping at the bottom edge (owner, 2026-11-19).
+    local pad = 0
+    if textHeight > scrollHeight then
+        pad = math.max(0, math.floor(scrollHeight / 2 - frame.lineHeight / 2 + 0.5))
+    end
+    frame.scrollChild:SetSize(width, textHeight + pad)
     -- Never shorter than the portrait needs.
     frame:SetHeight(math.max(HEIGHT - BASE_LINE, HEIGHT + scrollHeight - BASE_LINE * TEXT_LINES))
     frame.scroll:SetVerticalScroll(0)
@@ -1006,12 +1270,14 @@ local function Refresh()
             local litKey = index .. (span and (":" .. span[1]) or "")
             if frame.litIndex ~= litKey then
                 frame.litIndex = litKey
-                frame.text:SetText(addon.LitText(frame.plain, frame.readTokens, frame.readSpoken, index,
-                    addon.HighlightCode(addon.ThemeIsLight()), span, addon.FadeCode(addon.ThemeIsLight())))
+                -- Also notes where the spoken word sits (spokenY), so the auto-scroll below follows the
+                -- voice's real pace (sentence timings) instead of assuming words spread evenly over the clip.
+                SetSegTexts(LitSegTexts(index, span))
             end
         elseif frame.litIndex then
             frame.litIndex = nil
-            frame.text:SetText(frame.plain)
+            frame.spokenY = nil
+            SetSegTexts(PlainSegTexts())
         end
     end
     if duration then
@@ -1021,12 +1287,18 @@ local function Refresh()
         -- through the clip we are) in the middle of the text area.
         local range = frame.scroll:GetVerticalScrollRange()
         if range > 0 and not paused and DB().speechAutoScroll ~= false and GetTime() >= (frame.manualScrollUntil or 0) then
-            -- The spoken line sits a third of the way down, so what is coming next is in view; the OnUpdate
-            -- above glides there.
-            local target = fraction * frame.scrollChild:GetHeight() - frame.scroll:GetHeight() / 3
-            -- Whole lines only, so no line is shown cut in half at the top or bottom.
-            local step = frame.lineHeight or 1
-            target = math.floor(target / step + 0.5) * step
+            -- The spoken line sits in the middle, between the soft top and bottom edges (owner, 2026-11-19);
+            -- the OnUpdate above glides there. The read-along word's place in the text when there is one,
+            -- else how far through the clip we are.
+            local y = frame.spokenY or fraction * (frame.textHeight or frame.scrollChild:GetHeight())
+            local target = y - frame.scroll:GetHeight() / 2 + (frame.lineHeight or 0) / 2
+            -- Whole lines only, so no line is shown cut in half at the top or bottom -- except in compact
+            -- mode, where the text rolls up continuously with the voice instead of stepping a line at a time
+            -- (owner, 2026-11-19: "make it scroll through smoothly").
+            if not Compact() then
+                local step = frame.lineHeight or 1
+                target = math.floor(target / step + 0.5) * step
+            end
             frame.scrollTarget = math.max(0, math.min(target, range))
         end
         frame.controls.time:SetText(Clock(math.min(elapsed, duration)) .. " / " .. Clock(duration))
@@ -1392,7 +1664,7 @@ function OpenMenu(owner)
                 db.speechFitText = not db.speechFitText
                 addon.SpeechSettingChanged("speechFitText")
             end)
-        root:CreateCheckbox("Compact: three scrolling lines",
+        root:CreateCheckbox("Compact: four scrolling lines",
             function() return db.speechCompact == true end,
             function()
                 db.speechCompact = not db.speechCompact
@@ -1481,7 +1753,7 @@ function addon.SpeechSettingChanged(key)
     end
 end
 
-function addon.SpeechFrameNotify(event, sd)
+local function Notify(event, sd)
     for _, name in ipairs({ "QuestTextSyncNotify", "SubtitleNotify" }) do
         if addon[name] then
             local ok, err = pcall(addon[name], event, sd)
@@ -1514,5 +1786,12 @@ function addon.SpeechFrameNotify(event, sd)
             return
         end
         Clear()
+    end
+end
+function addon.SpeechFrameNotify(event, sd)
+    if addon.Timed then
+        addon.Timed("speech bar " .. tostring(event), Notify, event, sd)
+    else
+        Notify(event, sd)
     end
 end

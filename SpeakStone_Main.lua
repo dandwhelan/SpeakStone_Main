@@ -331,6 +331,21 @@ local function DebugPrint(...)
 end
 addon.DebugPrint = DebugPrint
 
+-- /ssdebug: how long a handler took, printed when it is long enough to feel (owner, 2026-11-19: "the game
+-- stuttered and it took a while for the ui to open"). Costs two clock reads when debug is off.
+local SLOW_MS = 5
+function addon.Timed(label, fn, ...)
+    if not (debugprofilestop and SpeakStone_MainDB and SpeakStone_MainDB.showDebugMessages) then
+        return fn(...)
+    end
+    local started = debugprofilestop()
+    fn(...)
+    local ms = debugprofilestop() - started
+    if ms >= SLOW_MS then
+        print(string.format("|cff33ff99SpeakStone:|r %s took %.0f ms", label, ms))
+    end
+end
+
 -- Applying defaults is idempotent, and both this file and the settings panel
 -- want it done before they read anything. Their ADDON_LOADED handlers run in
 -- no guaranteed order -- EventUtil's frame registered for the event long
@@ -2855,7 +2870,7 @@ questEventFrame:RegisterEvent("GOSSIP_CLOSED")
 questEventFrame:RegisterEvent("ITEM_TEXT_READY")
 questEventFrame:RegisterEvent("ITEM_TEXT_CLOSED")
 
-questEventFrame:SetScript("OnEvent", function(self, event, ...)
+local function OnQuestEvent(self, event, ...)
     if event == "ADDON_LOADED" then
         HookDialogueUI()
         -- ADDON_LOADED keeps firing for every on-demand addon the client
@@ -2962,6 +2977,9 @@ questEventFrame:SetScript("OnEvent", function(self, event, ...)
     end
 
     lastTextType = textType
+end
+questEventFrame:SetScript("OnEvent", function(self, event, ...)
+    addon.Timed("quest event " .. tostring(event), OnQuestEvent, self, event, ...)
 end)
 
 -- Blizzard's own voiced lines. Nothing reports when the game plays one, but

@@ -248,10 +248,10 @@ local SETTINGS_TABS = {
                     },
                     {
                         option = "speechCompact",
-                        label = "Compact: three scrolling lines",
+                        label = "Compact: four scrolling lines",
                         indent = true,
                         parent = "showSpeechFrame",
-                        tooltip = "Keep the bar to three lines that scroll along with the voice, even with \"Grow to show all the text\" on, so it stays out of the way while you walk around. Always on while you use a controller.",
+                        tooltip = "Keep the bar to four lines that scroll smoothly along with the voice, even with \"Grow to show all the text\" on, so it stays out of the way while you walk around. Always on while you use a controller.",
                     },
                 },
             },
@@ -1283,7 +1283,7 @@ function SpeakStone:CreateSettings()
         { "subtitleHighlight", "Highlight the word being read" },
         { "syncDialogueText", "Reveal quest text as it is spoken (Dialogue UI)" },
         { "speechFitText", "Grow the speech bar to show all the text" },
-        { "speechCompact", "Compact speech bar: three scrolling lines" },
+        { "speechCompact", "Compact speech bar: four scrolling lines" },
         { "queueQuestSpeech", "Queue quests instead of interrupting" },
         { "autoAcceptQuests", "Auto-accept quests (hold Shift to skip)" },
     }) do

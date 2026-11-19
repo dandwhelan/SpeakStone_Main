@@ -177,7 +177,7 @@ local function PadActiveChanged(active)
     if addon.padActive == active then return end
     addon.padActive = active
     if not addon.SpeechSettingChanged then return end
-    -- The bar keeps to three lines on a controller (SpeechFrame Lines()), so refit it either way.
+    -- The bar keeps to four lines on a controller (SpeechFrame Lines()), so refit it either way.
     addon.SpeechSettingChanged("speechLines")
     if DB().speechTVOnPad then
         addon.SpeechSettingChanged("speechTextSize")
