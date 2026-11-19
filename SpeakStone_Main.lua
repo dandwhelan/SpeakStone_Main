@@ -1853,7 +1853,7 @@ function PlayQuestAudio(textType, skipDelay, forQuestID)
     elseif addon.KTDetailsQuestID and addon.KTDetailsQuestID() then
         questID = addon.KTDetailsQuestID()   -- Kaliel's Tracker's own quest details panel (KalielsTracker.lua)
     elseif QuestMapFrame and QuestMapFrame:IsVisible() then
-        questID = C_QuestLog.GetSelectedQuest()
+        questID = (C_QuestLog and C_QuestLog.GetSelectedQuest and C_QuestLog.GetSelectedQuest()) or GetQuestID()
     else
         questID = GetQuestID()
     end

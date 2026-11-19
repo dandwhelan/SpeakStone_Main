@@ -674,7 +674,7 @@ function UIK.WordPreview(parent, width, height, style)
         if not words or not started then return end
         local elapsed = (GetTime() - started) % (LENGTH + 2.5)
         local index = elapsed >= LENGTH and #words or addon.SubtitleWordAt(times, elapsed + 0.12)
-        local db = SpeakStone_MainDB or {}
+        local db = SpeakStone_ForeverMainDB or SpeakStone_MainDB or {}
         local typeOut = style ~= "head" and style ~= "box" and db.subtitleTypeOut ~= false
         local highlight = db.subtitleHighlight ~= false
         if elapsed >= LENGTH then index = #words end
