@@ -1,0 +1,52 @@
+name: Sync code to SpeakStone_Forever_Main
+
+# Every code change on main is copied into the Forever repo as a pull request
+# there (tools/build_forever_main.py). Forever keeps its own game data.
+#
+# Needs a repo secret FOREVER_REPO_TOKEN: a fine-grained token with
+# Contents + Pull requests (read/write) on dandwhelan/SpeakStone_Forever_Main.
+on:
+  push:
+    branches: [main]
+    paths:
+      - '*.lua'
+      - 'SpeakStone_Main.toc'
+      - 'Bindings.xml'
+      - 'Art/**'
+      - 'Libs/**'
+      - 'tools/build_forever_main.py'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: retail
+
+      - uses: actions/checkout@v7
+        with:
+          repository: dandwhelan/SpeakStone_Forever_Main
+          token: ${{ secrets.FOREVER_REPO_TOKEN }}
+          path: forever
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Rebuild Forever's code
+        run: python retail/tools/build_forever_main.py retail forever
+
+      - name: Open a PR in SpeakStone_Forever_Main if it changed
+        uses: peter-evans/create-pull-request@v8
+        with:
+          path: forever
+          token: ${{ secrets.FOREVER_REPO_TOKEN }}
+          branch: automation/sync-from-retail
+          delete-branch: true
+          commit-message: Sync code from SpeakStone_Main ${{ github.sha }}
+          title: Sync code from SpeakStone_Main
+          body: |
+            Code copied from SpeakStone_Main@${{ github.sha }} by `tools/build_forever_main.py`.
+            Saved variables renamed to `SpeakStone_ForeverMainDB`; Forever's own data, CHANGELOG and .toc header untouched.
