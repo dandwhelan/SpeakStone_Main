@@ -341,8 +341,24 @@ function addon.FadeCode(onLightBackground)
     return onLightBackground and "|cff7d6749" or "|cff7d7d7d"
 end
 
+-- Format a word for display: narrated <stage directions> show wrapped in *...* rather than raw <...>.
+local function FormatStageWord(word, inDirection)
+    local isNarr = inDirection
+    local out = word
+    if out:sub(1, 1) == "<" then
+        inDirection, isNarr = true, true
+        out = "*" .. out:sub(2)
+    end
+    if inDirection and out:sub(-1) == ">" then
+        inDirection = false
+        out = out:sub(1, -2) .. "*"
+    end
+    return out, isNarr, inDirection
+end
+
 -- dimCode (the Lore Book): with the whole text shown and a sentence lit, the other sentences in that colour.
-function addon.SubtitleRender(words, index, typeOut, highlight, code, span, dimCode)
+-- narrCode (Subtitles): quieter ink for un-highlighted words inside a narrated <stage direction>.
+function addon.SubtitleRender(words, index, typeOut, highlight, code, span, dimCode, narrCode)
     code = code or GOLD
     if dimCode and span and highlight and not typeOut and index > 0 then
         local before = table.concat(words, " ", 1, span[1] - 1)
@@ -353,11 +369,13 @@ function addon.SubtitleRender(words, index, typeOut, highlight, code, span, dimC
         return out
     end
     local parts = {}
+    local inDirection = false
     for k = 1, #words do
         if typeOut and k > index then
             break
         end
-        local word = words[k]
+        local word, isNarr
+        word, isNarr, inDirection = FormatStageWord(words[k], inDirection)
         local lit
         if span then
             lit = k >= span[1] and k <= span[2]
@@ -366,6 +384,8 @@ function addon.SubtitleRender(words, index, typeOut, highlight, code, span, dimC
         end
         if highlight and index > 0 and lit then
             word = code .. word .. "|r"
+        elseif isNarr and narrCode then
+            word = narrCode .. word .. "|r"
         end
         parts[#parts + 1] = word
     end
@@ -685,7 +705,9 @@ local function Refresh()
         return
     end
     current.signature = signature
-    frame.text:SetText(addon.SubtitleRender(words, index, typeOut, highlight, addon.HighlightCode(addon.SubtitleColours().light), span))
+    local light = addon.SubtitleColours().light
+    local narrCode = light and "|cff7d6749" or "|cff9a9a9a"
+    frame.text:SetText(addon.SubtitleRender(words, index, typeOut, highlight, addon.HighlightCode(light), span, nil, narrCode))
     frame.text:ClearAllPoints()
     -- Rows the words read so far take, to keep the row being read in view.
     frame.measure:SetText(addon.SubtitleRender(words, index, true, false))

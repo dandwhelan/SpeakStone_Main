@@ -81,10 +81,11 @@ local function Readable(value)
     return value
 end
 
--- TV size while the controller is in use (speechTVOnPad; owner, 2026-11-18): bigger bar, extra-large text,
--- three lines. Back to the player's own sizes as soon as they pick up the mouse.
+-- TV / Sofa size: bigger bar, large text, gliding lines. Active whenever
+-- "TV / Sofa" layout is chosen (speechTVAlways) or automatically while a
+-- controller is in use (speechTVOnPad).
 local function TVNow()
-    return DB().speechTVOnPad and addon.padActive
+    return DB().speechTVAlways == true or (DB().speechTVOnPad and addon.padActive)
 end
 
 local function SizeScale()
@@ -111,7 +112,7 @@ end
 -- text" says, so a big box of quest text doesn't sit in the middle of the screen while walking around.
 -- Always on with a controller; mouse and keyboard players can pick it (speechCompact).
 local function Compact()
-    return addon.padActive or DB().speechCompact == true
+    return addon.padActive or DB().speechTVAlways == true or DB().speechCompact == true
 end
 
 local function Lines()
@@ -128,7 +129,7 @@ end
 
 -- On a flight path, or a cutscene playing: the bar steps aside (the voice carries on).
 local function SteppedAside()
-    if DB().speechHideOnTaxi ~= false and UnitOnTaxi and UnitOnTaxi("player") then
+    if DB().speechHideOnTaxi == true and UnitOnTaxi and UnitOnTaxi("player") then
         return true
     end
     if (InCinematic and InCinematic()) or (CinematicFrame and CinematicFrame:IsShown())
@@ -202,11 +203,9 @@ local function UpdateFades(scroll)
     fades.bottom:SetAlpha(math.max(0, math.min(1, (range - now) / line)))
 end
 
--- Narrator parts (owner, 2026-11-19: "<> stage directions do not have the indentations to show it's a narrator
--- part ... can narrator parts be smaller italic text?"). The text is laid out as blocks: paragraphs, and inside
--- a paragraph the <...> runs apart from the speech around them. A <...> block is indented, a size smaller and in
--- the theme's quieter ink, without its brackets. Not italic: the game ships no italic font, and font files
--- bundled in the addon did not load (docs/todo.md).
+-- Narrator parts (owner, 2026-11-19 / 2026-11-22): <...> stage directions are laid out as their own blocks,
+-- indented, wrapped in *...*, a size smaller, in the theme's quieter ink, and in the bundled italic font when
+-- the client can load it (requires a full client restart after install; falls back to the reading/game font).
 local NARR_INDENT = 14
 
 local function Segments(plain)
@@ -261,6 +260,9 @@ local function SegText(plain, seg, marks, code, dimCode)
     end
     out[#out + 1] = plain:sub(from, seg.db)
     local str = table.concat(out)
+    if seg.narr and str ~= "" then
+        str = "*" .. str .. "*"
+    end
     if dimCode and str ~= "" then
         str = dimCode .. str .. "|r"
     end
@@ -270,7 +272,11 @@ end
 local function PlainSegTexts()
     local texts = {}
     for i, seg in ipairs(frame.segs) do
-        texts[i] = frame.plain:sub(seg.da, seg.db)
+        local s = frame.plain:sub(seg.da, seg.db)
+        if seg.narr and s ~= "" then
+            s = "*" .. s .. "*"
+        end
+        texts[i] = s
     end
     return texts
 end
@@ -302,7 +308,11 @@ local function LitSegTexts(index, span)
     local texts = {}
     for i, seg in ipairs(frame.segs) do
         if #marks == 0 then
-            texts[i] = plain:sub(seg.da, seg.db)
+            local s = plain:sub(seg.da, seg.db)
+            if seg.narr and s ~= "" then
+                s = "*" .. s .. "*"
+            end
+            texts[i] = s
         else
             local dim = (dimCode and curPara and seg.para ~= curPara) and dimCode or nil
             texts[i] = SegText(plain, seg, marks, code, dim)
@@ -873,9 +883,14 @@ function addon.SpeechFrameApplyFont()
     local spacing = custom and 4 or 2
     frame.textFont:SetSpacing(spacing)
     if frame.narrFont then
-        local smaller = addon.ApplyReadingFont and addon.ApplyReadingFont(frame.narrFont, 12 + add - 2, "")
-        if not smaller then
-            frame.narrFont:SetFont((GameFontHighlight:GetFont()), 13 + add - 2, "")
+        local italic = addon.NarratorItalicFontPath and addon.NarratorItalicFontPath()
+        if italic then
+            frame.narrFont:SetFont(italic, 12 + add - 1, "")
+        else
+            local smaller = addon.ApplyReadingFont and addon.ApplyReadingFont(frame.narrFont, 12 + add - 2, "")
+            if not smaller then
+                frame.narrFont:SetFont((GameFontHighlight:GetFont()), 13 + add - 2, "")
+            end
         end
         frame.narrFont:SetSpacing(spacing)
     end
@@ -1646,8 +1661,8 @@ function OpenMenu(owner)
                 function() db.speechCombat = opt[1] end)
         end
         root:CreateCheckbox("Hide on flight paths",
-            function() return db.speechHideOnTaxi ~= false end,
-            function() db.speechHideOnTaxi = db.speechHideOnTaxi == false end)
+            function() return db.speechHideOnTaxi == true end,
+            function() db.speechHideOnTaxi = not (db.speechHideOnTaxi == true) end)
         root:CreateCheckbox("TV size while using a controller",
             function() return db.speechTVOnPad end,
             function()
@@ -1734,8 +1749,10 @@ function addon.SpeechSettingChanged(key)
     if addon.SubtitleSettingChanged then
         addon.SubtitleSettingChanged(key)
     end
-    if (key == "readingFont" or key == "speechTextSize" or key == "speechLines" or key == "speechCompact") and addon.SpeechFrameApplyFont then
+    if (key == "readingFont" or key == "speechTextSize" or key == "speechLines" or key == "speechCompact"
+        or key == "speechTVAlways" or key == "speechTVOnPad") and addon.SpeechFrameApplyFont then
         addon.SpeechFrameApplyFont()
+        if frame then ApplyPosition() end
     end
     if addon.FontPreviewRefresh then
         addon.FontPreviewRefresh()

@@ -1,21 +1,28 @@
 local addonName, addon = ...
 
 -- The reading font: what the subtitle bar, the speech frame, the Guide's text and
--- the previews are drawn in, picked in the settings (readingFont). Fonts that ship with
--- the game itself (`path`), so there is nothing to bundle. An entry can instead name a
--- file in this addon's Fonts folder (`file`) -- see docs/todo.md: bundled dyslexia-friendly
--- fonts did not load in the game (2026-10-19) and were taken out until that is understood.
+-- the previews are drawn in, picked in the settings (readingFont). Entries can name
+-- either a font that ships with the game (`path`) or a bundled SIL OFL 1.1 file in
+-- this addon's Fonts folder (`file`).
 --
 -- The settings page lists whatever is here.
 --
--- Whether the client can load a file is asked of the client itself: SetFont
--- returns false for a file it cannot use, and that font is then greyed out in
--- the settings and never chosen, so a bad file can never leave text with no font.
+-- Whether the client can load a file is asked of the client itself via CreateFont:
+-- a font the client cannot load is greyed out in the settings and never chosen, so
+-- a bad file can never leave text with no font.
 
-local FOLDER = "Interface\\AddOns\\" .. addonName .. "\\Fonts\\"
+local FOLDER = "Interface/AddOns/" .. addonName .. "/Fonts/"
 
 addon.Fonts = {
     { key = "default", label = "Game default" },
+    { key = "atkinson", label = "Atkinson Hyperlegible", file = "AtkinsonHyperlegible-Regular.ttf",
+      credit = "Designed by the Braille Institute for low vision and dyslexia: distinct letterforms (SIL OFL 1.1)." },
+    { key = "lexend", label = "Lexend", file = "Lexend-Regular.ttf",
+      credit = "Designed to reduce visual crowding and improve reading fluency (SIL OFL 1.1)." },
+    { key = "andika", label = "Andika", file = "Andika-Regular.ttf",
+      credit = "Designed by SIL for literacy and dyslexic readers: open counters and simple letter shapes (SIL OFL 1.1)." },
+    { key = "opendyslexic", label = "OpenDyslexic", file = "OpenDyslexic-Regular.otf",
+      credit = "Weighted bottoms designed to help prevent letters flipping or swapping (SIL OFL 1.1)." },
     { key = "arial", label = "Arial Narrow", path = "Fonts\\ARIALN.TTF",
       credit = "The game's own plain sans-serif font: even strokes and open letter shapes." },
     { key = "morpheus", label = "Morpheus", path = "Fonts\\MORPHEUS.TTF",
@@ -34,16 +41,22 @@ function addon.FontUsable(entry)
         return usable[entry.key]
     end
     local ok = false
-    if UIParent and UIParent.CreateFontString then
-        probe = probe or UIParent:CreateFontString(nil, "BACKGROUND")
-        -- Start from a font that certainly loads, then ask what the font string ended up with: SetFont's own
-        -- return value is not something to rely on across clients (it is nil on some), the font in use is.
+    if CreateFont or (UIParent and UIParent.CreateFontString) then
+        if not probe then
+            probe = CreateFont and (_G.SpeakStoneFontProbe or CreateFont("SpeakStoneFontProbe"))
+                or UIParent:CreateFontString(nil, "BACKGROUND")
+        end
+        -- Start from a font that certainly loads, then ask what the font object ended up with: SetFont on a
+        -- CreateFont object returns nil on success (not true), whereas a bare CreateFontString rejects custom
+        -- addon .ttf paths in WoW Forever / 12.x. Checking GetFont() on a CreateFont object works in both.
         pcall(probe.SetFont, probe, "Fonts\\FRIZQT__.TTF", 14, "")
+        local before = probe.GetFont and probe:GetFont()
         local path = addon.FontFile(entry)
         local called, result = pcall(probe.SetFont, probe, path, 14, "")
         local function Norm(p) return (tostring(p or ""):lower():gsub("/", "\\")) end
         local now = called and probe.GetFont and probe:GetFont()
-        ok = called and result ~= false and now ~= nil and Norm(now) == Norm(path)
+        ok = called and result ~= false and now ~= nil
+            and (Norm(now) == Norm(path) or (before ~= nil and Norm(now) ~= Norm(before) and Norm(now) ~= ""))
     end
     usable[entry.key] = ok
     return ok
@@ -83,4 +96,15 @@ function addon.ApplyReadingFont(target, size, flags, fallbackFont)
         target:SetFont(path, size, flags or "")
     end
     return custom ~= nil
+end
+
+-- Bundled italic font for narrator stage directions (SpeechFrame.lua). Probed via FontUsable so if the client
+-- cannot load it (e.g. before a full restart after install), callers fall back cleanly to the reading/game font.
+local NARRATOR_ITALIC = { key = "_narrator_italic", file = "AtkinsonHyperlegible-Italic.ttf" }
+
+function addon.NarratorItalicFontPath()
+    if addon.FontUsable(NARRATOR_ITALIC) then
+        return addon.FontFile(NARRATOR_ITALIC)
+    end
+    return nil
 end

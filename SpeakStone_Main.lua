@@ -248,12 +248,20 @@ local defaultSettings = {
     subtitleHighlight = true,
     subtitleRows = 2,
     subtitleLocked = false,
-    -- Grow the frame to show the whole text (up to SpeechFrame's cap)
-    -- instead of a four-line scroll area.
-    -- speechFitText, queueQuestSpeech and talkingHeadHighlight match the tutorial's "I don't care, let me play" choices
-    -- (owner, 2026-11-14), so a new player who never sees or never finishes the tutorial gets the recommended set.
+    -- Compact four scrolling lines is the default (owner, 2026-11-22): stays
+    -- compact and glides smoothly with the voice instead of growing a giant box.
+    -- Matches the tutorial's "Let me play (use defaults)" choices so a new
+    -- player who skips the tutorial gets the exact same recommended set.
     -- Defaults only fill unset keys: existing players keep what they have.
-    speechFitText = true,
+    speechCompact = true,
+    speechFitText = false,
+    speechTVAlways = false,
+    speechTVOnPad = true,
+    speechCombat = "show",
+    speechHideOnTaxi = false,
+    controllerRumble = true,
+    controllerShowLegend = true,
+    fadeOtherParagraphs = true,
     -- On by default (2026-11-14, was off): a new quest line waits its turn behind
     -- the one being read instead of cutting it off. The speech frame shows "1/2"
     -- and a Next button.
@@ -1229,7 +1237,7 @@ StaticPopupDialogs["SPEAKSTONE_AUDIO_PACK_PROMPT"] = {
 
 local NEW_AUDIO_PACK_PROMPT_TEXT = "A new audio pack is available!\n\n"
     .. "SpeakStone Forever Quest Voices - Audio Pack 3 has been released. "
-    .. "Please install it from CurseForge to hear all the latest voiced quests."
+    .. "Please install it from CurseForge to hear the latest voiced quests and every book and letter (books moved there)."
 
 StaticPopupDialogs["SPEAKSTONE_NEW_AUDIO_PACK_PROMPT"] = {
     text = NEW_AUDIO_PACK_PROMPT_TEXT .. "\n\nPress Ctrl+C to copy the link:",
@@ -1277,14 +1285,14 @@ function PromptForAudioPacksIfMissing()
     if addon.IS_FOREVER then
         local hasPack3 = addon.soundSources and addon.soundSources["SpeakStone_Forever_Audio_Pack3"] ~= nil
         if not hasPack3 then
-            if not SpeakStone_MainDB.audioPack3PromptShown then
-                SpeakStone_MainDB.audioPack3PromptShown = true
+            if not SpeakStone_MainDB.audioPack3BooksPromptShown then
+                SpeakStone_MainDB.audioPack3BooksPromptShown = true
                 print("|cff33ff99SpeakStone:|r " .. NEW_AUDIO_PACK_PROMPT_TEXT:gsub("\n\n", " "))
                 print("|cff33ff99SpeakStone:|r " .. FOREVER_PACK3_URL)
                 StaticPopup_Show("SPEAKSTONE_NEW_AUDIO_PACK_PROMPT")
             end
         else
-            SpeakStone_MainDB.audioPack3PromptShown = true
+            SpeakStone_MainDB.audioPack3BooksPromptShown = true
         end
     end
 end
