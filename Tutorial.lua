@@ -212,14 +212,14 @@ end
 local testHandle
 local function PlayTestClip()
     if testHandle then
-        StopSound(testHandle)
+        testHandle:Stop()
         testHandle = nil
     end
     for packName, soundLengths in pairs(addon.soundSources or {}) do
         if packName ~= addonName and type(soundLengths) == "table" then
             for file in pairs(soundLengths) do
-                local _, handle = PlaySoundFile("Interface\\AddOns\\" .. packName .. "\\Sounds\\" .. file, "Dialog")
-                testHandle = handle
+                -- addon.PlayClip: the file may be stored in chunks (ClipChunks.lua).
+                testHandle = addon.PlayClip and addon.PlayClip("Interface\\AddOns\\" .. packName .. "\\Sounds\\" .. file, "Dialog")
                 return true
             end
         end
@@ -864,7 +864,7 @@ local function Build()
 
     frame:HookScript("OnHide", function()
         if DB() and UIParent:IsShown() then DB().tutorialVersion = TUTORIAL_VERSION end
-        if testHandle then StopSound(testHandle) testHandle = nil end
+        if testHandle then testHandle:Stop() testHandle = nil end
         if DB() and not DB().profile and addon.isFreshInstall then ApplyDefaults() end
     end)
 

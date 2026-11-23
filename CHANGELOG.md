@@ -1,5 +1,26 @@
 # Changelog
 
+## 6.1.1 (2026-11-23)
+
+Voices similar to the in-game characters. Unofficial; not affiliated with Blizzard Entertainment.
+
+Version 6.1.1 covers the base add-ons (retail and WoW Forever). The voice packs are unchanged.
+
+### What's new
+
+- Pause and resume on the Read Quest, quest log and greeting buttons (resuming starts the line again; shift-click always starts from the top). The quest log also has a Stop button.
+- Click the subtitle bar, or use its menu, to pause and resume. The speech bar pauses too.
+- A Pause/Resume button in the Guide, beside Stop audio (quests and greetings, not whole books).
+- Previous: hear the line before again, from the speech bar, the controller's left trigger or a new key binding.
+- When one of Blizzard's own talking heads speaks, your quest line pauses and starts again once it has finished (unless "Silence Blizzard's voice lines" is on).
+- The speech bar fades less in combat and no longer hides behind the talking head, and the moving 3D head now shows the right character.
+- Help us fill the gaps: for quest lines where we don't yet know which character speaks, the add-on notes the character when you open that quest and includes it in your text export.
+
+### Fixed
+
+- Books opened with Dialogue UI start on page 1 instead of jumping to the last page.
+- Blizzard's talking-head text is no longer lit up while SpeakStone is reading over its silenced voice.
+
 ## 6.0.3 (November 2026)
 
 ### Speech bar

@@ -818,6 +818,12 @@ local function BuildUI()
     stopButton:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -16, 12)
     frame.stopButton = stopButton
     stopButton:Hide()
+    -- Pause / Resume for a quest or greeting clip played here (not a book being read: its pages run on their own
+    -- timer). A chunked clip resumes at the chunk it paused in, a single-file clip from the top.
+    local pauseButton = addon.UIK.Button(frame, "Pause", 80, 24, function() frame:TogglePause() end)
+    pauseButton:SetPoint("RIGHT", stopButton, "LEFT", -6, 0)
+    frame.pauseButton = pauseButton
+    pauseButton:Hide()
 
     -- The page on the right
     local page = CreateFrame("Frame", nil, frame)
@@ -942,7 +948,7 @@ local function BuildUI()
         end
         local started, duration = self.playStarted, self.playDuration
         local playing = started and duration and duration > 0 and self.playKey == target.key
-            and GetTime() - started <= duration + 0.4
+            and self:PlayClock() - started <= duration + 0.4
         if lastLit and (not playing or lastLit.fs ~= target.fs or lastLit.key ~= target.key) then
             -- It has finished, stopped, or the page moved on: the text as it was.
             lastLit.fs:SetText(lastLit.plain)
@@ -957,7 +963,7 @@ local function BuildUI()
                 addon.ClipNarrated and addon.ClipNarrated(self.playFile))
             target.times, target.starts = addon.SubtitleTiming(target.words, duration, self.playFile)
         end
-        local elapsed = GetTime() - started
+        local elapsed = self:PlayClock() - started
         local index = addon.SubtitleWordAt(target.times, elapsed + 0.12)
         if elapsed >= duration then index = 0 end
         local span = addon.SubtitleSpan(target.starts, index, target.words, true)
@@ -984,7 +990,7 @@ local function BuildUI()
             -- Nothing tells an addon when a clip ends: it has, once its length has passed. (A book being read
             -- whole turns its own pages, so it is left to its own timer.)
             local started, duration = frame.playStarted, frame.playDuration
-            if started and duration and duration > 0 and GetTime() - started > duration + 0.5 and not frame.playingWholeBook() then
+            if started and duration and duration > 0 and frame:PlayClock() - started > duration + 0.5 and not frame.playingWholeBook() then
                 frame:StopAudio()
             end
             frame:ReadAlong()
@@ -1096,6 +1102,17 @@ local function BuildUI()
     frame.gossipView = gv
 
     local activeDebugSound = nil
+    -- A clip player with :Stop() (addon.PlayClip: chunked clips play all their chunks). The plain fallback is for a
+    -- load without SpeakStone_Main.lua (headless tests).
+    local function PlayClip(path, channel, fromSeconds)
+        if addon.PlayClip then
+            return addon.PlayClip(path, channel, fromSeconds)
+        end
+        local willPlay, handle = PlaySoundFile(path, channel)
+        if willPlay and handle then
+            return { handle = handle, Stop = function(self) StopSound(self.handle) end }
+        end
+    end
     local activePlayingQuestID = nil
     local activePlayingType = nil
     local activePlayingNPCID = nil
@@ -1361,11 +1378,48 @@ local function BuildUI()
     function frame:UpdateStop()
         local playing = activeDebugSound ~= nil or activePlayingQuestID ~= nil or activePlayingNPCID ~= nil or activeBook ~= nil
         self.stopButton:SetShown(playing)
+        local pausable = playing and not activeBook and self.playFile ~= nil
+        self.pauseButton:SetShown(pausable)
+        self.pauseButton.label:SetText(self.pausedAt and "Resume" or "Pause")
+    end
+
+    -- The clock the read-along and the end check use: frozen while paused.
+    function frame:PlayClock()
+        if self.pausedAt and self.playStarted then
+            return self.playStarted + self.pausedAt
+        end
+        return GetTime()
+    end
+
+    function frame:TogglePause()
+        if not self.playFile or activeBook then
+            return
+        end
+        if self.pausedAt then
+            local at = self.pausedAt
+            local player = PlayClip(self.playFile, "Dialog", at)
+            if not player then
+                self:StopAudio()
+                return
+            end
+            activeDebugSound = player
+            self.pausedAt = nil
+            self.playStarted = GetTime() - (player.offset or 0)
+        else
+            if not (activeDebugSound and self.playStarted) then
+                return
+            end
+            self.pausedAt = math.max(0, GetTime() - self.playStarted)
+            activeDebugSound:Stop()
+        end
+        self:UpdateStop()
     end
 
     function frame:StopAudio()
+        self.pausedAt = nil
         if activeDebugSound then
-            StopSound(activeDebugSound)
+            -- A clip player (addon.PlayClip): stops its chunks still to come too.
+            activeDebugSound:Stop()
             activeDebugSound = nil
         end
         activePlayingQuestID = nil
@@ -1556,10 +1610,10 @@ local function BuildUI()
             print("SpeakStone Guide: page " .. page .. " of '" .. BookName(book.base) .. "' not found")
             return false
         end
-        local willPlay, handle = PlaySoundFile(soundPath, "Dialog")
-        if not (willPlay and handle) then return false end
+        local player = PlayClip(soundPath, "Dialog")
+        if not player then return false end
         if addon.NoteRecent then addon.NoteRecent("b:" .. book.base) end
-        activeDebugSound = handle
+        activeDebugSound = player
         activeBook, activeBookPage, activeBookWhole = book, page, whole
         frame.playKey, frame.playStarted, frame.playDuration = "b:" .. book.base .. ":" .. page, GetTime(), tonumber(duration)
         frame.playFile = soundPath
@@ -1624,9 +1678,9 @@ local function BuildUI()
             return
         end
 
-        local willPlay, handle = PlaySoundFile(soundPath, "Dialog")
-        if willPlay and handle then
-            activeDebugSound = handle
+        local player = PlayClip(soundPath, "Dialog")
+        if player then
+            activeDebugSound = player
             if addon.NoteRecent then addon.NoteRecent("q:" .. questID) end
             activePlayingQuestID = questID
             activePlayingType = audioType
@@ -1658,9 +1712,9 @@ local function BuildUI()
             return
         end
 
-        local willPlay, handle = PlaySoundFile(soundPath, "Dialog")
-        if willPlay and handle then
-            activeDebugSound = handle
+        local player = PlayClip(soundPath, "Dialog")
+        if player then
+            activeDebugSound = player
             if addon.NoteRecent then addon.NoteRecent("g:" .. npcID .. ":" .. variant) end
             activePlayingNPCID = npcID
             activePlayingVariant = variant

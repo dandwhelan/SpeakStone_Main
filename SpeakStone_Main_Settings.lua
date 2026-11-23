@@ -12,7 +12,8 @@ local WEBSITE = "speakstone.beanw.co.uk"
 local SPEECH_FRAME_INFO = "When you walk away from a quest giver while a line is still being read (or a quest is "
     .. "auto-accepted), a bar shows the NPC, the quest and the text, with Pause, Stop and Replay.\n\n"
     .. "|cffffd100About Pause:|r WoW can only play a sound file from the start. It can't pause one or jump into the "
-    .. "middle, so Pause stops the voice and Resume plays the line again from the beginning.\n\n"
+    .. "middle, so Pause stops the voice. Resume plays a short line again from the beginning; a long line stored "
+    .. "in parts picks up at the start of the part it was paused in.\n\n"
     .. "Right-click the bar to change its size or lock it. |cffffd100/ss frame|r shows a sample to place it with."
 
 local GOLD = { 1, 0.82, 0 }

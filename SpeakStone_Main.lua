@@ -126,6 +126,105 @@ function addon.SentenceTimesFor(soundFile)
     return nil
 end
 
+-- Long clips cut into chunks at sentence pauses (ClipChunks.lua in the pack, written by tools/chunk_pack_clips.py).
+-- PlaySoundFile cannot start part-way into a file, so this is what lets Resume pick up near where it stopped: it
+-- starts the chunk the player paused in. A chunked clip keeps its SoundLengths entry (total length) but its files are
+-- <clip>_c1.ogg .. _cN.ogg. Registered like the sentence timings: directly, or through a pending global.
+addon.chunkSources = {}
+function SpeakStone_RegisterClipChunks(packName, chunks, unit)
+    if type(packName) ~= "string" or type(chunks) ~= "table" then
+        return
+    end
+    addon.chunkSources[packName] = { t = chunks, unit = tonumber(unit) or 100 }
+end
+if type(_G.SpeakStonePendingClipChunks) == "table" then
+    for _, entry in ipairs(_G.SpeakStonePendingClipChunks) do
+        SpeakStone_RegisterClipChunks(entry.name, entry.chunks, entry.unit)
+    end
+    _G.SpeakStonePendingClipChunks = nil
+end
+
+-- Chunk start times in seconds ({0, 14.6, 28.4}) of the clip at soundPath, or nil when it is a single file. Only the
+-- chunk table of the pack the path points into is read: two packs could hold clips of the same name.
+function addon.ClipChunkStarts(soundPath)
+    if type(soundPath) ~= "string" then
+        return nil
+    end
+    local pack = soundPath:match("[Aa]dd[Oo]ns[/\\]([^/\\]+)[/\\]")
+    local source = pack and addon.chunkSources[pack]
+    if not source then
+        return nil
+    end
+    local key = (soundPath:match("[^/\\]+$") or soundPath):gsub("%.%w+$", "")
+    local raw = source.t[key]
+    if type(raw) ~= "string" then
+        return nil
+    end
+    local starts = { 0 }
+    for number in raw:gmatch("%d+") do
+        starts[#starts + 1] = tonumber(number) / source.unit
+    end
+    return #starts > 1 and starts or nil
+end
+
+local function StopClipPlayer(player)
+    player.stopped = true
+    if player.timer then
+        player.timer:Cancel()
+        player.timer = nil
+    end
+    if player.handle then
+        StopSound(player.handle)
+    end
+end
+
+-- Play a clip, starting at the chunk that holds `fromSeconds` (0 or nil: the top). Returns a player, or nil when
+-- nothing could start: player.handle is the sound playing now, player.offset the clip time it started at, and
+-- player:Stop() stops it and every chunk still to come. A clip with no chunks is one PlaySoundFile, as before.
+-- Chunks follow each other on a timer; the join sits in the middle of a sentence pause, so a frame of timer jitter
+-- only nudges that pause.
+function addon.PlayClip(soundPath, channel, fromSeconds)
+    local starts = addon.ClipChunkStarts(soundPath)
+    if not starts then
+        local willPlay, handle = PlaySoundFile(soundPath, channel)
+        if not (willPlay and handle) then
+            return nil
+        end
+        return { handle = handle, offset = 0, Stop = StopClipPlayer }
+    end
+    local first = 1
+    local from = tonumber(fromSeconds) or 0
+    for i = #starts, 1, -1 do
+        if from >= starts[i] then
+            first = i
+            break
+        end
+    end
+    local player = { offset = starts[first], chunks = #starts, Stop = StopClipPlayer }
+    local function PlayChunk(i)
+        player.timer = nil
+        if player.stopped then
+            return false
+        end
+        local path = soundPath:gsub("%.(%w+)$", "_c" .. i .. ".%1")
+        local willPlay, handle = PlaySoundFile(path, channel)
+        if not (willPlay and handle) then
+            return false
+        end
+        player.handle, player.chunk = handle, i
+        if starts[i + 1] then
+            player.timer = C_Timer.NewTimer(starts[i + 1] - starts[i], function()
+                PlayChunk(i + 1)
+            end)
+        end
+        return true
+    end
+    if not PlayChunk(first) then
+        return nil
+    end
+    return player
+end
+
 -- Whether a clip reads its <stage directions> aloud (the narrator's parts stitched in, since 2026-11-04).
 function addon.ClipNarrated(soundFile)
     if type(soundFile) ~= "string" then
@@ -668,13 +767,41 @@ local function UpdateQuestButtonVisibility()
             addon.questLogButton:ClearAllPoints()
             addon.questLogButton:SetPoint("LEFT", QuestMapFrame.DetailsFrame.BackButton, "RIGHT", 6, 0)
         end
-        local cur = addon.activeSound
-        local qid = (C_QuestLog and C_QuestLog.GetSelectedQuest and C_QuestLog.GetSelectedQuest()) or GetQuestID()
-        local isPlaying = cur and cur.questID == qid and cur.isPlaying
-        addon.questLogButton:SetText(isPlaying and "Stop" or "Play")
+        addon.RefreshQuestPlayButtons()
     end
 end
 addon.UpdateQuestButtonVisibility = UpdateQuestButtonVisibility
+
+-- "playing" / "paused" when that quest's line is, else nil (Read Quest and the quest log's Play button).
+function addon.QuestPlayState(questID)
+    if not questID then
+        return nil
+    end
+    local cur = addon.activeSound
+    if cur and cur.questID == questID and cur.isPlaying then
+        return "playing"
+    end
+    if addon.PausedSound and addon.PausedSound(questID) then
+        return "paused"
+    end
+    return nil
+end
+
+local PLAY_STATE_LABELS = { playing = "Pause", paused = "Resume" }
+function addon.RefreshQuestPlayButtons()
+    if addon.questFrameButton then
+        local state = addon.QuestPlayState(GetQuestID())
+        addon.questFrameButton:SetText(PLAY_STATE_LABELS[state] or "Read Quest")
+    end
+    if addon.questLogButton then
+        local qid = (C_QuestLog and C_QuestLog.GetSelectedQuest and C_QuestLog.GetSelectedQuest()) or GetQuestID()
+        local state = addon.QuestPlayState(qid)
+        addon.questLogButton:SetText(PLAY_STATE_LABELS[state] or "Play")
+        if addon.questLogStop then
+            addon.questLogStop:SetShown(state ~= nil and addon.questLogButton:IsShown())
+        end
+    end
+end
 
 -- The quest giver window's passage, from whichever panel is up.
 local function QuestFramePassage()
@@ -770,7 +897,17 @@ local function InitializeQuestFrameButtons()
 
     addon.SetUpPlayButton(questFrameButton, {
         kind = "quest", title = "Read Quest", binding = "PLAYACTIVEQUEST",
-        onClick = function() PlayQuestAudio(nil, true) end,
+        hint = "Left-click: read it; while it reads, pause and resume. Shift-click: from the top.",
+        onClick = function()
+            local state = addon.QuestPlayState(GetQuestID())
+            if IsShiftKeyDown() or not state then
+                PlayQuestAudio(nil, true)
+            elseif state == "playing" then
+                addon.PauseSound()
+            else
+                addon.ResumeSound()
+            end
+        end,
         voiced = function()
             local passage = QuestFramePassage()
             if not passage then return nil end
@@ -814,19 +951,32 @@ local function InitializeQuestFrameButtons()
         end
         addon.SetUpPlayButton(questLogButton, {
             kind = "quest", title = "Read the quest description",
-            hint = "Left-click: play it, or stop it while it plays.",
+            hint = "Left-click: play, pause, resume. Shift-click: from the top.",
             onClick = function()
-                local cur = GetCurrentSound()
-                if cur and cur.questID == SelectedQuest() and cur.isPlaying then
-                    StopCurrentSound()
-                else
+                local state = addon.QuestPlayState(SelectedQuest())
+                if IsShiftKeyDown() or not state then
                     PlayQuestAudio("description", true)
+                elseif state == "playing" then
+                    addon.PauseSound()
+                else
+                    addon.ResumeSound()
                 end
             end,
             voiced = function() return addon.QuestClipFor(SelectedQuest(), "description") ~= nil end,
         })
         table.insert(addon.questButtons, questLogButton)
         addon.questLogButton = questLogButton
+
+        -- Stop, beside it while this quest is playing or paused (Play became Play / Pause / Resume).
+        local questLogStop = CreateFrame("Button", "QuestLogReaderStopFrame", QuestMapFrame.DetailsFrame, "UIPanelButtonTemplate")
+        questLogStop:SetSize(50, questLogButton:GetHeight() or 22)
+        questLogStop:SetText("Stop")
+        questLogStop:SetPoint("LEFT", questLogButton, "RIGHT", 4, 0)
+        questLogStop:SetFrameLevel(questLogButton:GetFrameLevel())
+        -- addon.StopCurrentSound: the local of that name is defined further down the file, so it is not in scope here.
+        questLogStop:SetScript("OnClick", function() addon.StopCurrentSound() addon.RefreshPlayLabels() end)
+        questLogStop:Hide()
+        addon.questLogStop = questLogStop
 
         QuestMapFrame.DetailsFrame:HookScript("OnShow", function()
             if addon.questLogButton and QuestMapFrame.DetailsFrame.BackButton then
@@ -838,6 +988,12 @@ local function InitializeQuestFrameButtons()
         end)
     end
     addon.questFrameButton = questFrameButton
+    -- Read Quest's label (Read Quest / Pause / Resume) follows the quest on screen.
+    for _, panel in ipairs({ QuestFrame, QuestFrameDetailPanel, QuestFrameProgressPanel, QuestFrameRewardPanel }) do
+        if panel and panel.HookScript then
+            panel:HookScript("OnShow", function() addon.RefreshQuestPlayButtons() end)
+        end
+    end
 
     UpdateQuestButtonVisibility()
     if addon.InitMissingVoiceIcons then addon.InitMissingVoiceIcons() end
@@ -1548,6 +1704,8 @@ local function DoPlaySound(soundData)
     if not soundData or addon.activeSound ~= soundData then
         return
     end
+    -- A clip starting (this one resumed, or another line) leaves nothing paused.
+    addon.pausedSound = nil
 
     -- The game stops anything playing on the Dialog channel when the quest or
     -- gossip window closes, whatever this addon does. With "stop narration when
@@ -1562,7 +1720,13 @@ local function DoPlaySound(soundData)
         audioChannel = "Master"
     end
 
-    soundData.isPlaying, soundData.soundHandle = PlaySoundFile(soundData.soundPath, audioChannel)
+    -- resumeFrom: set by ReplaySound for a Resume; a chunked clip starts at the chunk holding that time.
+    local player = addon.PlayClip(soundData.soundPath, audioChannel, soundData.resumeFrom)
+    soundData.resumeFrom = nil
+    soundData.player = player
+    soundData.isPlaying = player ~= nil
+    soundData.soundHandle = player and player.handle
+    local offset = player and player.offset or 0
 
     if not soundData.soundHandle then
         DebugPrint("Failed to play audio: " .. tostring(soundData.soundFile))
@@ -1588,7 +1752,7 @@ local function DoPlaySound(soundData)
     if not duration or duration <= 0 then
         duration = MAX_CLIP_SECONDS
     end
-    soundData.endTimer = C_Timer.NewTimer(duration + 0.25, function()
+    soundData.endTimer = C_Timer.NewTimer(math.max(duration - offset, 0) + 0.25, function()
         FinishPlayback(soundData)
     end)
 
@@ -1597,8 +1761,8 @@ local function DoPlaySound(soundData)
     addon.NoteRecent(addon.ClipItemKey(soundData.soundFile))
 
     -- Nothing reports a clip's position either, so the speech frame works
-    -- it out from when it started.
-    soundData.startedAt = GetTime()
+    -- it out from when it started (backdated when a Resume began part-way in).
+    soundData.startedAt = GetTime() - offset
     addon.lastPlayedSound = soundData
     NotifySpeechFrame("start", soundData)
 end
@@ -1615,6 +1779,10 @@ addon.IsPlaying = IsPlaying
 local function StopCurrentSound(keepQueue)
     if not keepQueue and addon.ClearSpeechQueue then
         addon.ClearSpeechQueue()
+    end
+    -- Any stop but a Pause's own ends a paused line too: Stop means stop.
+    if not addon.pausingSound then
+        addon.pausedSound = nil
     end
     local currentSound = GetCurrentSound()
 
@@ -1633,7 +1801,10 @@ local function StopCurrentSound(keepQueue)
         currentSound.endTimer:Cancel()
     end
 
-    if currentSound.soundHandle then
+    if currentSound.player then
+        currentSound.player:Stop()
+        currentSound.player = nil
+    elseif currentSound.soundHandle then
         StopSound(currentSound.soundHandle)
     end
 
@@ -1645,9 +1816,55 @@ local function StopCurrentSound(keepQueue)
 
     addon.activeSound = nil
     currentSound.isPlaying = false
-    NotifySpeechFrame("stop", currentSound)
+    NotifySpeechFrame(addon.pausingSound and "pause" or "stop", currentSound)
 end
 addon.StopCurrentSound = StopCurrentSound
+
+-- Pause and Resume for every play button (Read Quest, the quest log, the speech bar, the gamepad). The game has no
+-- pause, so Pause stops the clip and remembers where; Resume plays it again from there through ReplaySound, which
+-- starts a chunked clip (ClipChunks.lua) at the chunk holding that time and a single-file clip from the top.
+-- addon.pausedSound = { sd = soundData, at = seconds into the clip }. Any other stop or new clip forgets it.
+function addon.PauseSound()
+    local cur = GetCurrentSound()
+    if not (cur and cur.isPlaying and cur.startedAt) then
+        return false
+    end
+    local at = math.max(0, GetTime() - cur.startedAt)
+    if cur.duration and cur.duration > 0 then
+        at = math.min(at, cur.duration)
+    end
+    cur.pausedAt = at
+    addon.pausingSound = true
+    local ok, err = pcall(StopCurrentSound, true)
+    addon.pausingSound = false
+    if not ok then
+        geterrorhandler()(err)
+    end
+    addon.pausedSound = { sd = cur, at = at }
+    if addon.RefreshPlayLabels then
+        pcall(addon.RefreshPlayLabels)
+    end
+    return true
+end
+
+function addon.ResumeSound()
+    local paused = addon.pausedSound
+    if not paused then
+        return false
+    end
+    addon.pausedSound = nil
+    addon.ReplaySound(paused.sd, paused.at)
+    return true
+end
+
+-- The paused line, or nil. With a quest ID: only when the paused line is that quest's.
+function addon.PausedSound(questID)
+    local paused = addon.pausedSound
+    if not paused or (questID and paused.sd.questID ~= questID) then
+        return nil
+    end
+    return paused.sd
+end
 
 -- A window opened that has no clip of its own. Each play path used to stop
 -- the current clip before looking its own up, so talking to any NPC, opening
@@ -1664,18 +1881,20 @@ local function YieldToSilentWindow(keepQueue)
     end
 end
 
--- Play a clip again from the top: the speech frame's Resume and Replay.
--- PlaySoundFile cannot start part-way into a file, so resuming a paused
--- clip means starting it over; the frame rewinds the text to match.
-function addon.ReplaySound(soundData)
+-- Play a clip again: the speech frame's Resume (fromSeconds = where it was paused) and Replay (nil: the top).
+-- PlaySoundFile cannot start part-way into a file, so a single-file clip starts over; a chunked clip (ClipChunks.lua)
+-- starts at the chunk holding fromSeconds. Either way startedAt is set to match, and the frame's text follows it.
+function addon.ReplaySound(soundData, fromSeconds)
     if not soundData or not soundData.soundPath then
         return
     end
     StopCurrentSound(true)
     soundData.isPlaying = false
     soundData.soundHandle = nil
+    soundData.player = nil
     soundData.endTimer = nil
     soundData.nextSoundTimer = nil
+    soundData.resumeFrom = fromSeconds
     addon.activeSound = soundData
     DoPlaySound(soundData)
 end
@@ -1684,10 +1903,29 @@ end
 -- speech frame's "1/2"; both reset once the queue has run dry.
 addon.speechQueue = {}
 addon.queuePos, addon.queueTotal = 0, 0
+-- Queued lines already heard, oldest first, for the speech bar's Previous (2026-11-23 prototype): a line missed
+-- while several were queued can be heard again. Cleared with the queue; at most HISTORY_MAX kept.
+addon.speechHistory = {}
+local HISTORY_MAX = 20
 
 function addon.ClearSpeechQueue()
     wipe(addon.speechQueue)
+    wipe(addon.speechHistory)
     addon.queuePos, addon.queueTotal = 0, 0
+end
+
+local function RememberHeard(soundData)
+    if not soundData or not soundData.questID or soundData.preview then
+        return
+    end
+    local history = addon.speechHistory
+    if history[#history] == soundData then
+        return
+    end
+    history[#history + 1] = soundData
+    if #history > HISTORY_MAX then
+        table.remove(history, 1)
+    end
 end
 
 local function EnqueueSpeech(soundData)
@@ -1720,11 +1958,18 @@ function addon.PlayNextQueued()
         addon.ClearSpeechQueue()
         return false
     end
+    -- The line being left (playing, paused, or just finished) goes into the history for Previous.
+    local leaving = addon.activeSound or (addon.pausedSound and addon.pausedSound.sd) or addon.lastPlayedSound
     local nextSound = table.remove(addon.speechQueue, 1)
     if not nextSound then
+        -- Ran dry: the last line stays reachable with Previous while the bar is still up.
+        if #addon.speechHistory > 0 then
+            RememberHeard(leaving)
+        end
         addon.queuePos, addon.queueTotal = 0, 0
         return false
     end
+    RememberHeard(leaving)
     StopCurrentSound(true)
     if addon.Rumble then addon.Rumble("next") end
     addon.queuePos = addon.queuePos + 1
@@ -1734,6 +1979,31 @@ function addon.PlayNextQueued()
     nextSound.nextSoundTimer = nil
     addon.activeSound = nextSound
     DoPlaySound(nextSound)
+    return true
+end
+
+-- Go back one queued line (the speech bar's Previous): the line before plays from the top and the one being left
+-- goes back to the front of the queue, so Next returns to it. Returns false when nothing came before.
+function addon.PlayPreviousQueued()
+    local previous = table.remove(addon.speechHistory)
+    if not previous then
+        return false
+    end
+    local leaving = addon.activeSound or (addon.pausedSound and addon.pausedSound.sd)
+    StopCurrentSound(true)
+    if leaving and leaving ~= previous then
+        table.insert(addon.speechQueue, 1, leaving)
+    end
+    addon.queuePos = #addon.speechHistory + 1
+    addon.queueTotal = addon.queuePos + #addon.speechQueue
+    if addon.Rumble then addon.Rumble("next") end
+    previous.isPlaying = false
+    previous.soundHandle = nil
+    previous.player = nil
+    previous.endTimer = nil
+    previous.nextSoundTimer = nil
+    addon.activeSound = previous
+    DoPlaySound(previous)
     return true
 end
 
@@ -2696,8 +2966,11 @@ function PlayItemAudio(page)
             end
         end)
     else
-        -- Standard Blizzard UI (without DialogueUI)
-        if not DUIBookFrame or not DUIBookFrame:IsShown() then
+        -- Standard Blizzard UI only: DialogueUI pre-fetches pages 2..N via
+        -- ItemTextNextPage() before DUIBookFrame is shown, with ItemTextFrame
+        -- unregistered and hidden. Following ITEM_TEXT_READY while ItemTextFrame
+        -- is hidden played every cached page in order and landed on the last page.
+        if ItemTextFrame and ItemTextFrame:IsShown() and (not DUIBookFrame or not DUIBookFrame:IsShown()) then
             local p = ItemTextGetPage() or 1
             if p ~= currentItemPage then
                 currentItemPage = p
@@ -2750,6 +3023,13 @@ local function GossipPlaying()
     return cur and npcID and cur.textType == "gossip" and cur.questID == "npc" .. npcID and cur.isPlaying
 end
 
+-- This NPC's greeting, paused (addon.PauseSound).
+local function GossipPaused()
+    local npcID = CurrentGossipNPC()
+    local paused = addon.PausedSound and addon.PausedSound("npc" .. tostring(npcID))
+    return npcID and paused and paused.textType == "gossip"
+end
+
 addon.CurrentGossipNPC = CurrentGossipNPC
 
 function addon.UpdateGossipButton()
@@ -2757,7 +3037,7 @@ function addon.UpdateGossipButton()
         return
     end
     gossipButton:SetShown(SpeakStone_MainDB.showQuestButton ~= false)
-    gossipButton:SetText(GossipPlaying() and "Stop" or "Play")
+    gossipButton:SetText(GossipPlaying() and "Pause" or (GossipPaused() and "Resume" or "Play"))
 end
 
 function addon.InitGossipButton()
@@ -2775,10 +3055,12 @@ function addon.InitGossipButton()
     end
     addon.SetUpPlayButton(gossipButton, {
         kind = "gossip", title = "Read this greeting",
-        hint = "Left-click: play it, or stop it while it plays.",
+        hint = "Left-click: play, pause, resume. Shift-click: from the top.",
         onClick = function()
-            if GossipPlaying() then
-                StopCurrentSound()
+            if GossipPlaying() and not IsShiftKeyDown() then
+                addon.PauseSound()
+            elseif GossipPaused() and not IsShiftKeyDown() then
+                addon.ResumeSound()
             elseif GossipClipShowing() then
                 PlayGossipAudio(true)
             else
@@ -2797,11 +3079,7 @@ function addon.RefreshPlayLabels()
     if UpdateBookButton then
         UpdateBookButton()
     end
-    if addon.questLogButton and addon.questLogButton:IsVisible() then
-        local cur = GetCurrentSound()
-        local qid = (C_QuestLog and C_QuestLog.GetSelectedQuest and C_QuestLog.GetSelectedQuest()) or GetQuestID()
-        addon.questLogButton:SetText((cur and cur.questID == qid and cur.isPlaying) and "Stop" or "Play")
-    end
+    addon.RefreshQuestPlayButtons()
 end
 
 -- Play/Stop on the book window itself (owner, 2026-09-28). Play reads from
@@ -3080,14 +3358,20 @@ local function ResumeQueueAfterNPCVoice()
     local wait = math.max(0, npcVoiceEndsAt - GetTime() + NPCVoiceGap())
     queueResumeTimer = C_Timer.NewTimer(wait, function()
         queueResumeTimer = nil
-        if GetCurrentSound() or #addon.speechQueue == 0 then
+        -- A line the NPC paused (and nobody has resumed, stopped or replaced since) comes first.
+        local npcPaused = addon.pausedSound and addon.pausedSound.byNPC
+        if GetCurrentSound() or (not npcPaused and #addon.speechQueue == 0) then
             return
         end
         if npcVoiceEndsAt + NPCVoiceGap() > GetTime() then
             ResumeQueueAfterNPCVoice()
             return
         end
-        addon.PlayNextQueued()
+        if npcPaused then
+            addon.ResumeSound()
+        else
+            addon.PlayNextQueued()
+        end
     end)
 end
 
@@ -3102,13 +3386,23 @@ local function NoteNPCVoice(seconds, interruptPlaying)
     end
     if current.isPlaying then
         if interruptPlaying then
-            DebugPrint("SpeakStone: an NPC started speaking -- stopping narration")
-            -- Queued quests are paused, not dropped, by a voiced NPC line.
-            local holdQueue = current.questID and current.textType ~= "gossip" and #addon.speechQueue > 0
-                and SpeakStone_MainDB.queueQuestSpeech
-            StopCurrentSound(holdQueue)
-            if holdQueue then
+            -- A quest line or book is paused, not dropped, by a voiced NPC line (a talking head from a world event):
+            -- it picks up again when the NPC has finished, at the chunk it stopped in (ClipChunks.lua) or from the
+            -- top, and the queue carries on after it (owner, 2026-11-23 prototype). A greeting stops: its window
+            -- has usually gone by then.
+            if current.textType ~= "gossip" and addon.PauseSound() then
+                DebugPrint("SpeakStone: an NPC started speaking -- pausing narration until it finishes")
+                addon.pausedSound.byNPC = true
                 ResumeQueueAfterNPCVoice()
+            else
+                DebugPrint("SpeakStone: an NPC started speaking -- stopping narration")
+                -- Queued quests are paused, not dropped, by a voiced NPC line.
+                local holdQueue = current.questID and current.textType ~= "gossip" and #addon.speechQueue > 0
+                    and SpeakStone_MainDB.queueQuestSpeech
+                StopCurrentSound(holdQueue)
+                if holdQueue then
+                    ResumeQueueAfterNPCVoice()
+                end
             end
         end
     elseif current.nextSoundTimer then

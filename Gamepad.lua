@@ -21,13 +21,18 @@ local REPEAT_DELAY, REPEAT_RATE = 0.35, 0.05
 
 -- WoW names face buttons by position on every pad: PAD1 bottom, PAD2 right, PAD3 left, PAD4 top.
 local LABELS = {
-    XBOX = { PAD1 = "A", PAD2 = "B", PAD3 = "X", PAD4 = "Y", PADBACK = "View", PADLSHOULDER = "LB", PADRSHOULDER = "RB", PADLSTICK = "LS", PADRSTICK = "RS" },
-    PS = { PAD1 = "Cross", PAD2 = "Circle", PAD3 = "Square", PAD4 = "Triangle", PADBACK = "Create", PADLSHOULDER = "L1", PADRSHOULDER = "R1", PADLSTICK = "L3", PADRSTICK = "R3" },
+    XBOX = { PAD1 = "A", PAD2 = "B", PAD3 = "X", PAD4 = "Y", PADBACK = "View", PADLSHOULDER = "LB", PADRSHOULDER = "RB", PADLSTICK = "LS", PADRSTICK = "RS",
+        PADLTRIGGER = "LT", PADRTRIGGER = "RT" },
+    PS = { PAD1 = "Cross", PAD2 = "Circle", PAD3 = "Square", PAD4 = "Triangle", PADBACK = "Create", PADLSHOULDER = "L1", PADRSHOULDER = "R1", PADLSTICK = "L3", PADRSTICK = "R3",
+        PADLTRIGGER = "L2", PADRTRIGGER = "R2" },
 }
 
+-- Left trigger = Previous queued line (2026-11-23 prototype). One pad button per action: Badges() puts each button's
+-- picture on the bar's control of that name, and two buttons for one control would fight over its badge.
 local ACTIONS = {
     PAD1 = "pause",
     PAD3 = "next",
+    PADLTRIGGER = "previous",
     PAD4 = "replay",
     PAD2 = "stop",
 }
@@ -53,13 +58,15 @@ local ICONS = {
         PADLSHOULDER = "gamepad_ltr_lshoulder_64", PADRSHOULDER = "gamepad_ltr_rshoulder_64",
         PADLSTICK = "gamepad_gen_lstickin_64", PADRSTICK = "gamepad_gen_rstickin_64",
         PADDUP = "gamepad_ltr_up_64", PADDDOWN = "gamepad_ltr_down_64",
-        PADDLEFT = "gamepad_ltr_left_64", PADDRIGHT = "gamepad_ltr_right_64" },
+        PADDLEFT = "gamepad_ltr_left_64", PADDRIGHT = "gamepad_ltr_right_64",
+        PADLTRIGGER = "gamepad_ltr_ltrigger_64", PADRTRIGGER = "gamepad_ltr_rtrigger_64" },
     PS = { PAD1 = "gamepad_shp_cross_64", PAD2 = "gamepad_shp_circle_64", PAD3 = "gamepad_shp_square_64",
         PAD4 = "gamepad_shp_triangle_64", PADBACK = "gamepad_shp_share_64", PADFORWARD = "gamepad_shp_menu_64",
         PADLSHOULDER = "gamepad_shp_lshoulder_64", PADRSHOULDER = "gamepad_shp_rshoulder_64",
         PADLSTICK = "gamepad_shp_lstickin_64", PADRSTICK = "gamepad_shp_rstickin_64",
         PADDUP = "gamepad_shp_up_64", PADDDOWN = "gamepad_shp_down_64",
-        PADDLEFT = "gamepad_shp_left_64", PADDRIGHT = "gamepad_shp_right_64" },
+        PADDLEFT = "gamepad_shp_left_64", PADDRIGHT = "gamepad_shp_right_64",
+        PADLTRIGGER = "gamepad_shp_ltrigger_64", PADRTRIGGER = "gamepad_shp_rtrigger_64" },
 }
 local ICON_SIZE = 18
 
@@ -251,7 +258,8 @@ local function UpdateHint()
     end
     local text
     if listener.focused then
-        text = Label("PAD1") .. " Pause/Resume   " .. Label("PAD3") .. " Next   " .. Label("PAD4") .. " Replay   "
+        text = Label("PAD1") .. " Pause/Resume   " .. Label("PADLTRIGGER") .. " Previous   " .. Label("PAD3") .. " Next   "
+            .. Label("PAD4") .. " Replay   "
             .. Label("PAD2") .. " Stop   " .. Label("DPAD") .. " Move   " .. Label("PADLSHOULDER") .. "/"
             .. Label("PADRSHOULDER") .. " Size   " .. Label(FocusButton()) .. " Done"
     else
@@ -438,6 +446,7 @@ addon.ControllerDetect = Detect
 
 function SpeakStone_Stop() addon.SpeechFrameControl("stop") end
 function SpeakStone_Next() addon.SpeechFrameControl("next") end
+function SpeakStone_Previous() addon.SpeechFrameControl("previous") end
 function SpeakStone_Replay() addon.SpeechFrameControl("replay") end
 function SpeakStone_ControllerFocus()
     local frame = addon.SpeechFrameGet and addon.SpeechFrameGet()
@@ -446,6 +455,7 @@ end
 
 BINDING_NAME_SPEAKSTONESTOP = "Stop narration (clears the queue)"
 BINDING_NAME_SPEAKSTONENEXT = "Next queued quest"
+BINDING_NAME_SPEAKSTONEPREVIOUS = "Previous queued quest"
 BINDING_NAME_SPEAKSTONEREPLAY = "Replay the line"
 BINDING_NAME_SPEAKSTONEPADFOCUS = "Controller: take / release the speech bar"
 

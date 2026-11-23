@@ -15,7 +15,8 @@ local addonName, addon = ...
 -- * Nothing reports where a clip is. The timer is worked out from when it
 --   started (soundData.startedAt) and its length (SoundLengths).
 -- * PlaySoundFile has no pause and cannot start part-way into a file. Pause
---   stops the clip; Resume plays it again from the top.
+--   stops the clip; Resume plays it again from the top, or, for a long clip
+--   its pack stores in chunks (ClipChunks.lua), from the chunk it paused in.
 
 local SIZES = {
     { key = "small", label = "Small", scale = 0.8 },
@@ -144,6 +145,7 @@ end
 -- in game). Over Dialogue UI's paper the colour is that art's own (measured in game, tinted like the frame);
 -- over the flat band it is the theme's background.
 local FADE_MAX = 0.95
+local COMBAT_FADE_ALPHA = 0.6
 local FADE_STRIPS = 10
 local PAPER = { 0.80, 0.655, 0.46 }
 
@@ -190,7 +192,9 @@ local function UpdateFades(scroll)
     if not fades then return end
     local line = frame.lineHeight or 15
     local range = scroll:GetVerticalScrollRange() or 0
-    if range <= 0 then
+    -- Faded for combat the paper is see-through, and the edges (paper-coloured strips over the text) stood out
+    -- as solid bands across it (owner's screenshot, 2026-11-23): no edges then.
+    if range <= 0 or frame.combatFaded then
         fades.top:SetAlpha(0)
         fades.bottom:SetAlpha(0)
         return
@@ -493,6 +497,8 @@ local GLYPHS = {
     stop = function(b, p) Rect(b, p, 10, 10, 0) end,
     replay = function(b, p) Rect(b, p, 2, 11, -5); Triangle(b, p, "left", 11, 9, 6) end,
     next = function(b, p) Triangle(b, p, "right", 11, 9, -6); Rect(b, p, 2, 11, 5) end,
+    -- Two left triangles (rewind), so it does not read as Replay's back-to-start.
+    previous = function(b, p) Triangle(b, p, "left", 11, 7, 0); Triangle(b, p, "left", 11, 7, 7) end,
 }
 addon.SpeechFrameGlyphs = GLYPHS
 
@@ -555,6 +561,7 @@ local KINDS = {
 addon.SpeechFrameKinds = KINDS
 
 local Pause, Resume, StopNarration, Replay, Dismiss, OpenMenu
+local CaptureModel   -- defined with the moving head, used by SpeechFrameCapturePortrait above it
 
 local function Build()
     if frame then
@@ -628,20 +635,26 @@ local function Build()
     -- The moving head (speechPortrait3D, the default): the NPC's own model,
     -- framed on its face, nothing behind it, so the bar shows through; it
     -- talks sentence by sentence with the voice (UpdateTalk).
-    frame.model = CreateFrame("PlayerModel", nil, frame.portraitArea)
-    frame.model:SetAllPoints(frame.portraitArea)
-    frame.model:Hide()
-    -- Some animations play once: a talk that ends mid-sentence starts again.
-    frame.model:SetScript("OnAnimFinished", function(self)
-        if self.talkAnim then
-            self:SetAnimation(self.talkAnim)
-        end
-    end)
-    -- The camera is set again once the model has loaded: set before that, the
-    -- game frames the whole body (owner, 2026-11-07: "zoom in on the face").
-    frame.model:SetScript("OnModelLoaded", function(self)
-        if frame.ApplyFace then frame.ApplyFace(self) end
-    end)
+    -- frame.model is the one on screen: frame.baseModel, or a line's own captured model (CaptureModel).
+    frame.NewModel = function()
+        local m = CreateFrame("PlayerModel", nil, frame.portraitArea)
+        m:SetAllPoints(frame.portraitArea)
+        m:Hide()
+        -- Some animations play once: a talk that ends mid-sentence starts again.
+        m:SetScript("OnAnimFinished", function(self)
+            if self.talkAnim then
+                self:SetAnimation(self.talkAnim)
+            end
+        end)
+        -- The camera is set again once the model has loaded: set before that, the
+        -- game frames the whole body (owner, 2026-11-07: "zoom in on the face").
+        m:SetScript("OnModelLoaded", function(self)
+            if frame.ApplyFace then frame.ApplyFace(self) end
+        end)
+        return m
+    end
+    frame.baseModel = frame.NewModel()
+    frame.model = frame.baseModel
 
     -- Close: a bare X in the theme's ink, faint like the other icons (was a boxed "X" button, and before that
     -- Blizzard's red-and-gold one).
@@ -734,6 +747,15 @@ local function Build()
     end, "Next: skip to the next queued quest.")
     controls.next:SetPoint("RIGHT", controls.pause, "LEFT", -ICON_GAP, 0)
     controls.next:Hide()
+    -- Previous (2026-11-23 prototype): the queued line before this one, from the top. Placed left of Next, or of
+    -- Pause when nothing is left to skip to (Tick moves it).
+    controls.previous = IconButton(controls, "previous", function()
+        paused = false
+        lingerUntil = nil
+        if addon.PlayPreviousQueued then addon.PlayPreviousQueued() end
+    end, "Previous: hear the queued line before this one again.")
+    controls.previous:SetPoint("RIGHT", controls.pause, "LEFT", -ICON_GAP, 0)
+    controls.previous:Hide()
     -- No Report button here any more: the warning sign beside Replay does the same (owner, 2026-11-07: "we have
     -- two"). showReportButton now only puts one on Blizzard's quest window.
 
@@ -982,6 +1004,8 @@ function addon.SpeechFrameCapturePortrait(sd)
     if tex.owner then
         tex.owner.portraitTex = nil
     end
+    -- The moving head too, while the NPC is still here to load it from.
+    CaptureModel(sd)
     tex:Hide()
     if pcall(SetPortraitTexture, tex, "npc") then
         tex.owner = sd
@@ -1030,13 +1054,89 @@ function addon.SpeechFrameFace(zoom)
     return tonumber(db.speechHeadZoom) or HEAD_ZOOM
 end
 
+-- A line's own model, loaded from the NPC while the player is still talking to it (SetUnit: its exact look) and kept
+-- for when the line plays later -- queued, replayed, or reached with Previous. Without it the bar fell back to
+-- SetCreature(ID), which for some NPCs gives a different look every time: Chana (female Amani troll, one display)
+-- showed as a red-haired male troll, then a yellow-haired one (owner's screenshots, 2026-11-23).
+-- A model is reused once its line is gone from the current, queued and heard lines.
+local function LineStillHeld(owner)
+    if owner == addon.activeSound or owner == current then return true end
+    if addon.pausedSound and addon.pausedSound.sd == owner then return true end
+    for _, list in ipairs({ addon.speechQueue or {}, addon.speechHistory or {} }) do
+        for _, sd in ipairs(list) do
+            if sd == owner then return true end
+        end
+    end
+    return false
+end
+
+function CaptureModel(sd)
+    if not (frame and sd and sd.npcGUID) or sd.preview or sd.textType == "item" or DB().speechPortrait3D ~= true then
+        return nil
+    end
+    if sd.modelFrame and sd.modelFrame.owner == sd then
+        return sd.modelFrame
+    end
+    local ok, same = pcall(function() return UnitExists("npc") and UnitGUID("npc") == sd.npcGUID end)
+    if not ok or not same then
+        return nil
+    end
+    frame.lineModels = frame.lineModels or {}
+    local m
+    for _, candidate in ipairs(frame.lineModels) do
+        if not candidate.owner or not LineStillHeld(candidate.owner) then
+            m = candidate
+            break
+        end
+    end
+    if not m then
+        m = frame.NewModel()
+        table.insert(frame.lineModels, m)
+    end
+    if m.owner and m.owner.modelFrame == m then
+        m.owner.modelFrame = nil
+    end
+    if not pcall(function() m:ClearModel(); m:SetUnit("npc") end) then
+        return nil
+    end
+    m:Hide()
+    m.owner = sd
+    sd.modelFrame = m
+    return m
+end
+addon.SpeechFrameCaptureModel = CaptureModel
+
 local function ShowModel(sd)
-    local m = frame.model
     -- The preview (/ss frame) shows the player's own head, so /ss face can be tried anywhere.
     -- Only when chosen: the still picture is the default (owner, 2026-11-07).
-    if not (m and sd and (sd.npcGUID or sd.preview)) or sd.textType == "item" or DB().speechPortrait3D ~= true then
+    if not (frame.baseModel and sd and (sd.npcGUID or sd.preview)) or sd.textType == "item" or DB().speechPortrait3D ~= true then
         return false
     end
+    -- The line's own model when it has one (or can take one now); the shared one otherwise.
+    local own = CaptureModel(sd)
+    -- /ssdebug: which creature the head comes from, and how (a follower or a troll standing nearby being the
+    -- quest window's "npc" would show here as an ID that is not the speaker's).
+    if addon.DebugPrint and not sd.preview then
+        local id = addon.CreatureIDFromGUID and sd.npcGUID and addon.CreatureIDFromGUID(sd.npcGUID)
+        addon.DebugPrint(("SpeakStone head: %s, creature %s, %s"):format(tostring(sd.npcName), tostring(id),
+            own and "captured from the NPC" or ((UnitExists("npc") and UnitGUID("npc") == sd.npcGUID)
+                and "from the NPC now" or "rebuilt from the creature ID")))
+    end
+    for _, other in ipairs(frame.lineModels or {}) do
+        if other ~= own then other:Hide() end
+    end
+    frame.baseModel:Hide()
+    if own then
+        frame.model = own
+        frame.ApplyFace = ApplyFace
+        ApplyFace(own)
+        own.talkAnim, own.plan, own.planFor, own.current = nil, nil, nil, nil
+        own.shownAt = GetTime()
+        own:Show()
+        return true
+    end
+    local m = frame.baseModel
+    frame.model = m
     local shown = false
     pcall(function()
         m:ClearModel()
@@ -1171,6 +1271,9 @@ local function SetPortrait(sd)
         return
     end
     frame.model:Hide()
+    for _, other in ipairs(frame.lineModels or {}) do
+        other:Hide()
+    end
     ShowStill(sd)
 end
 
@@ -1322,14 +1425,31 @@ local function Refresh()
         frame.controls.time:SetText(Clock(elapsed))
     end
     frame.controls.pause:SetGlyph(paused and "play" or "pause")
-    frame.controls.pause.tooltip = paused and "Resume: the game cannot pick a clip up part-way, so the line starts again."
-        or "Pause the narration. The game cannot pick a clip up part-way, so Resume starts the line again."
+    if sd.chunked == nil then
+        sd.chunked = (addon.ClipChunkStarts and addon.ClipChunkStarts(sd.soundPath)) ~= nil
+    end
+    if sd.chunked then
+        frame.controls.pause.tooltip = paused and "Resume: picks up at the start of the part it was paused in."
+            or "Pause the narration. Resume picks up at the start of the part it was paused in."
+    else
+        frame.controls.pause.tooltip = paused and "Resume: the game cannot pick a clip up part-way, so the line starts again."
+            or "Pause the narration. The game cannot pick a clip up part-way, so Resume starts the line again."
+    end
     -- Queue position ("1/2") and Next, only while something is queued.
     local total = addon.queueTotal or 0
     if total > 1 and not sd.preview then
         frame.controls.time:SetText((addon.queuePos or 1) .. "/" .. total .. "   " .. frame.controls.time:GetText())
     end
-    frame.controls.next:SetShown(not sd.preview and addon.speechQueue and #addon.speechQueue > 0)
+    local showNext = not sd.preview and addon.speechQueue and #addon.speechQueue > 0
+    frame.controls.next:SetShown(showNext)
+    local prev = frame.controls.previous
+    prev:SetShown(not sd.preview and addon.speechHistory and #addon.speechHistory > 0)
+    local anchor = showNext and frame.controls.next or frame.controls.pause
+    if prev.anchor ~= anchor then
+        prev.anchor = anchor
+        prev:ClearAllPoints()
+        prev:SetPoint("RIGHT", anchor, "LEFT", -ICON_GAP, 0)
+    end
 end
 
 local function ShouldShow(sd)
@@ -1346,9 +1466,8 @@ local function ShouldShow(sd)
     if addon.SubtitlesEnabled and addon.SubtitlesEnabled() then
         return false
     end
-    if TalkingHeadFrame and TalkingHeadFrame:IsShown() then
-        return false
-    end
+    -- No longer hidden behind a Blizzard talking head (owner, 2026-11-23: it hid the bar while the quest line kept
+    -- playing, "shouldn't it stay on?"): the line being read stays on screen with its text.
     if SourceWindowOpen(sd) then
         return false
     end
@@ -1386,7 +1505,22 @@ local function Tick()
     end
     if ShouldShow(current) then
         Refresh()
-        frame:SetAlpha((CombatMode() == "fade" and InFight()) and 0.3 or 1)
+        -- "Fade in combat": 0.6 (was 0.3, owner 2026-11-23: "I don't think it should fade out as much").
+        local faded = CombatMode() == "fade" and InFight()
+        if faded ~= frame.combatFaded then
+            frame.combatFaded = faded
+            if frame.scroll then UpdateFades(frame.scroll) end
+        end
+        local alpha = faded and COMBAT_FADE_ALPHA or 1
+        frame:SetAlpha(alpha)
+        -- A 3D model draws at its own alpha whatever its parent's (owner, 2026-11-23: "the 3D spoken head didn't
+        -- fade at all"), so it is set on the model itself.
+        local m = frame.model
+        if m and m:IsShown() and m.lastAlpha ~= alpha then
+            m.lastAlpha = alpha
+            pcall(m.SetModelAlpha, m, alpha)
+            pcall(m.SetAlpha, m, alpha)
+        end
         frame:Show()
     else
         frame:Hide()
@@ -1420,6 +1554,10 @@ function Pause()
     if not sd or paused then
         return
     end
+    if not sd.preview and addon.PauseSound and addon.PauseSound() then
+        -- The "pause" notice sets paused and the place (shared with Read Quest and the quest log's buttons).
+        return
+    end
     pausedElapsed = Elapsed(sd)
     paused = true
     if not sd.preview then
@@ -1438,9 +1576,11 @@ function Resume()
     paused = false
     if sd.preview then
         sd.startedAt = GetTime() - pausedElapsed
+    elseif addon.PausedSound and addon.PausedSound() == sd then
+        addon.ResumeSound()
     else
-        -- From the top: see the note at the head of the file.
-        addon.ReplaySound(sd)
+        -- A chunked clip picks up at the chunk it was paused in; a single-file clip starts over (head of the file).
+        addon.ReplaySound(sd, pausedElapsed)
     end
     Tick()
 end
@@ -1530,6 +1670,11 @@ function addon.SpeechFrameControl(action)
         paused = false
         lingerUntil = nil
         if addon.PlayNextQueued then addon.PlayNextQueued() end
+    elseif action == "previous" then
+        if current.preview or not (addon.speechHistory and #addon.speechHistory > 0) then return end
+        paused = false
+        lingerUntil = nil
+        if addon.PlayPreviousQueued then addon.PlayPreviousQueued() end
     end
 end
 
@@ -1773,7 +1918,9 @@ end
 local function Notify(event, sd)
     for _, name in ipairs({ "QuestTextSyncNotify", "SubtitleNotify" }) do
         if addon[name] then
-            local ok, err = pcall(addon[name], event, sd)
+            -- Dialogue sync has no paused state: a pause is a stop to it, as it always was. Subtitles stay up, frozen.
+            local sent = (event == "pause" and name == "QuestTextSyncNotify") and "stop" or event
+            local ok, err = pcall(addon[name], sent, sd)
             if not ok then
                 geterrorhandler()(err)
             end
@@ -1797,6 +1944,11 @@ local function Notify(event, sd)
         return
     elseif event == "finish" then
         lingerUntil = GetTime() + LINGER_SECONDS
+        Tick()
+    elseif event == "pause" then
+        -- Paused by any button (addon.PauseSound): the bar shows it paused at the same place.
+        pausedElapsed = sd.pausedAt or Elapsed(sd)
+        paused = true
         Tick()
     elseif event == "stop" then
         if pausing then

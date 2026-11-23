@@ -11,6 +11,9 @@
   <Binding name="SPEAKSTONENEXT">
     SpeakStone_Next()
   </Binding>
+  <Binding name="SPEAKSTONEPREVIOUS">
+    SpeakStone_Previous()
+  </Binding>
   <Binding name="SPEAKSTONEREPLAY">
     SpeakStone_Replay()
   </Binding>

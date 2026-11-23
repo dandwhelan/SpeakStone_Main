@@ -393,6 +393,14 @@ local function EndHead()
     end
 end
 
+-- The head's voice is not being heard: SpeakStone is narrating with "silence Blizzard's voice lines" on (muteGossip
+-- holds the Dialog channel at zero and narration does not yield). Lighting its words then follows a voice nobody
+-- hears while the player listens to their own quest (owner's screenshot, 2026-11-23: Torundo the Grizzled's line lit
+-- over a quest being read).
+local function HeadVoiceMuted()
+    return DB().muteGossip and addon.IsPlaying and addon.IsPlaying() and true or false
+end
+
 local function HeadTick()
     local h = head
     if not h then
@@ -400,7 +408,8 @@ local function HeadTick()
     end
     local frame = _G.TalkingHeadFrame
     local elapsed = GetTime() - h.startedAt
-    if not (frame and frame:IsShown()) or elapsed > h.duration + 0.5 or h.fs:GetText() ~= h.shown then
+    if not (frame and frame:IsShown()) or elapsed > h.duration + 0.5 or h.fs:GetText() ~= h.shown
+        or HeadVoiceMuted() then
         return EndHead()
     end
     local index = addon.SubtitleWordAt(h.times, elapsed + LEAD)
@@ -413,7 +422,7 @@ end
 
 local function StartHead()
     EndHead()
-    if DB().talkingHeadHighlight ~= true then
+    if DB().talkingHeadHighlight ~= true or HeadVoiceMuted() then
         return
     end
     local frame = _G.TalkingHeadFrame

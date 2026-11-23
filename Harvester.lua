@@ -65,6 +65,9 @@ local function Store()
     -- every logout -- kept getting bigger for nothing. One number per line
     -- is a fraction of the text it stands for.
     h.sent = h.sent or {}
+    -- Who speaks a voiced quest line nobody has a speaker for (SpeakerGaps.lua).
+    -- Keyed "<questID>_<passage>"; holds npcID, name and model only, never text.
+    h.speakers = h.speakers or {}
     return h
 end
 addon.HarvestStore = Store
@@ -390,6 +393,51 @@ local function RecordPassage(questID, passage, text, wasMissing)
 end
 addon.HarvestRecordPassage = RecordPassage
 
+-- --------------------------------------------------------------------------
+-- Speakers for voiced lines nobody has a speaker for (owner, 2026-11-23).
+--
+-- About 1,300 shipped quest lines have audio but no recorded speaker: every
+-- data source was tried and has nothing. A player standing at the quest panel
+-- knows who is talking, but a passage that already has audio was skipped
+-- outright. SpeakerGaps.lua lists those lines (three comma-delimited strings,
+-- one per passage, built by tools/build_speaker_gaps.py); for them only the
+-- speaker is kept -- npcID, name and model, never the text -- and the line is
+-- not counted as missing audio or towards the reminder.
+--
+-- Only a creature can be recorded: an object, an item, an auto-accepted quest
+-- with no NPC open, or "npc" fallen back to the player all leave CurrentSpeaker
+-- without an ID, and nothing is stored. The site merges a speaker only once two
+-- players agree or it matches the quest's own Start/End NPC, so one stale unit
+-- cannot cast a line on its own.
+-- --------------------------------------------------------------------------
+local function InSpeakerGaps(questID, passage)
+    local gaps = SpeakStone_SpeakerGaps
+    local list = type(gaps) == "table" and gaps[passage]
+    if type(list) ~= "string" or list == "" or not questID then return false end
+    return string.find(list, "," .. tostring(questID) .. ",", 1, true) ~= nil
+end
+addon.InSpeakerGaps = InSpeakerGaps
+
+local function RecordSpeaker(questID, passage)
+    if not questID or questID == 0 or not InSpeakerGaps(questID, passage) then return false end
+    local speaker = CurrentSpeaker()
+    if not speaker.id then return false end
+    local name = speaker.name
+    if IsSelfName(name) then return false end
+    local h = Store()
+    local key = questID .. "_" .. passage
+    if h.sent[SentKey("s", key, speaker.id)] then return false end
+    h.speakers[key] = {
+        npcID = speaker.id,
+        npcName = name,
+        npcModelFileID = speaker.modelFileID,
+        char = CurrentCharIndex(),
+    }
+    DebugPrint("SpeakStone: noted the speaker of " .. key .. " (" .. tostring(name) .. ").")
+    return true
+end
+addon.HarvestRecordSpeaker = RecordSpeaker
+
 -- Gossip is keyed on npcID directly: an NPC that gives no quest has no quest
 -- ID to fold into. Some NPCs cycle through several greeting variants, so
 -- distinct texts are kept as a list, deduplicated by exact match so revisiting
@@ -658,6 +706,8 @@ local function OnHarvestEvent(_, event, ...)
         or (event == "QUEST_PROGRESS" and "progress")
         or (event == "QUEST_COMPLETE" and "completion")
     if passage and questID and addon.FindSound and addon.FindSound({ questID .. "_" .. passage }) then
+        -- Voiced, but nobody knows who says it: keep only the speaker.
+        RecordSpeaker(questID, passage)
         return
     end
     if event == "QUEST_DETAIL" then
@@ -812,7 +862,9 @@ function addon.HarvestCounts()
     for _ in pairs(h.sent) do sent = sent + 1 end
     local bugs = 0
     for _ in pairs(h.bugs) do bugs = bugs + 1 end
-    return quests, passages, unvoiced, npcs, lines, items, pages, missing, chatNPCs, chatLines, sent, bugs
+    local speakers = 0
+    for _ in pairs(h.speakers) do speakers = speakers + 1 end
+    return quests, passages, unvoiced, npcs, lines, items, pages, missing, chatNPCs, chatLines, sent, bugs, speakers
 end
 
 -- Minimal Lua-table serialiser. The website's parser only cares about the
@@ -977,6 +1029,7 @@ function addon.HarvestExportBatches(maxBytes)
     for key, entry in pairs(h.itemText) do plan[#plan + 1] = { "itemText", key, entry } end
     for key, entry in pairs(h.npcChat) do plan[#plan + 1] = { "npcChat", key, entry } end
     for key, entry in pairs(h.bugs) do plan[#plan + 1] = { "bugs", key, entry } end
+    for key, entry in pairs(h.speakers) do plan[#plan + 1] = { "speakers", key, entry } end
 
     local batches = {}
     local out, size, openKind, inBatch
@@ -1092,6 +1145,9 @@ function addon.HarvestSnapshot()
     for key, entry in pairs(h.bugs) do
         snap[SentKey("b", key, entry.text or "")] = true
     end
+    for key, entry in pairs(h.speakers) do
+        if entry.npcID then snap[SentKey("s", key, entry.npcID)] = true end
+    end
     return snap
 end
 
@@ -1172,6 +1228,11 @@ function addon.HarvestMarkSent(snap)
             h.bugs[key] = nil
         end
     end
+    for key, entry in pairs(h.speakers) do
+        if entry.npcID and Take(SentKey("s", key, entry.npcID)) then
+            h.speakers[key] = nil
+        end
+    end
     -- An NPC nobody remaining points at has nothing left to describe.
     local referenced = {}
     for _, entry in pairs(h.quests) do
@@ -1193,6 +1254,7 @@ end
 function addon.HarvestWipe()
     local h = Store()
     h.quests, h.gossip, h.itemText, h.missingIDs, h.npcChat, h.bugs = {}, {}, {}, {}, {}, {}
+    h.speakers = {}
     h.npcs = {}
     -- Nothing left to submit, so nothing to be reminded about: an empty store
     -- should not sit silently through the interval before it can prompt again.

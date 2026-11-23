@@ -477,6 +477,7 @@ local function Build()
     frame:RegisterForDrag("LeftButton")
     frame:SetScript("OnDragStart", function(self)
         if not DB().subtitleLocked then
+            self.dragged = true
             self:StartMoving()
         end
     end)
@@ -487,6 +488,12 @@ local function Build()
     frame:SetScript("OnMouseUp", function(self, button)
         if button == "RightButton" then
             OpenMenu(self)
+        elseif button == "LeftButton" then
+            -- A click (not the end of a drag) pauses or resumes the line.
+            if not self.dragged then
+                addon.SubtitleTogglePause()
+            end
+            self.dragged = nil
         end
     end)
     -- Ctrl and the wheel resize the bar, as the speech frame's gear menu does.
@@ -664,6 +671,9 @@ end
 
 local function Status(sd)
     local parts = {}
+    if current and current.pausedAt then
+        parts[#parts + 1] = "Paused (click to resume)"
+    end
     if sd.waitingReason then
         parts[#parts + 1] = sd.waitingReason
     end
@@ -682,7 +692,8 @@ local function Refresh()
         -- Held (in combat): the speaker and why, no words yet.
         index, fraction = 0, 0
     elseif duration and duration > 0 and sd.startedAt then
-        local elapsed = math.max(0, GetTime() - sd.startedAt)
+        -- Paused: the words stay where the voice stopped.
+        local elapsed = current.pausedAt or math.max(0, GetTime() - sd.startedAt)
         index = addon.SubtitleWordAt(current.times, elapsed + LEAD)
         fraction = math.min(1, elapsed / duration)
         if elapsed >= duration then
@@ -772,6 +783,19 @@ local function Show(sd, words)
     Refresh()
 end
 
+-- Pause or resume the line on screen (left-click on the bar, or its menu). Shared with the speech bar and the quest
+-- buttons: addon.PauseSound / ResumeSound.
+function addon.SubtitleTogglePause()
+    if not current or current.sd.preview or not addon.PauseSound then
+        return
+    end
+    if addon.PausedSound and addon.PausedSound() == current.sd then
+        addon.ResumeSound()
+    elseif current.sd.isPlaying then
+        addon.PauseSound()
+    end
+end
+
 function OpenMenu(owner)
     if not (MenuUtil and MenuUtil.CreateContextMenu) then
         return
@@ -779,6 +803,11 @@ function OpenMenu(owner)
     local db = DB()
     MenuUtil.CreateContextMenu(owner, function(_, root)
         root:CreateTitle("SpeakStone subtitles")
+        if current and addon.PausedSound and addon.PausedSound() == current.sd then
+            root:CreateButton("Resume", function() addon.SubtitleTogglePause() end)
+        elseif current and current.sd.isPlaying and addon.PauseSound then
+            root:CreateButton("Pause", function() addon.SubtitleTogglePause() end)
+        end
         root:CreateButton("Stop", function()
             if current and addon.StopCurrentSound then
                 addon.StopCurrentSound()
@@ -865,6 +894,11 @@ function addon.SubtitleNotify(event, sd)
     elseif current and current.sd == sd then
         if event == "finish" then
             lingerUntil = GetTime() + LINGER_SECONDS
+        elseif event == "pause" then
+            -- Stays up, frozen at the place, so a click can resume it.
+            current.pausedAt = sd.pausedAt or 0
+            current.signature = nil
+            Refresh()
         elseif event == "stop" then
             Clear()
         end
