@@ -23,14 +23,20 @@ RETAIL_TOC, FOREVER_TOC = "SpeakStone_Main.toc", "SpeakStone_Forever_Main.toc"
 DATA_FILES = {
     "QuestInfo.lua", "QuestTitles.lua", "QuestTexts.lua", "GossipTexts.lua", "NPCNames.lua",
     "DynamicGossipNPCs.lua", "VoicedLines.lua", "BookTexts.lua", "ZoneLoreData.lua", "SoundLengths.lua",
+    # Quest lines with no known speaker: Forever's list is its own (built from Forever's Studio lines by the
+    # workspace's tools/build_speaker_gaps.py at release). Copying retail's put 972 retail quest IDs into
+    # Forever (sync PR #12, 2026-11-23).
+    "SpeakerGaps.lua",
 }
 COPY_DIRS = ["Art", "Libs"]
 COPY_FILES = ["Bindings.xml", "cs_icon.tga"]
 
 
 def rename(text):
-    # `ForeverMainDB or MainDB` (files that look for both names) is left as it is.
-    return re.sub(r"(?<!%s or )\b%s\b" % (FOREVER_DB, RETAIL_DB), FOREVER_DB, text)
+    # Every reference, including `ForeverMainDB or MainDB`: the same rule as the release builder (the workspace's
+    # tools/build_forever_main.py, whose test asserts no SpeakStone_MainDB is left in Forever). Leaving that one
+    # form alone made the two builders disagree, so each retail push opened a Forever sync PR (#12, 2026-11-23).
+    return re.sub(r"\b%s\b" % RETAIL_DB, FOREVER_DB, text)
 
 
 def build_toc(retail_toc, forever_toc):
