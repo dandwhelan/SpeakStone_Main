@@ -1336,6 +1336,26 @@ local function RepairSpeakerData(h)
     end
 end
 
+-- The SpeakStone Worker sent these lines from the saved-variables file and the
+-- website confirmed it has them (WorkerReceipt.lua). Clear them the same way
+-- pasting the export does. Runs before ScrubStore so the hashes are of the
+-- text exactly as the Worker read it from disk. Numbers only.
+local function ApplyWorkerReceipt()
+    local r = SpeakStone_WorkerReceipt
+    SpeakStone_WorkerReceipt = nil
+    if type(r) ~= "table" or type(r.sent) ~= "table" then return 0 end
+    local snap, any = {}, false
+    for _, k in ipairs(r.sent) do
+        if type(k) == "number" then
+            snap[k] = true
+            any = true
+        end
+    end
+    if not any then return 0 end
+    return addon.HarvestMarkSent(snap)
+end
+addon.HarvestApplyWorkerReceipt = ApplyWorkerReceipt
+
 function addon.HarvestMigrate()
     local h = Store()
     local moved = 0
@@ -1374,6 +1394,11 @@ function addon.HarvestMigrate()
         for key, entry in pairs(SpeakStoneHarvesterDB.itemText or {}) do
             if not h.itemText[key] then h.itemText[key] = entry end
         end
+    end
+
+    local cleared = ApplyWorkerReceipt()
+    if cleared > 0 then
+        DebugPrint("SpeakStone: " .. cleared .. " captured line(s) already sent by SpeakStone Worker cleared.")
     end
 
     -- Imported captures were never scrubbed; see ScrubStore.

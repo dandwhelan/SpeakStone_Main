@@ -1,0 +1,12 @@
+-- SpeakStone Worker receipt. Ships empty.
+--
+-- The SpeakStone Worker (the desktop app) can send the text this add-on captured straight from the saved-variables
+-- file, so nobody has to paste the export on the website. It cannot clear the sent lines itself: WoW rewrites the
+-- saved-variables file at every logout, so an edit made outside the game is lost or clobbers the game's own save.
+-- Instead, once the website has confirmed it received them, the Worker rewrites this file with their hashes:
+--
+--   SpeakStone_WorkerReceipt = { written = <unix time>, sent = { <hash>, <hash>, ... } }
+--
+-- and Harvester.lua (ApplyWorkerReceipt) clears those lines at the next login, exactly as pasting the export does.
+-- Numbers only; anything else in here is ignored. An add-on update puts this empty file back; the Worker writes the
+-- receipt again on its next run.

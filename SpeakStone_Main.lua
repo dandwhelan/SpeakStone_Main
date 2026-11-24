@@ -1657,9 +1657,12 @@ end
 -- docs/quest_faction_takes.md). The plain clip stays one NPC's take, so an older add-on and a missing take still play
 -- it. NPC on screen first; with no creature to ask (quest log, a game object, a secret GUID), the hand-in NPCs of the
 -- player's faction. Factions from ForeverDB D.nfac.
+-- Retail: "Arakkoa Exodus" 34653 is offered by Rokhan (Horde garrison) and Bodrick Grey (Alliance garrison), TDB 12.1
+-- creature_queststarter (owner 2026-11-24, report on Rokhan); the plain clip is Bodrick Grey's.
+-- Only takes that exist are played, so listing an NPC here costs a quest with no take one table miss.
 local FACTION_TAKE_NPCS = {
-    Horde = { 256386 },     -- Dokimi
-    Alliance = { 256390 },  -- Marcy Baker
+    Horde = { 256386, 78487 },     -- Dokimi (Forever), Rokhan (retail)
+    Alliance = { 256390, 81492 },  -- Marcy Baker (Forever), Bodrick Grey (retail)
 }
 
 local function QuestTakeCandidates(baseName)

@@ -1,5 +1,16 @@
 # Changelog
 
+## 6.1.3 (2026-11-24)
+
+Voices similar to the in-game characters. Unofficial; not affiliated with Blizzard Entertainment.
+
+Version 6.1.3 covers the base add-ons (retail and WoW Forever). The voice packs do not change.
+
+### What's new
+
+- **Works with the SpeakStone Worker app.** If you run the Worker (version 1.2.23 or later), it sends the quest, gossip and book text SpeakStone noted for you to the website after you play, so there is nothing to copy and paste. Once the website confirms it has them, SpeakStone clears those lines from its saved text the next time you log in, just as pasting the export does, and does not note the same lines again.
+- Nothing changes if you do not use the Worker: `/ssharvest export` and the website's paste box work as before.
+
 ## 6.1.2 (2026-11-24)
 
 Voices similar to the in-game characters. Unofficial; not affiliated with Blizzard Entertainment.
