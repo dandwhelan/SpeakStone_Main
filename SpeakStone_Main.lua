@@ -699,7 +699,7 @@ function addon.GetReportableSound()
         elseif QuestFrameRewardPanel and QuestFrameRewardPanel:IsVisible() then ptype = "completion"
         end
         if type(qid) == "number" and qid > 0 and ptype then
-            local sf = addon.FindSound and addon.FindSound({ qid .. "_" .. ptype })
+            local sf = addon.QuestClipFor and addon.QuestClipFor(qid, ptype)
             if sf then
                 local text, title
                 if addon.CaptureQuestText then text, title = addon.CaptureQuestText(qid, ptype) end
@@ -1528,8 +1528,9 @@ local RECENT_MAX = 50
 
 function addon.ClipItemKey(soundFile)
     if type(soundFile) ~= "string" then return nil end
-    -- A both-sex NPC's second take ("<clip>_f" / "<clip>_m") is the same line: one key for both.
-    local base = soundFile:gsub("%.%a+$", ""):gsub("_[mf]$", "")
+    -- A both-sex NPC's second take ("<clip>_f" / "<clip>_m") and a per-NPC take ("<clip>_npc<id>") are the same
+    -- line: one key for all.
+    local base = soundFile:gsub("%.%a+$", ""):gsub("_npc%d+$", ""):gsub("_[mf]$", "")
     local questID = base:match("^(%d+)_%a+$")
     if questID then return "q:" .. questID end
     local npcID, variant = base:match("^npc(%d+)_gossip(%d+)$")
@@ -1651,13 +1652,43 @@ local function SexTakeCandidates(baseName)
     return { baseName }
 end
 
+-- A quest handed in at a different NPC per faction ships a take per NPC, "<clip>_npc<creatureID>" (owner,
+-- 2026-11-24: Forever's "A Sealed Crate" 91899-91907 end at Dokimi for the Horde and Marcy Baker for the Alliance;
+-- docs/quest_faction_takes.md). The plain clip stays one NPC's take, so an older add-on and a missing take still play
+-- it. NPC on screen first; with no creature to ask (quest log, a game object, a secret GUID), the hand-in NPCs of the
+-- player's faction. Factions from ForeverDB D.nfac.
+local FACTION_TAKE_NPCS = {
+    Horde = { 256386 },     -- Dokimi
+    Alliance = { 256390 },  -- Marcy Baker
+}
+
+local function QuestTakeCandidates(baseName)
+    local list = {}
+    local okGUID, guid = pcall(UnitGUID, "npc")
+    local npcID = okGUID and addon.CreatureIDFromGUID and addon.CreatureIDFromGUID(guid)
+    if npcID then
+        list[1] = baseName .. "_npc" .. npcID
+    else
+        local okFaction, faction = pcall(UnitFactionGroup, "player")
+        if okFaction and addon.IsSecret and not addon.IsSecret(faction) and type(faction) == "string" then
+            for _, id in ipairs(FACTION_TAKE_NPCS[faction] or {}) do
+                list[#list + 1] = baseName .. "_npc" .. id
+            end
+        end
+    end
+    for _, name in ipairs(SexTakeCandidates(baseName)) do
+        list[#list + 1] = name
+    end
+    return list
+end
+
 -- The clip a quest passage would play, or nil: Dialogue UI asks before it
 -- draws its play button (DialogueUIVoice.lua).
 function addon.QuestClipFor(questID, textType)
     if not questID or not textType then
         return nil
     end
-    return FindSound(SexTakeCandidates(questID .. "_" .. textType))
+    return FindSound(QuestTakeCandidates(questID .. "_" .. textType))
 end
 
 -- The clip has run its course, or never started. Distinct from
@@ -2198,7 +2229,7 @@ function PlayQuestAudio(textType, skipDelay, forQuestID)
         -- size of the original PCM library and is what the game itself uses.
         -- Both are accepted so a pack can mix them while it is converted over.
         local baseName = questID .. "_" .. textType
-        local soundFile, soundPath, duration = FindSound(SexTakeCandidates(baseName))
+        local soundFile, soundPath, duration = FindSound(QuestTakeCandidates(baseName))
 
         if not soundPath then
             -- Report the gap so players can tell "not recorded yet" apart from

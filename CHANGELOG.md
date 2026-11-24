@@ -1,5 +1,21 @@
 # Changelog
 
+## 6.1.2 (2026-11-24)
+
+Voices similar to the in-game characters. Unofficial; not affiliated with Blizzard Entertainment.
+
+Version 6.1.2 covers the base add-ons (retail and WoW Forever). Update the voice packs as well: Pause and Resume from where you stopped needs the new packs.
+
+### What's new
+
+- **Pause and Resume now carry on from where you stopped**, instead of starting the line again. Pause on the Read Quest, quest log and greeting buttons, the speech bar, the subtitle bar, the Guide or a controller, and Resume picks the line back up.
+- **Good to know:** Resume goes back to the start of the part you paused in, so you may hear up to the last 10 to 15 seconds again. World of Warcraft cannot pause a sound or start one part-way through, so long lines are now stored in parts of about 10 to 15 seconds, each cut in a natural pause between sentences. Lines shorter than that are a single part and start again from the top.
+- A quest that is handed in to a different character for Horde and Alliance can now have a voice for each of them. First use: the "A Sealed Crate" quests in WoW Forever, where Dokimi and Marcy Baker each speak in their own voice.
+
+### Please update together
+
+- Update SpeakStone itself along with the voice packs. With new packs and an older SpeakStone (before 6.1.1), long lines are silent.
+
 ## 6.1.1 (2026-11-23)
 
 Voices similar to the in-game characters. Unofficial; not affiliated with Blizzard Entertainment.
