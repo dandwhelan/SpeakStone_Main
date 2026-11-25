@@ -31,11 +31,19 @@ local PORTRAIT = 84
 local TEXT_LINES = 4
 -- Text size and how many lines show at once (owner, 2026-11-18: for a television across the room, bigger text,
 -- three or four lines at a time, gliding up as it is read). Points added to the reading font's size.
+-- Small and Medium added 2026-11-25 (owner: "add small and medium text options").
 local TEXT_SIZES = {
+    { key = "small", label = "Small", add = -3 },
+    { key = "medium", label = "Medium", add = -2 },
     { key = "normal", label = "Normal", add = 0 },
     { key = "large", label = "Large", add = 3 },
     { key = "xlarge", label = "Extra large (TV)", add = 7 },
 }
+-- TV / controller size keeps its own choices (speechTVSize, speechTVTextSize), so picking a size from the
+-- menu while a controller is in use changes what is on screen. Until 2026-11-25 TV mode forced 1.25 and +5
+-- and the menu wrote the mouse-and-keyboard keys instead: every pick looked like it did nothing.
+local TV_SIZE_DEFAULT = "large"        -- scale 1.25
+local TV_TEXT_DEFAULT_ADD = 5          -- a little under "Extra large" (owner, 2026-11-19: "a little smaller")
 local BASE_LINE = 15      -- the normal font's row height: HEIGHT was laid out for TEXT_LINES of these
 local SCROLL_EASE = 5     -- how fast the text glides to where it should be (higher = snappier)
 -- "Show all the text": the most lines the frame grows to before it scrolls.
@@ -89,9 +97,27 @@ local function TVNow()
     return DB().speechTVAlways == true or (DB().speechTVOnPad and addon.padActive)
 end
 
+-- The saved-variable keys the bar's size and text size read right now: the TV ones while TV size is in force.
+local function SizeKeyName()
+    return TVNow() and "speechTVSize" or "speechSize"
+end
+
+local function TextKeyName()
+    return TVNow() and "speechTVTextSize" or "speechTextSize"
+end
+
+local function CurrentSizeKey()
+    if TVNow() then return DB().speechTVSize or TV_SIZE_DEFAULT end
+    return DB().speechSize or "medium"
+end
+
+local function CurrentTextKey()
+    if TVNow() then return DB().speechTVTextSize end   -- nil = the TV default, between Large and Extra large
+    return DB().speechTextSize or "normal"
+end
+
 local function SizeScale()
-    if TVNow() then return 1.25 end
-    local key = DB().speechSize or "medium"
+    local key = CurrentSizeKey()
     for _, size in ipairs(SIZES) do
         if size.key == key then
             return size.scale
@@ -101,8 +127,8 @@ local function SizeScale()
 end
 
 local function TextAdd()
-    if TVNow() then return 5 end   -- a little under "Extra large" (owner, 2026-11-19: "a little smaller")
-    local key = DB().speechTextSize or "normal"
+    local key = CurrentTextKey()
+    if key == nil then return TV_TEXT_DEFAULT_ADD end
     for _, size in ipairs(TEXT_SIZES) do
         if size.key == key then return size.add end
     end
@@ -116,8 +142,9 @@ local function Compact()
     return addon.padActive or DB().speechTVAlways == true or DB().speechCompact == true
 end
 
+-- The player's "Lines at a time" pick wins in compact and on a controller too (until 2026-11-25 those forced 4
+-- and the menu's 3 did nothing).
 local function Lines()
-    if Compact() then return 4 end
     local n = tonumber(DB().speechLines)
     return (n == 3 or n == 4) and n or TEXT_LINES
 end
@@ -1693,11 +1720,12 @@ end
 function addon.SpeechFrameResize(step)
     local db = DB()
     local index = 2
+    local currentKey = CurrentSizeKey()
     for i, size in ipairs(SIZES) do
-        if size.key == (db.speechSize or "medium") then index = i end
+        if size.key == currentKey then index = i end
     end
     index = math.max(1, math.min(#SIZES, index + step))
-    db.speechSize = SIZES[index].key
+    db[SizeKeyName()] = SIZES[index].key
     if frame then ApplyPosition() end
 end
 
@@ -1769,31 +1797,34 @@ function OpenMenu(owner)
     if not (MenuUtil and MenuUtil.CreateContextMenu) then
         -- No menu API on this client: step through the sizes instead.
         local index = 1
+        local currentKey = CurrentSizeKey()
         for i, size in ipairs(SIZES) do
-            if size.key == db.speechSize then index = i end
+            if size.key == currentKey then index = i end
         end
-        db.speechSize = SIZES[index % #SIZES + 1].key
+        db[SizeKeyName()] = SIZES[index % #SIZES + 1].key
         ApplyPosition()
         return
     end
     MenuUtil.CreateContextMenu(owner, function(_, root)
         root:CreateTitle("SpeakStone speech bar")
-        local sizeMenu = root:CreateButton("Size")
+        -- While TV size is in force (controller, or the TV / Sofa layout) these two menus set the TV choices.
+        local tvTag = TVNow() and " (controller / TV)" or ""
+        local sizeMenu = root:CreateButton("Size" .. tvTag)
         for _, size in ipairs(SIZES) do
             sizeMenu:CreateRadio(size.label,
-                function() return (db.speechSize or "medium") == size.key end,
-                function() db.speechSize = size.key; ApplyPosition() end)
+                function() return CurrentSizeKey() == size.key end,
+                function() db[SizeKeyName()] = size.key; ApplyPosition() end)
         end
         local themes = root:CreateButton("Theme")
         for _, key in ipairs(addon.ThemeOrder) do
             themes:CreateRadio(addon.Themes[key].label, function() return addon.Theme().key == key end,
                 function() addon.SetTheme(key) end)
         end
-        local textMenu = root:CreateButton("Text size")
+        local textMenu = root:CreateButton("Text size" .. tvTag)
         for _, size in ipairs(TEXT_SIZES) do
             textMenu:CreateRadio(size.label,
-                function() return (db.speechTextSize or "normal") == size.key end,
-                function() db.speechTextSize = size.key; addon.SpeechSettingChanged("speechTextSize") end)
+                function() return CurrentTextKey() == size.key end,
+                function() db[TextKeyName()] = size.key; addon.SpeechSettingChanged("speechTextSize") end)
         end
         local linesMenu = root:CreateButton("Lines at a time")
         for _, n in ipairs({ 3, 4 }) do
