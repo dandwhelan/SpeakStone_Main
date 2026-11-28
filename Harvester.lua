@@ -1394,6 +1394,12 @@ function addon.HarvestMigrate()
         for key, entry in pairs(SpeakStoneHarvesterDB.itemText or {}) do
             if not h.itemText[key] then h.itemText[key] = entry end
         end
+        -- Imported: empty it, as the settings' Clear does. Left full, every login copied back whatever "Submitted --
+        -- clear it" had just removed, and the next export sent it again. Anything the old add-on captures later is
+        -- imported at the next login.
+        SpeakStoneHarvesterDB.quests = {}
+        SpeakStoneHarvesterDB.gossip = {}
+        SpeakStoneHarvesterDB.itemText = {}
     end
 
     local cleared = ApplyWorkerReceipt()

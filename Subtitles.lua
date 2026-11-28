@@ -1163,6 +1163,12 @@ end
 function addon.ReadTokens(plain, narrated)
     local tokens, spoken = {}, {}
     local inDirection = false
+    -- Brackets around the whole passage are object text, read aloud (as SubtitleWords keeps it). Treated as a
+    -- direction, every word was silent and the speech bar and Guide never lit one.
+    local inner = plain:match("^%s*<(.*)>%s*$")
+    if inner and not inner:find("[<>]") then
+        narrated = true
+    end
     for s, e in plain:gmatch("()%S+()") do
         local word = plain:sub(s, e - 1)
         local silent = inDirection

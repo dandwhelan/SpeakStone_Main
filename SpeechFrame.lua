@@ -1007,6 +1007,17 @@ local function HideCapturedPortraits()
     end
 end
 
+local function LineStillHeld(owner)
+    if owner == addon.activeSound or owner == current then return true end
+    if addon.pausedSound and addon.pausedSound.sd == owner then return true end
+    for _, list in ipairs({ addon.speechQueue or {}, addon.speechHistory or {} }) do
+        for _, sd in ipairs(list) do
+            if sd == owner then return true end
+        end
+    end
+    return false
+end
+
 function addon.SpeechFrameCapturePortrait(sd)
     if not sd or not sd.npcGUID or sd.portraitTex or not UnitExists("npc") then
         return
@@ -1019,7 +1030,8 @@ function addon.SpeechFrameCapturePortrait(sd)
     frame.captured = frame.captured or {}
     local tex
     for _, t in ipairs(frame.captured) do
-        if not t.owner or (t.owner ~= addon.activeSound and not tContains(addon.speechQueue, t.owner)) then
+        -- Not one a line in the history or the paused line still shows (Previous / Resume bring those back).
+        if not t.owner or not LineStillHeld(t.owner) then
             tex = t
             break
         end
@@ -1088,17 +1100,6 @@ end
 -- SetCreature(ID), which for some NPCs gives a different look every time: Chana (female Amani troll, one display)
 -- showed as a red-haired male troll, then a yellow-haired one (owner's screenshots, 2026-11-23).
 -- A model is reused once its line is gone from the current, queued and heard lines.
-local function LineStillHeld(owner)
-    if owner == addon.activeSound or owner == current then return true end
-    if addon.pausedSound and addon.pausedSound.sd == owner then return true end
-    for _, list in ipairs({ addon.speechQueue or {}, addon.speechHistory or {} }) do
-        for _, sd in ipairs(list) do
-            if sd == owner then return true end
-        end
-    end
-    return false
-end
-
 function CaptureModel(sd)
     if not (frame and sd and sd.npcGUID) or sd.preview or sd.textType == "item" or DB().speechPortrait3D ~= true then
         return nil
@@ -1338,6 +1339,9 @@ end
 -- Text and header, once per clip.
 local function Fill(sd)
     local name, title = HeaderParts(sd)
+    -- Unbounded before measuring: GetStringWidth is capped by the width the last line set, so a long name after a
+    -- short one ("Bob", then "Archmage Khadgar") came out as "Ar...".
+    frame.name:SetWidth(0)
     frame.name:SetText(name)
     frame.subtitle:SetText(title or "")
     -- The name keeps at most 60% of the row, so a long name still leaves the quest some room.
