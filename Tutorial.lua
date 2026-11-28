@@ -170,6 +170,8 @@ local function ApplyDefaults()
     db.syncDialogueText = DialogueUIInstalled() and true or false
     -- Incorporate TV / controller defaults automatically when controller support is on.
     db.speechTVOnPad = true
+    db.speechTVSize = nil
+    db.speechTVTextSize = nil
     db.controllerRumble = true
     db.controllerShowLegend = true
     if PadOn() then

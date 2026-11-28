@@ -578,13 +578,16 @@ local function LiveText(t)
     if not t or t == "" then return nil end
     local ok, out = pcall(function()
         local name = UnitName("player") or "friend"
-        local _, class = UnitClass("player")
+        -- The class as the game shows it ("Warrior"), not its token ("WARRIOR"), for $c and <class> alike.
+        local className, classToken = UnitClass("player")
+        local class = (type(className) == "string" and className ~= "" and className)
+            or (classToken and (classToken:lower():gsub("^%l", string.upper))) or "hero"
         local race = UnitRace("player") or "traveller"
         local female = UnitSex("player") == 3
         t = t:gsub("%$[bB]", "\n")
         t = t:gsub("%$[gG]%s*([^:;]*):([^;]*);", function(m, f) return female and f or m end)
         t = t:gsub("%$[nN]", name):gsub("<name>", name)
-        t = t:gsub("%$[cC]", (class and class:lower():gsub("^%l", string.upper)) or "hero"):gsub("<class>", class or "hero")
+        t = t:gsub("%$[cC]", class):gsub("<class>", class)
         t = t:gsub("%$[rR]", race):gsub("<race>", race)
         return t
     end)
@@ -1503,7 +1506,10 @@ local function BuildUI()
         end
         local ok, out = pcall(function()
             local name = UnitName("player") or "friend"
-            local _, class = UnitClass("player")
+            -- The class as the game shows it ("Warrior"), not its token ("WARRIOR"), for $c and <class> alike.
+            local className, classToken = UnitClass("player")
+            local class = (type(className) == "string" and className ~= "" and className)
+                or (classToken and (classToken:lower():gsub("^%l", string.upper))) or "hero"
             local race = UnitRace("player") or "traveller"
             local female = UnitSex("player") == 3
             -- SimpleHTML pages ("<HTML><BODY><H1 ...>", "<IMG .../>") and
@@ -1519,7 +1525,7 @@ local function BuildUI()
             if t == "" then t = "|cff7a6a50(This page is a picture.)|r" end
             t = t:gsub("%$[gG]%s*([^:;]*):([^;]*);", function(m, f) return female and f or m end)
             t = t:gsub("%$[nN]", name):gsub("<name>", name)
-            t = t:gsub("%$[cC]", (class and class:lower():gsub("^%l", string.upper)) or "hero"):gsub("<class>", class or "hero")
+            t = t:gsub("%$[cC]", class):gsub("<class>", class)
             t = t:gsub("%$[rR]", race):gsub("<race>", race)
             return t
         end)

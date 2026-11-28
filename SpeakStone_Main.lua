@@ -308,8 +308,9 @@ local defaultSettings = {
     -- pause/stop, shown once the dialogue window has closed (or the quest
     -- was auto-accepted) and narration is still going.
     showSpeechFrame = true,
-    -- "small", "medium" or "large": the same frame at three scales, on top of
-    -- the game's own UI scale.
+    -- "small", "medium", "large" or "xlarge": the same frame at four scales, on
+    -- top of the game's own UI scale. While TV size is in force the bar reads
+    -- speechTVSize / speechTVTextSize instead (unset = the TV defaults).
     speechSize = "medium",
     speechFrameLocked = false,
     -- Scroll the text along with the voice. Off = the text stays put and the
@@ -955,7 +956,8 @@ local function InitializeQuestFrameButtons()
             onClick = function()
                 local state = addon.QuestPlayState(SelectedQuest())
                 if IsShiftKeyDown() or not state then
-                    PlayQuestAudio("description", true)
+                    -- The log's selected quest, not GetQuestID(): with a quest giver's window open too, that is the giver's.
+                    PlayQuestAudio("description", true, SelectedQuest())
                 elseif state == "playing" then
                     addon.PauseSound()
                 else
@@ -2173,14 +2175,18 @@ end
 function PlayQuestAudio(textType, skipDelay, forQuestID)
     -- Get quest ID from Quest Log if it's open, otherwise from quest giver
     local questID
+    -- From the quest log or Kaliel's Tracker's details: their only passage is the description.
+    local fromLog = false
     if forQuestID then
         questID = forQuestID
     elseif QuestFrame and QuestFrame:IsVisible() then
         questID = GetQuestID()
     elseif addon.KTDetailsQuestID and addon.KTDetailsQuestID() then
         questID = addon.KTDetailsQuestID()   -- Kaliel's Tracker's own quest details panel (KalielsTracker.lua)
+        fromLog = true
     elseif QuestMapFrame and QuestMapFrame:IsVisible() then
         questID = (C_QuestLog and C_QuestLog.GetSelectedQuest and C_QuestLog.GetSelectedQuest()) or GetQuestID()
+        fromLog = true
     else
         questID = GetQuestID()
     end
@@ -2195,6 +2201,10 @@ function PlayQuestAudio(textType, skipDelay, forQuestID)
             textType = "completion"
         -- Gossip has its own playback path, PlayGossipAudio: it has no
         -- questID to key on, so it cannot share this function's lookup.
+        elseif fromLog then
+            -- The keybind (F6) with only the log open. lastTextType is the last quest window's passage, and
+            -- QUEST_FINISHED blanks it, so it used to play nothing here.
+            textType = "description"
         else
             textType = lastTextType
             if not textType or textType == "" then
@@ -2294,6 +2304,10 @@ function PlayQuestAudio(textType, skipDelay, forQuestID)
         -- Delay shortly to account for greeting audio when using autoplay
         if SpeakStone_MainDB.autoPlayEnabled and not skipDelay and not SpeakStone_MainDB.muteGossip then
             ScheduleSound(soundData, tonumber(SpeakStone_MainDB.autoPlayDelay) or 1.0)
+        elseif not skipDelay and HoldForCombat(soundData) then
+            -- Autoplay with muteGossip on (the default) skips ScheduleSound, which is where the combat hold lived:
+            -- "Wait until combat ends" did nothing and lines played mid-fight. Manual plays (skipDelay) still mean now.
+            return
         else
             DoPlaySound(soundData)
         end
@@ -2815,7 +2829,9 @@ local function PlayItemAudioDirect(itemLink, page, immediate)
         -- there, so it stops; any other silent book or plaque leaves a quest
         -- line or another book still being heard alone.
         if bookReading and bookReading.link == itemLink then
-            StopCurrentSound()
+            -- Keep the quest queue: this is also how the read-on chain ends (onFinished asks for the page after
+            -- the last), and clearing it here dropped every quest line waiting behind the book.
+            StopCurrentSound(true)
         else
             YieldToSilentWindow()
         end
@@ -2823,7 +2839,9 @@ local function PlayItemAudioDirect(itemLink, page, immediate)
     end
 
     local cur = GetCurrentSound()
-    local queueing = SpeakStone_MainDB.queueQuestSpeech and not immediate and cur
+    -- Turning a page of the book being read moves the reading there; it never queues behind its own book.
+    local sameBook = cur and cur.textType == "item" and bookReading and bookReading.link == itemLink
+    local queueing = SpeakStone_MainDB.queueQuestSpeech and not immediate and not sameBook and cur
         and cur.questID and cur.textType ~= "gossip" and (cur.isPlaying or cur.nextSoundTimer)
 
     local soundData = {
@@ -2860,9 +2878,8 @@ local function PlayItemAudioDirect(itemLink, page, immediate)
         end
     end
     if queueing then
-        table.insert(addon.speechQueue, soundData)
-        addon.queueTotal = (addon.queueTotal or 0) + 1
-        if addon.queuePos == 0 then addon.queuePos = 1 end
+        -- Same queue handling as quest lines: counter, duplicate check, the speech bar told.
+        EnqueueSpeech(soundData)
         DebugPrint("SpeakStone: queued item " .. (itemID and ("item " .. itemID) or ("'" .. itemLink .. "'")) .. " (page " .. page .. ")")
         return true
     end

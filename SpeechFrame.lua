@@ -37,13 +37,16 @@ local TEXT_SIZES = {
     { key = "medium", label = "Medium", add = -2 },
     { key = "normal", label = "Normal", add = 0 },
     { key = "large", label = "Large", add = 3 },
-    { key = "xlarge", label = "Extra large (TV)", add = 7 },
+    -- The TV / controller default (owner, 2026-11-19: "a little under Extra large"). Listed so it can be picked
+    -- again: until 2026-11-28 it was only the unset value, and once another size was picked it was gone for good.
+    { key = "tv", label = "Larger (TV default)", add = 5 },
+    { key = "xlarge", label = "Extra large", add = 7 },
 }
 -- TV / controller size keeps its own choices (speechTVSize, speechTVTextSize), so picking a size from the
 -- menu while a controller is in use changes what is on screen. Until 2026-11-25 TV mode forced 1.25 and +5
 -- and the menu wrote the mouse-and-keyboard keys instead: every pick looked like it did nothing.
 local TV_SIZE_DEFAULT = "large"        -- scale 1.25
-local TV_TEXT_DEFAULT_ADD = 5          -- a little under "Extra large" (owner, 2026-11-19: "a little smaller")
+local TV_TEXT_DEFAULT = "tv"           -- +5, a little under "Extra large"
 local BASE_LINE = 15      -- the normal font's row height: HEIGHT was laid out for TEXT_LINES of these
 local SCROLL_EASE = 5     -- how fast the text glides to where it should be (higher = snappier)
 -- "Show all the text": the most lines the frame grows to before it scrolls.
@@ -112,7 +115,7 @@ local function CurrentSizeKey()
 end
 
 local function CurrentTextKey()
-    if TVNow() then return DB().speechTVTextSize end   -- nil = the TV default, between Large and Extra large
+    if TVNow() then return DB().speechTVTextSize or TV_TEXT_DEFAULT end
     return DB().speechTextSize or "normal"
 end
 
@@ -128,7 +131,6 @@ end
 
 local function TextAdd()
     local key = CurrentTextKey()
-    if key == nil then return TV_TEXT_DEFAULT_ADD end
     for _, size in ipairs(TEXT_SIZES) do
         if size.key == key then return size.add end
     end
@@ -1005,6 +1007,17 @@ local function HideCapturedPortraits()
     end
 end
 
+local function LineStillHeld(owner)
+    if owner == addon.activeSound or owner == current then return true end
+    if addon.pausedSound and addon.pausedSound.sd == owner then return true end
+    for _, list in ipairs({ addon.speechQueue or {}, addon.speechHistory or {} }) do
+        for _, sd in ipairs(list) do
+            if sd == owner then return true end
+        end
+    end
+    return false
+end
+
 function addon.SpeechFrameCapturePortrait(sd)
     if not sd or not sd.npcGUID or sd.portraitTex or not UnitExists("npc") then
         return
@@ -1017,7 +1030,8 @@ function addon.SpeechFrameCapturePortrait(sd)
     frame.captured = frame.captured or {}
     local tex
     for _, t in ipairs(frame.captured) do
-        if not t.owner or (t.owner ~= addon.activeSound and not tContains(addon.speechQueue, t.owner)) then
+        -- Not one a line in the history or the paused line still shows (Previous / Resume bring those back).
+        if not t.owner or not LineStillHeld(t.owner) then
             tex = t
             break
         end
@@ -1086,17 +1100,6 @@ end
 -- SetCreature(ID), which for some NPCs gives a different look every time: Chana (female Amani troll, one display)
 -- showed as a red-haired male troll, then a yellow-haired one (owner's screenshots, 2026-11-23).
 -- A model is reused once its line is gone from the current, queued and heard lines.
-local function LineStillHeld(owner)
-    if owner == addon.activeSound or owner == current then return true end
-    if addon.pausedSound and addon.pausedSound.sd == owner then return true end
-    for _, list in ipairs({ addon.speechQueue or {}, addon.speechHistory or {} }) do
-        for _, sd in ipairs(list) do
-            if sd == owner then return true end
-        end
-    end
-    return false
-end
-
 function CaptureModel(sd)
     if not (frame and sd and sd.npcGUID) or sd.preview or sd.textType == "item" or DB().speechPortrait3D ~= true then
         return nil
@@ -1336,6 +1339,9 @@ end
 -- Text and header, once per clip.
 local function Fill(sd)
     local name, title = HeaderParts(sd)
+    -- Unbounded before measuring: GetStringWidth is capped by the width the last line set, so a long name after a
+    -- short one ("Bob", then "Archmage Khadgar") came out as "Ar...".
+    frame.name:SetWidth(0)
     frame.name:SetText(name)
     frame.subtitle:SetText(title or "")
     -- The name keeps at most 60% of the row, so a long name still leaves the quest some room.
