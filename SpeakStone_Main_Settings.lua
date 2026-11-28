@@ -1014,6 +1014,9 @@ function SpeakStone:CreateWindow()
                 addon.SetControllerLayout((addon.ControllerDetect and addon.ControllerDetect()) or "XBOX")
             end
             db.speechTVOnPad = true
+            -- Back to the TV defaults (bar size Large, text "Larger (TV default)").
+            db.speechTVSize = nil
+            db.speechTVTextSize = nil
             db.speechCompact = true
             db.speechFitText = false
             db.speechAutoScroll = true

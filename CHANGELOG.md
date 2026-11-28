@@ -1,5 +1,16 @@
 # Changelog
 
+## 6.1.4 (2026-11-25)
+
+Voices similar to the in-game characters. Unofficial; not affiliated with Blizzard Entertainment.
+
+Version 6.1.4 covers the base add-ons (retail and WoW Forever). The voice packs do not change.
+
+### What's new
+
+- **Speech bar on a controller:** Size, Text size and Lines at a time in the speech bar's menu now work while you play with a controller or use the TV / Sofa layout. Before, the bar kept its TV size and four lines whatever you picked. Your controller choices are kept separately from your mouse-and-keyboard ones.
+- **New Small and Medium text sizes** for the speech bar.
+
 ## 6.1.3 (2026-11-24)
 
 Voices similar to the in-game characters. Unofficial; not affiliated with Blizzard Entertainment.

@@ -308,8 +308,9 @@ local defaultSettings = {
     -- pause/stop, shown once the dialogue window has closed (or the quest
     -- was auto-accepted) and narration is still going.
     showSpeechFrame = true,
-    -- "small", "medium" or "large": the same frame at three scales, on top of
-    -- the game's own UI scale.
+    -- "small", "medium", "large" or "xlarge": the same frame at four scales, on
+    -- top of the game's own UI scale. While TV size is in force the bar reads
+    -- speechTVSize / speechTVTextSize instead (unset = the TV defaults).
     speechSize = "medium",
     speechFrameLocked = false,
     -- Scroll the text along with the voice. Off = the text stays put and the

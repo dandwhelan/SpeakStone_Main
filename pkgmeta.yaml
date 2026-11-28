@@ -43,6 +43,10 @@ ignore:
   - "*.backup-*"
   - "*.tsv"
   - luac.out
+  # LibStub's own repo furniture: never loaded by the add-on.
+  - Libs/LibStub/tests
+  - Libs/LibStub/.pkgmeta
+  - Libs/LibStub/LibStub.toc
 
 manual-changelog:
   filename: CHANGELOG.md
